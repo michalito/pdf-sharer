@@ -30,3 +30,10 @@ class PDFService:
 
     def get_pdf_path(self, pdf):
         return os.path.join(current_app.config['UPLOAD_FOLDER'], pdf.filename)
+
+    def update_pdf_status(self, pdf_id, status):
+        pdf = self.get_pdf(pdf_id)
+        if pdf:
+            pdf.status = status
+            db.session.commit()
+        return pdf

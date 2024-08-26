@@ -7,75 +7,65 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
-    <h1>PDF Manager</h1>
-    
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            <div class="flash-messages">
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
+    <header>
+        <h1>PDF Manager</h1>
+        <div id="upload-section">
+            <form id="upload-form" action="{{ url_for('main.upload_file') }}" method="post" enctype="multipart/form-data">
+                <input type="file" name="file" id="file-input" accept=".pdf" hidden>
+                <label for="file-input" class="file-input-label">Upload PDF</label>
+                <button type="submit" hidden id="submit-btn">Upload</button>
+            </form>
+        </div>
+    </header>
+
+    <main>
+        <section id="pdf-lists">
+            <div id="unprocessed-pdfs" class="pdf-column">
+                <h2>Unprocessed PDFs</h2>
+                <ul class="pdf-list">
+                    {% for pdf in pdfs if pdf.status == 'Unprocessed' %}
+                    <li class="pdf-item" draggable="true" data-id="{{ pdf.id }}">
+                        <div class="pdf-info">
+                            <span class="pdf-name">{{ pdf.filename }}</span>
+                            <span class="pdf-date">{{ pdf.upload_date.strftime('%b %Y') }}</span>
+                        </div>
+                        <div class="pdf-actions">
+                            <a href="{{ url_for('main.download_pdf', pdf_id=pdf.id) }}" class="action-btn">Download</a>
+                            <button class="action-btn process-btn">Process</button>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
             </div>
+            <div id="processed-pdfs" class="pdf-column">
+                <h2>Processed PDFs</h2>
+                <ul class="pdf-list">
+                    {% for pdf in pdfs if pdf.status == 'Processed' %}
+                    <li class="pdf-item" draggable="true" data-id="{{ pdf.id }}">
+                        <div class="pdf-info">
+                            <span class="pdf-name">{{ pdf.filename }}</span>
+                            <span class="pdf-date">{{ pdf.upload_date.strftime('%b %Y') }}</span>
+                        </div>
+                        <div class="pdf-actions">
+                            <a href="{{ url_for('main.download_pdf', pdf_id=pdf.id) }}" class="action-btn">Download</a>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </section>
+    </main>
+
+    <div id="flash-messages">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
         {% endif %}
-    {% endwith %}
-    
-    <h2>Upload PDF</h2>
-    <form action="{{ url_for('main.upload_file') }}" method="post" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".pdf" required>
-        <button type="submit">Upload</button>
-    </form>
+        {% endwith %}
+    </div>
 
-    <h2>Unprocessed PDFs</h2>
-    <ul id="unprocessed-pdfs"></ul>
-
-    <h2>Processed PDFs</h2>
-    <ul id="processed-pdfs"></ul>
-
-    <script>
-        function fetchPDFs() {
-            fetch('/api/pdfs')
-                .then(response => response.json())
-                .then(pdfs => {
-                    const unprocessedList = document.getElementById('unprocessed-pdfs');
-                    const processedList = document.getElementById('processed-pdfs');
-                    unprocessedList.innerHTML = '';
-                    processedList.innerHTML = '';
-
-                    pdfs.forEach(pdf => {
-                        const li = document.createElement('li');
-                        li.textContent = `${pdf.filename} (Uploaded: ${new Date(pdf.upload_date).toLocaleDateString()})`;
-                        
-                        const downloadLink = document.createElement('a');
-                        downloadLink.href = `/api/pdfs/${pdf.id}`;
-                        downloadLink.textContent = 'Download';
-                        downloadLink.style.marginLeft = '10px';
-                        li.appendChild(downloadLink);
-
-                        if (pdf.status === 'Unprocessed') {
-                            const processLink = document.createElement('a');
-                            processLink.href = '#';
-                            processLink.textContent = 'Mark as Processed';
-                            processLink.style.marginLeft = '10px';
-                            processLink.onclick = (e) => {
-                                e.preventDefault();
-                                fetch(`/api/pdfs/${pdf.id}/process`, { method: 'POST' })
-                                    .then(() => fetchPDFs());
-                            };
-                            li.appendChild(processLink);
-                            unprocessedList.appendChild(li);
-                        } else {
-                            processedList.appendChild(li);
-                        }
-                    });
-                })
-                .catch(error => console.error('Error:', error));
-        }
-
-        // Fetch PDFs when the page loads
-        fetchPDFs();
-
-        // Fetch PDFs every 5 seconds to keep the list updated
-        setInterval(fetchPDFs, 5000);
-    </script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

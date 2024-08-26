@@ -66,7 +66,9 @@ def download_pdf(pdf_id):
 
 @main.route('/api/pdfs/<int:pdf_id>/process', methods=['POST'])
 def process_pdf(pdf_id):
-    pdf = pdf_service.mark_as_processed(pdf_id)
+    data = request.json
+    new_status = data.get('status', 'Processed')
+    pdf = pdf_service.update_pdf_status(pdf_id, new_status)
     if not pdf:
         raise NotFound('PDF not found')
     return jsonify(pdf.to_dict())
