@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <h1>PDF Manager</h1>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+    
+    <h2>Upload PDF</h2>
+    <form action="{{ url_for('main.upload_file') }}" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".pdf" required>
+        <button type="submit">Upload</button>
+    </form>
+
+    <h2>Unprocessed PDFs</h2>
+    <ul id="unprocessed-pdfs"></ul>
+
+    <h2>Processed PDFs</h2>
+    <ul id="processed-pdfs"></ul>
+
+    <script>
+        function fetchPDFs() {
+            fetch('/api/pdfs')
+                .then(response => response.json())
+                .then(pdfs => {
+                    const unprocessedList = document.getElementById('unprocessed-pdfs');
+                    const processedList = document.getElementById('processed-pdfs');
+                    unprocessedList.innerHTML = '';
+                    processedList.innerHTML = '';
+
+                    pdfs.forEach(pdf => {
+                        const li = document.createElement('li');
+                        li.textContent = `${pdf.filename} (Uploaded: ${new Date(pdf.upload_date).toLocaleDateString()})`;
+                        
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = `/api/pdfs/${pdf.id}`;
+                        downloadLink.textContent = 'Download';
+                        downloadLink.style.marginLeft = '10px';
+                        li.appendChild(downloadLink);
+
+                        if (pdf.status === 'Unprocessed') {
+                            const processLink = document.createElement('a');
+                            processLink.href = '#';
+                            processLink.textContent = 'Mark as Processed';
+                            processLink.style.marginLeft = '10px';
+                            processLink.onclick = (e) => {
+                                e.preventDefault();
+                                fetch(`/api/pdfs/${pdf.id}/process`, { method: 'POST' })
+                                    .then(() => fetchPDFs());
+                            };
+                            li.appendChild(processLink);
+                            unprocessedList.appendChild(li);
+                        } else {
+                            processedList.appendChild(li);
+                        }
+                    });
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // Fetch PDFs when the page loads
+        fetchPDFs();
+
+        // Fetch PDFs every 5 seconds to keep the list updated
+        setInterval(fetchPDFs, 5000);
+    </script>
+</body>
+</html>
