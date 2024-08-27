@@ -10,15 +10,20 @@
 <body>
     <header>
         <h1>PDF Sharer</h1>
-        <button id="theme-toggle" class="theme-toggle-btn">
-            <i class="fas fa-moon"></i>
-        </button>
-        <button id="upload-btn" class="upload-btn">
-            <i class="fas fa-upload"></i> Upload PDF
-        </button>
+        <div class="header-buttons">
+            <button id="upload-btn" class="upload-btn">
+                <i class="fas fa-file-upload"></i> Upload PDF
+            </button>
+            <button id="toggle-upload-area-btn" class="toggle-btn">
+                <i class="fas fa-upload"></i> Toggle Upload Area
+            </button>
+            <button id="theme-toggle" class="theme-toggle-btn">
+                <i class="fas fa-moon"></i>
+            </button>
+        </div>
     </header>
 
-    <div id="upload-area" class="upload-area">
+    <div id="upload-area" class="upload-area" style="display: none;">
         <i class="fas fa-file-pdf"></i>
         <p>Drag & Drop PDFs here or click "Upload PDF"</p>
         <input type="file" id="file-input" accept=".pdf" multiple hidden>

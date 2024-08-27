@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileInput = document.getElementById('file-input');
     const uploadArea = document.getElementById('upload-area');
     const themeToggle = document.getElementById('theme-toggle');
+    const toggleUploadAreaBtn = document.getElementById('toggle-upload-area-btn');
     const pdfLists = document.querySelectorAll('.pdf-list');
 
     const pdfColumns = document.querySelectorAll('.pdf-column');
@@ -13,6 +14,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
+    // Toggle upload area visibility
+    toggleUploadAreaBtn.addEventListener('click', () => {
+        uploadArea.style.display = uploadArea.style.display === 'none' ? 'block' : 'none';
+    });
+
     // Theme toggle
     themeToggle.addEventListener('click', () => {
         document.body.classList.toggle('dark-mode');
@@ -21,8 +27,13 @@ document.addEventListener('DOMContentLoaded', () => {
         icon.classList.toggle('fa-sun');
     });
 
-    // File upload handling
-    uploadBtn.addEventListener('click', () => fileInput.click());
+    // File upload handling + toggle upload area
+    uploadBtn.addEventListener('click', () => {
+        if (uploadArea.style.display === 'none') {
+            uploadArea.style.display = 'block';
+        }
+        fileInput.click();
+    });
     fileInput.addEventListener('change', handleFileUpload);
 
     // Drag and drop for file upload

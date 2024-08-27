@@ -222,6 +222,25 @@ main {
     font-style: italic;
 }
 
+.header-buttons {
+    display: flex;
+    gap: 1rem;
+}
+
+.toggle-btn {
+    background-color: transparent;
+    color: var(--header-text);
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.toggle-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
 @media (max-width: 768px) {
     main {
         flex-direction: column;
