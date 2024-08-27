@@ -156,7 +156,7 @@ If you encounter any issues or have questions, please file an issue on the GitHu
 # Appendix
 Project Structure
 -----------------
-
+```
 pdf_sharer/
 ├── app/
 │   ├── __init__.py
@@ -184,7 +184,7 @@ pdf_sharer/
 ├── entrypoint.sh
 ├── requirements.txt
 └── run.py
-
+```
 
 To use the API for uploading, you can make a POST request to /api/pdfs with the PDF file in the request body. Here's an example using JavaScript's Fetch API:
 
