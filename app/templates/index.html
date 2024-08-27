@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Manager</title>
+    <title>PDF Sharer</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
     <header>
-        <h1>PDF Manager</h1>
+        <h1>PDF Sharer</h1>
         <div id="upload-section">
             <form id="upload-form" action="{{ url_for('main.upload_file') }}" method="post" enctype="multipart/form-data">
                 <input type="file" name="file" id="file-input" accept=".pdf" hidden>
@@ -48,6 +48,7 @@
                         </div>
                         <div class="pdf-actions">
                             <a href="{{ url_for('main.download_pdf', pdf_id=pdf.id) }}" class="action-btn">Download</a>
+                            <button class="action-btn delete-btn" data-id="{{ pdf.id }}">Delete</button>
                         </div>
                     </li>
                     {% endfor %}

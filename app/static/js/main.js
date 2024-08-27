@@ -127,4 +127,28 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(data => console.log('PDF status updated:', data))
         .catch(error => console.error('Error updating PDF status:', error));
     }
+
+    // Function to delete PDF
+    function deletePDF(id) {
+        fetch(`/api/pdfs/${id}`, {
+            method: 'DELETE',
+        })
+        .then(response => {
+            if (response.ok) {
+                const pdfItem = document.querySelector(`.pdf-item[data-id="${id}"]`);
+                pdfItem.remove();
+            } else {
+                console.error('Error deleting PDF');
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    }
+
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const id = e.target.dataset.id;
+            deletePDF(id);
+        });
+    });
+
 });

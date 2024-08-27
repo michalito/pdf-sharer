@@ -1,6 +1,6 @@
 Project Structure
 
-pdf_manager/
+pdf_sharer/
    ├── app/
    │   ├── __init__.py
    │   ├── config.py

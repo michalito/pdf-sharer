@@ -73,6 +73,13 @@ def process_pdf(pdf_id):
         raise NotFound('PDF not found')
     return jsonify(pdf.to_dict())
 
+@main.route('/api/pdfs/<int:pdf_id>', methods=['DELETE'])
+def delete_pdf(pdf_id):
+    if pdf_service.delete_pdf(pdf_id):
+        return jsonify({"message": "PDF deleted successfully"}), 200
+    else:
+        raise NotFound('PDF not found')
+
 @main.errorhandler(BadRequest)
 @main.errorhandler(NotFound)
 def handle_error(error):

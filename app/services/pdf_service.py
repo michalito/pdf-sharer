@@ -37,3 +37,14 @@ class PDFService:
             pdf.status = status
             db.session.commit()
         return pdf
+
+    def delete_pdf(self, pdf_id):
+        pdf = self.get_pdf(pdf_id)
+        if pdf:
+            file_path = self.get_pdf_path(pdf)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            db.session.delete(pdf)
+            db.session.commit()
+            return True
+        return False
