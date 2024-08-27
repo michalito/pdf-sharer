@@ -155,36 +155,35 @@ If you encounter any issues or have questions, please file an issue on the GitHu
 
 # Appendix
 Project Structure
+-----------------
 
 pdf_sharer/
-   ├── app/
-   │   ├── __init__.py
-   │   ├── config.py
-   │   ├── models/
-   │   │   ├── __init__.py
-   │   │   └── pdf.py
-   │   ├── routes/
-   │   │   ├── __init__.py
-   │   │   └── main.py
-   │   ├── services/
-   │   │   ├── __init__.py
-   │   │   └── pdf_service.py
-   │   ├── static/
-   │   │   └── css/
-   │   │       └── styles.css
-   │   └── templates/
-   │       └── index.html
-   ├── migrations/
-   ├── tests/
-   │   ├── __init__.py
-   │   ├── test_models.py
-   │   └── test_routes.py
-   ├── .gitignore
-   ├── alembic.ini
-   ├── config.py
-   ├── entrypoint.sh
-   ├── requirements.txt
-   └── run.py
+├── app/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── models/
+│   │   ├── __init__.py
+│   │   └── pdf.py
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   └── pdf_service.py
+│   └── static/
+│       ├── css/
+│       │   └── styles.css
+│       └── templates/
+│           └── index.html
+├── migrations/
+├── tests/
+│   ├── __init__.py
+│   ├── test_models.py
+│   └── test_routes.py
+├── .gitignore
+├── alembic.ini
+├── config.py
+├── entrypoint.sh
+├── requirements.txt
+└── run.py
 
 
 To use the API for uploading, you can make a POST request to /api/pdfs with the PDF file in the request body. Here's an example using JavaScript's Fetch API:
