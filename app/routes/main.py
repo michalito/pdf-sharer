@@ -6,36 +6,10 @@ from werkzeug.exceptions import BadRequest, NotFound
 main = Blueprint('main', __name__)
 pdf_service = PDFService()
 
-# Web routes
 @main.route('/')
 def index():
-    pdfs = pdf_service.get_all_pdfs()
-    return render_template('index.html', pdfs=pdfs)
+    return render_template('index.html')
 
-@main.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        flash('No file part in the request', 'error')
-        return redirect(url_for('main.index'))
-    
-    file = request.files['file']
-    
-    if file.filename == '':
-        flash('No file selected for uploading', 'error')
-        return redirect(url_for('main.index'))
-    
-    if file and file.filename.lower().endswith('.pdf'):
-        try:
-            pdf = pdf_service.save_pdf(file)
-            flash(f'File {pdf.filename} uploaded successfully', 'success')
-        except Exception as e:
-            flash(f'Error uploading file: {str(e)}', 'error')
-    else:
-        flash('Invalid file type. Please upload a PDF.', 'error')
-    
-    return redirect(url_for('main.index'))
-
-# API routes
 @main.route('/api/pdfs', methods=['GET'])
 def get_pdfs():
     pdfs = pdf_service.get_all_pdfs()

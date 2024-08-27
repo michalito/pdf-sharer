@@ -1,0 +1,20 @@
+<div class="pdf-item" data-id="{{ pdf.id }}">
+    <div class="pdf-info">
+        <span class="pdf-name">{{ pdf.filename }}</span>
+        <span class="pdf-date">{{ pdf.upload_date.strftime('%b %Y') }}</span>
+    </div>
+    <div class="pdf-actions">
+        <button class="action-btn download-btn" data-id="{{ pdf.id }}">
+            <i class="fas fa-download"></i> Download
+        </button>
+        {% if pdf.status == 'Unprocessed' %}
+        <button class="action-btn process-btn" data-id="{{ pdf.id }}">
+            <i class="fas fa-cog"></i> Process
+        </button>
+        {% else %}
+        <button class="action-btn delete-btn" data-id="{{ pdf.id }}">
+            <i class="fas fa-trash"></i> Delete
+        </button>
+        {% endif %}
+    </div>
+</div>

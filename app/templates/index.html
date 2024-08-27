@@ -5,67 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF Sharer</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
 </head>
 <body>
     <header>
         <h1>PDF Sharer</h1>
-        <div id="upload-section">
-            <form id="upload-form" action="{{ url_for('main.upload_file') }}" method="post" enctype="multipart/form-data">
-                <input type="file" name="file" id="file-input" accept=".pdf" hidden>
-                <label for="file-input" class="file-input-label">Upload PDF</label>
-                <button type="submit" hidden id="submit-btn">Upload</button>
-            </form>
-        </div>
+        <button id="theme-toggle" class="theme-toggle-btn">
+            <i class="fas fa-moon"></i>
+        </button>
+        <button id="upload-btn" class="upload-btn">
+            <i class="fas fa-upload"></i> Upload PDF
+        </button>
     </header>
 
+    <div id="upload-area" class="upload-area">
+        <i class="fas fa-file-pdf"></i>
+        <p>Drag & Drop PDFs here or click "Upload PDF"</p>
+        <input type="file" id="file-input" accept=".pdf" multiple hidden>
+    </div>
+
     <main>
-        <section id="pdf-lists">
-            <div id="unprocessed-pdfs" class="pdf-column">
-                <h2>Unprocessed PDFs</h2>
-                <ul class="pdf-list">
-                    {% for pdf in pdfs if pdf.status == 'Unprocessed' %}
-                    <li class="pdf-item" draggable="true" data-id="{{ pdf.id }}">
-                        <div class="pdf-info">
-                            <span class="pdf-name">{{ pdf.filename }}</span>
-                            <span class="pdf-date">{{ pdf.upload_date.strftime('%b %Y') }}</span>
-                        </div>
-                        <div class="pdf-actions">
-                            <a href="{{ url_for('main.download_pdf', pdf_id=pdf.id) }}" class="action-btn">Download</a>
-                            <button class="action-btn process-btn">Process</button>
-                        </div>
-                    </li>
-                    {% endfor %}
-                </ul>
+        <section id="unprocessed-pdfs" class="pdf-column">
+            <h2>Unprocessed PDFs</h2>
+            <p class="column-hint">Drag PDFs to the other column to mark as processed</p>
+            <div class="pdf-list" id="unprocessed-list">
+                {% for pdf in pdfs if pdf.status == 'Unprocessed' %}
+                    {% include 'pdf_item.html' %}
+                {% else %}
+                    <p class="empty-state">No unprocessed PDFs</p>
+                {% endfor %}
             </div>
-            <div id="processed-pdfs" class="pdf-column">
-                <h2>Processed PDFs</h2>
-                <ul class="pdf-list">
-                    {% for pdf in pdfs if pdf.status == 'Processed' %}
-                    <li class="pdf-item" draggable="true" data-id="{{ pdf.id }}">
-                        <div class="pdf-info">
-                            <span class="pdf-name">{{ pdf.filename }}</span>
-                            <span class="pdf-date">{{ pdf.upload_date.strftime('%b %Y') }}</span>
-                        </div>
-                        <div class="pdf-actions">
-                            <a href="{{ url_for('main.download_pdf', pdf_id=pdf.id) }}" class="action-btn">Download</a>
-                            <button class="action-btn delete-btn" data-id="{{ pdf.id }}">Delete</button>
-                        </div>
-                    </li>
-                    {% endfor %}
-                </ul>
+        </section>
+
+        <section id="processed-pdfs" class="pdf-column">
+            <h2>Processed PDFs</h2>
+            <p class="column-hint">Drag PDFs back to unprocessed if needed</p>
+            <div class="pdf-list" id="processed-list">
+                {% for pdf in pdfs if pdf.status == 'Processed' %}
+                    {% include 'pdf_item.html' %}
+                {% else %}
+                    <p class="empty-state">No processed PDFs</p>
+                {% endfor %}
             </div>
         </section>
     </main>
 
-    <div id="flash-messages">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        {% for category, message in messages %}
-        <div class="alert alert-{{ category }}">{{ message }}</div>
-        {% endfor %}
-        {% endif %}
-        {% endwith %}
-    </div>
+    <div id="flash-messages" class="flash-messages"></div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>

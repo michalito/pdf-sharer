@@ -1,3 +1,7 @@
+## Interface
+
+![PDF Sharer Interface](./images/pdf_sharer_interface.png)
+
 # PDF Sharer App
 
 PDF Sharer is an open-source web application that allows users to upload, manage, and share PDF files by giving access to the app. It provides a simple and intuitive interface for organizing PDFs into processed and unprocessed categories.
