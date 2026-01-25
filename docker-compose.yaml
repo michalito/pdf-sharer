@@ -2,20 +2,22 @@ services:
   web:
     build: .
     ports:
-      - "5000:5000"
+      - "${HOST_PORT:-5001}:5000"
     volumes:
       - pdf_data:/app/instance
       - pdf_uploads:/app/uploads
     environment:
       - FLASK_ENV=production
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY environment variable is required}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-16777216}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/')"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
 volumes:
   pdf_data:

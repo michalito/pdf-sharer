@@ -11,6 +11,7 @@ import { showToast, renderPDFLists, setLoading, Status } from "./ui.js";
  */
 const state = {
     pdfs: [],
+    pagination: null,
     isLoading: false,
     isDarkMode: localStorage.getItem("darkMode") === "true",
 };
@@ -99,7 +100,10 @@ async function loadPDFs() {
     setLoading(document.body, true);
 
     try {
-        state.pdfs = await pdfApi.getAll();
+        const response = await pdfApi.getAll();
+        // Handle new paginated response format
+        state.pdfs = response.items || response;
+        state.pagination = response.pagination || null;
         renderPDFLists(state.pdfs);
     } catch (error) {
         handleError(error, "Failed to load PDFs");

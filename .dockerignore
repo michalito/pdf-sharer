@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+env/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+
+# Data directories (use Docker volumes instead)
+instance/
+uploads/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+images/
+LICENSE
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Claude Code
+.claude/
+CLAUDE.md

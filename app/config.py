@@ -20,6 +20,11 @@ class Config:
     UPLOAD_FOLDER: Path
     MAX_CONTENT_LENGTH: int
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
+    # Session security settings
+    SESSION_COOKIE_SECURE: bool = True
+    SESSION_COOKIE_HTTPONLY: bool = True
+    SESSION_COOKIE_SAMESITE: str = "Lax"
+    PERMANENT_SESSION_LIFETIME: int = 3600  # 1 hour
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -56,11 +61,17 @@ class Config:
         """Create configuration for development."""
         base_dir = _get_base_dir()
 
+        max_content_length = int(
+            os.environ.get("MAX_CONTENT_LENGTH", 64 * 1024 * 1024)  # 64MB default for dev
+        )
+
         return cls(
             SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-not-for-production"),
             DATABASE_URI=f"sqlite:///{base_dir / 'instance' / 'pdfs.db'}",
             UPLOAD_FOLDER=base_dir / "uploads",
-            MAX_CONTENT_LENGTH=16 * 1024 * 1024,
+            MAX_CONTENT_LENGTH=max_content_length,
+            # Disable secure cookies for development (HTTP)
+            SESSION_COOKIE_SECURE=False,
         )
 
     def to_flask_config(self) -> dict:
@@ -71,6 +82,10 @@ class Config:
             "SQLALCHEMY_TRACK_MODIFICATIONS": self.SQLALCHEMY_TRACK_MODIFICATIONS,
             "UPLOAD_FOLDER": str(self.UPLOAD_FOLDER),
             "MAX_CONTENT_LENGTH": self.MAX_CONTENT_LENGTH,
+            "SESSION_COOKIE_SECURE": self.SESSION_COOKIE_SECURE,
+            "SESSION_COOKIE_HTTPONLY": self.SESSION_COOKIE_HTTPONLY,
+            "SESSION_COOKIE_SAMESITE": self.SESSION_COOKIE_SAMESITE,
+            "PERMANENT_SESSION_LIFETIME": self.PERMANENT_SESSION_LIFETIME,
         }
 
 

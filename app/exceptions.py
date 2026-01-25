@@ -29,3 +29,17 @@ class FileOperationError(AppError):
 
     def __init__(self, message: str):
         super().__init__(message, status_code=500)
+
+
+class AuthenticationError(AppError):
+    """Authentication error."""
+
+    def __init__(self, message: str = "Authentication failed"):
+        super().__init__(message, status_code=401)
+
+
+class AuthorizationError(AppError):
+    """Authorization error - user doesn't have permission."""
+
+    def __init__(self, message: str = "Access denied"):
+        super().__init__(message, status_code=403)

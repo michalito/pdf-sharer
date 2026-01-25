@@ -1,7 +1,9 @@
 from __future__ import with_statement
 
 import logging
+import os
 from logging.config import fileConfig
+from pathlib import Path
 
 from flask import current_app
 
@@ -16,20 +18,23 @@ config = context.config
 fileConfig(config.config_file_name)
 logger = logging.getLogger('alembic.env')
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-config.set_main_option(
-    'sqlalchemy.url',
-    str(current_app.extensions['migrate'].db.get_engine().url).replace(
-        '%', '%%'))
-target_metadata = current_app.extensions['migrate'].db.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
+def get_database_url():
+    """Get database URL from environment or default to SQLite."""
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url:
+        return database_url
+
+    # Default to SQLite in instance folder
+    base_dir = Path(__file__).parent.parent.resolve()
+    return f"sqlite:///{base_dir / 'instance' / 'pdfs.db'}"
+
+
+def get_metadata():
+    """Get SQLAlchemy metadata for migrations."""
+    # add your model's MetaData object here
+    # for 'autogenerate' support
+    return current_app.extensions['migrate'].db.metadata
 
 
 def run_migrations_offline():
@@ -44,9 +49,14 @@ def run_migrations_offline():
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    # Use environment variable for offline mode
+    url = get_database_url()
+
     context.configure(
-        url=url, target_metadata=target_metadata, literal_binds=True
+        url=url,
+        target_metadata=get_metadata(),
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
     )
 
     with context.begin_transaction():
@@ -60,6 +70,11 @@ def run_migrations_online():
     and associate a connection with the context.
 
     """
+    # Set the URL from environment for online mode
+    config.set_main_option(
+        'sqlalchemy.url',
+        str(current_app.extensions['migrate'].db.get_engine().url).replace(
+            '%', '%%'))
 
     # this callback is used to prevent an auto-migration from being generated
     # when there are no changes to the schema
@@ -76,7 +91,7 @@ def run_migrations_online():
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
-            target_metadata=target_metadata,
+            target_metadata=get_metadata(),
             process_revision_directives=process_revision_directives,
             **current_app.extensions['migrate'].configure_args
         )

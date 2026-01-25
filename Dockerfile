@@ -30,9 +30,10 @@ COPY --from=builder /root/.local /home/app/.local
 # Copy application code
 COPY --chown=app:app . .
 
-# Create required directories
+# Create required directories and make entrypoint executable
 RUN mkdir -p /app/instance /app/uploads && \
-    chown -R app:app /app/instance /app/uploads
+    chown -R app:app /app/instance /app/uploads && \
+    chmod +x /app/entrypoint.sh
 
 # Switch to non-root user
 USER app
@@ -41,8 +42,11 @@ USER app
 EXPOSE 5000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/')" || exit 1
+
+# Entrypoint runs migrations before starting
+ENTRYPOINT ["/app/entrypoint.sh"]
 
 # Run with gunicorn in production
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "run:app"]
