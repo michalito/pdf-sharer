@@ -1,40 +1,48 @@
-# Use an official Python runtime as the base image
-FROM python:3.9-slim-buster
+# Build stage
+FROM python:3.12-slim-bookworm AS builder
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-ENV FLASK_APP run.py
-ENV FLASK_RUN_HOST 0.0.0.0
-
-# Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y netcat-openbsd
+# Install build dependencies
+RUN pip install --no-cache-dir --upgrade pip
 
-# Install Python dependencies
+# Copy and install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Copy the entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Production stage
+FROM python:3.12-slim-bookworm
 
-# Copy the current directory contents into the container
-COPY . .
+# Security: Don't run as root
+RUN useradd --create-home --shell /bin/bash app
 
-# Create necessary directories
-RUN mkdir -p /app/instance /app/uploads
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/home/app/.local/bin:$PATH" \
+    FLASK_APP=run.py
 
-# Create a non-root user
-RUN useradd -m myuser
+WORKDIR /app
 
-# Change ownership of the app directory to the non-root user
-RUN chown -R myuser:myuser /app
+# Copy installed packages from builder
+COPY --from=builder /root/.local /home/app/.local
 
-# Switch to the non-root user
-USER myuser
+# Copy application code
+COPY --chown=app:app . .
 
-# Run the entrypoint script
-CMD ["/entrypoint.sh"]
+# Create required directories
+RUN mkdir -p /app/instance /app/uploads && \
+    chown -R app:app /app/instance /app/uploads
+
+# Switch to non-root user
+USER app
+
+# Expose port
+EXPOSE 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/')" || exit 1
+
+# Run with gunicorn in production
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "run:app"]
