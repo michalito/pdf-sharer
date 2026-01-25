@@ -1,29 +1,30 @@
 #!/bin/bash
-
 set -e
 
-# Wait for the database to be ready (useful in containerized environments)
-if [ -n "$DATABASE_URL" ]; then
-    echo "Waiting for database..."
-    while ! nc -z ${DATABASE_URL/:*} ${DATABASE_URL/*:/}; do
-        sleep 1
-    done
-    echo "Database is up"
+echo "=== PDF Sharer Container Starting ==="
+
+# Wait for external database if configured
+if [[ -n "${DATABASE_URL:-}" ]] && [[ "$DATABASE_URL" != sqlite* ]]; then
+    echo "Waiting for database to be ready..."
+    sleep 3
 fi
 
-# Create the uploads directory if it doesn't exist
-mkdir -p uploads
-
-# Check if the database needs to be initialized
-if [ ! -d "migrations" ] || [ -z "$(ls -A migrations/versions)" ]; then
-    echo "Initializing the database..."
-    flask db init
-    flask db migrate -m "Initial migration"
-    flask db upgrade
-else
-    echo "Running any pending migrations..."
-    flask db upgrade
+# Run database migrations with explicit error handling
+echo "Running database migrations..."
+if ! flask db upgrade; then
+    echo "ERROR: Database migration failed!"
+    echo "Please check the migration files and database connectivity."
+    exit 1
 fi
 
-# Start the Flask application
-exec flask run --host=0.0.0.0
+# Verify migrations were applied successfully
+echo "Verifying database state..."
+if ! flask db current; then
+    echo "ERROR: Could not verify database migration state!"
+    exit 1
+fi
+
+echo "Migrations complete. Starting application..."
+
+# Execute the main command (gunicorn)
+exec "$@"

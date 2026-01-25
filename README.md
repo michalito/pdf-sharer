@@ -26,100 +26,114 @@ PDF Sharer is an open-source web application that allows users to upload, manage
 
 ## Prerequisites
 
-- Python 3.7+
-- pip
-- Docker and Docker Compose (for containerized deployment)
+- Docker and Docker Compose
+
+## Quick Start
+
+```bash
+# Clone and enter directory
+git clone https://github.com/michalito/pdf-sharer.git
+cd pdf-sharer
+
+# Development (with hot-reload)
+./deploy.sh dev
+
+# Production
+./deploy.sh prod
+```
+
+The application will be available at `http://localhost:5001`.
+
+> **Note:** Port 5001 is used by default to avoid conflict with macOS AirPlay Receiver on port 5000.
 
 ## Installation and Setup
+
+All operations use Docker via the `deploy.sh` script.
 
 ### Development Environment
 
 1. Clone the repository:
-   ```
+   ```bash
    git clone https://github.com/michalito/pdf-sharer.git
    cd pdf-sharer
    ```
 
-2. Create and activate a virtual environment:
-   ```
-   python -m venv venv
-   source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-   ```
-
-3. Install the required packages:
-   ```
-   pip install -r requirements.txt
+2. Start the development server:
+   ```bash
+   ./deploy.sh dev
    ```
 
-4. Set up environment variables:
-   ```
-   cp .env.example .env
-   ```
-   Edit the `.env` file and set the `SECRET_KEY` and other configuration variables as needed.
+The application will be available at `http://localhost:5001` with hot-reload enabled (code changes auto-reload).
 
-5. Initialize the database:
-   ```
-   flask db upgrade
-   ```
+#### Development Commands
 
-6. Run the development server:
-   ```
-   flask run
-   ```
-
-The application will be available at `http://localhost:5000`.
+```bash
+./deploy.sh dev              # Start development containers
+./deploy.sh dev down         # Stop development containers
+./deploy.sh dev restart      # Restart containers
+./deploy.sh logs             # View logs (follow mode)
+./deploy.sh migrate          # Apply pending migrations
+./deploy.sh migrate create "Add new table"  # Create new migration
+```
 
 ### Production Environment
 
-For production deployment, we recommend using Docker:
-
-1. Build the Docker image:
+1. Start the application:
+   ```bash
+   ./deploy.sh prod
    ```
-   docker build -t pdf-sharer .
-   ```
+   This will:
+   - Create `.env` from `.env.example` if needed
+   - Auto-generate `SECRET_KEY` if not set
+   - Build the Docker image
+   - Start the container
+   - Run database migrations automatically
+   - Wait for health check to pass
 
-2. Create a `docker-compose.yml` file (if not already present) with the following content:
-   ```yaml
-   version: '3.8'
-
-   services:
-     web:
-       build: .
-       ports:
-         - "5000:5000"
-       volumes:
-         - ./instance:/app/instance
-         - ./uploads:/app/uploads
-       environment:
-         - FLASK_ENV=production
-         - SECRET_KEY=${SECRET_KEY}
-       restart: unless-stopped
+2. Manage the deployment:
+   ```bash
+   ./deploy.sh status          # Check container health
+   ./deploy.sh logs            # View logs (follow mode)
+   ./deploy.sh logs 100        # View last 100 lines
+   ./deploy.sh prod restart    # Restart containers
+   ./deploy.sh prod down       # Stop containers
+   ./deploy.sh rebuild         # Rebuild from scratch
    ```
 
-3. Set up environment variables:
-   ```
-   cp .env.example .env
-   ```
-   Edit the `.env` file and set the `SECRET_KEY` and other production-specific variables.
-
-4. Start the application:
-   ```
-   docker-compose up -d
+3. Cleanup:
+   ```bash
+   ./deploy.sh cleanup containers  # Remove containers only
+   ./deploy.sh cleanup volumes     # Remove data volumes (careful!)
+   ./deploy.sh cleanup all         # Full cleanup
    ```
 
-The application will be available at `http://localhost:5000`. Configure your reverse proxy (e.g., Nginx) to forward requests to this port and handle SSL termination.
+The application will be available at `http://localhost:5001`. Configure your reverse proxy (e.g., Nginx) to forward requests to this port and handle SSL termination.
+
+### Environment Variables
+
+Configure in `.env` file (auto-generated from `.env.example`):
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SECRET_KEY` | Session encryption key | Auto-generated |
+| `DATABASE_URL` | Database connection string | SQLite at `instance/pdfs.db` |
+| `UPLOAD_FOLDER` | PDF storage directory | `uploads/` |
+| `MAX_CONTENT_LENGTH` | Max upload size in bytes | 16777216 (16MB) |
+| `HOST_PORT` | Docker host port | 5001 |
 
 ## API Documentation
 
-The PDF Sharer App provides a RESTful API for PDF management. Here are the available endpoints:
+The PDF Sharer App provides a RESTful API for PDF management:
 
-- `GET /api/pdfs`: Retrieve all PDFs
-- `POST /api/pdfs`: Upload a new PDF
-- `GET /api/pdfs/<pdf_id>`: Download a specific PDF
-- `POST /api/pdfs/<pdf_id>/process`: Update the status of a PDF
-- `DELETE /api/pdfs/<pdf_id>`: Delete a specific PDF
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/pdfs` | List all PDFs (optional `?status=processed\|unprocessed`) |
+| `POST` | `/api/pdfs` | Upload a new PDF (multipart/form-data, field: `file`) |
+| `GET` | `/api/pdfs/<id>` | Download a specific PDF |
+| `PATCH` | `/api/pdfs/<id>` | Update PDF status (JSON: `{"status": "processed"}`) |
+| `DELETE` | `/api/pdfs/<id>` | Delete a specific PDF |
 
-For detailed API usage, please refer to the `main.py` file in the `routes` directory.
+For detailed API usage, refer to `app/api/routes.py`.
 
 ## Contributing
 
@@ -153,44 +167,47 @@ If you encounter any issues or have questions, please file an issue on the GitHu
 
 
 
-# Appendix
-Project Structure
------------------
+## Appendix
+
+### Project Structure
+
 ```
-pdf_sharer/
+pdf-sharer/
 ├── app/
-│   ├── __init__.py
-│   ├── config.py
-│   ├── models/
-│   │   ├── __init__.py
-│   │   └── pdf.py
-│   ├── routes/
-│   │   ├── __init__.py
-│   │   ├── main.py
+│   ├── __init__.py          # Application factory
+│   ├── config.py            # Configuration management
+│   ├── exceptions.py        # Custom exceptions
+│   ├── api/                  # REST API layer
+│   │   └── routes.py
+│   ├── web/                  # Web page serving
+│   │   └── routes.py
+│   ├── services/             # Business logic
 │   │   └── pdf_service.py
+│   ├── repositories/         # Data access
+│   │   └── pdf_repository.py
+│   ├── domain/               # Models
+│   │   └── models.py
 │   └── static/
 │       ├── css/
-│       │   └── styles.css
+│       ├── js/
 │       └── templates/
-│           └── index.html
-├── migrations/
-├── tests/
-│   ├── __init__.py
-│   ├── test_models.py
-│   └── test_routes.py
-├── .gitignore
-├── alembic.ini
-├── config.py
-├── entrypoint.sh
+├── migrations/               # Alembic migrations
+├── deploy.sh                 # Deployment script
+├── entrypoint.sh             # Docker entrypoint
+├── Dockerfile
+├── docker-compose.yaml       # Production config
+├── docker-compose.dev.yaml   # Development config (hot-reload)
 ├── requirements.txt
-└── run.py
+└── run.py                    # Application entry point
 ```
 
-To use the API for uploading, you can make a POST request to /api/pdfs with the PDF file in the request body. Here's an example using JavaScript's Fetch API:
+### API Usage Example
 
-```
-javascriptCopyconst formData = new FormData();
-formData.append('file', pdfFile);  // pdfFile is the File object
+Upload a PDF using JavaScript:
+
+```javascript
+const formData = new FormData();
+formData.append('file', pdfFile);  // pdfFile is a File object
 
 fetch('/api/pdfs', {
   method: 'POST',
