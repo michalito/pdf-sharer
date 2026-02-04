@@ -1,0 +1,146 @@
+export type ItemKind = "file" | "folder";
+
+export type ItemState = "active" | "done" | "archived" | "ready_to_delete";
+
+export type ItemDto = {
+  id: number;
+  name: string;
+  kind: ItemKind;
+  state: ItemState;
+  mimeType: string | null;
+  sizeBytes: number;
+  createdAt: string;
+};
+
+export type PaginationDto = {
+  total: number;
+  page: number;
+  perPage: number;
+  pages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+};
+
+export type ListItemsResponse = {
+  items: ItemDto[];
+  pagination: PaginationDto;
+};
+
+type ApiErrorBody = { error?: string; code?: string };
+
+function buildQuery(params: Record<string, string | number | undefined | null>): string {
+  const usp = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") continue;
+    usp.set(key, String(value));
+  }
+  const q = usp.toString();
+  return q ? `?${q}` : "";
+}
+
+async function parseApiError(response: Response): Promise<Error> {
+  let body: ApiErrorBody | null = null;
+  try {
+    body = (await response.json()) as ApiErrorBody;
+  } catch {
+    // ignore
+  }
+  const message = body?.error || `Request failed (${response.status})`;
+  return new Error(message);
+}
+
+async function apiJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(url, options);
+  if (!res.ok) throw await parseApiError(res);
+  return (await res.json()) as T;
+}
+
+export async function listItems(params: {
+  q?: string;
+  kind?: ItemKind;
+  state?: ItemState;
+  page?: number;
+  perPage?: number;
+}): Promise<ListItemsResponse> {
+  const query = buildQuery({
+    q: params.q,
+    kind: params.kind,
+    state: params.state,
+    page: params.page ?? 1,
+    per_page: params.perPage ?? 50,
+  });
+  return apiJson<ListItemsResponse>(`/api/items${query}`);
+}
+
+function xhrForm<T>(url: string, formData: FormData, onProgress?: (pct: number) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.responseType = "json";
+
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress) return;
+      if (!event.lengthComputable) return;
+      const pct = Math.round((event.loaded / event.total) * 100);
+      onProgress(pct);
+    };
+
+    xhr.onerror = () => reject(new Error("Network error. Please try again."));
+    xhr.onload = () => {
+      const ok = xhr.status >= 200 && xhr.status < 300;
+      const body = xhr.response as ApiErrorBody | T | null;
+      if (!ok) {
+        const message = (body as ApiErrorBody | null)?.error || `Request failed (${xhr.status})`;
+        reject(new Error(message));
+        return;
+      }
+      resolve(body as T);
+    };
+
+    xhr.send(formData);
+  });
+}
+
+export async function uploadFiles(
+  files: File[],
+  opts?: { onProgress?: (pct: number) => void },
+): Promise<ItemDto[]> {
+  const formData = new FormData();
+  for (const file of files) formData.append("files", file);
+  return xhrForm<ItemDto[]>("/api/items/files", formData, opts?.onProgress);
+}
+
+export async function uploadFolder(
+  files: File[],
+  opts?: { onProgress?: (pct: number) => void },
+): Promise<ItemDto> {
+  const formData = new FormData();
+  for (const file of files) {
+    const relPath = (file as unknown as { webkitRelativePath?: string }).webkitRelativePath || file.name;
+    formData.append("files", file);
+    formData.append("paths", relPath);
+  }
+  return xhrForm<ItemDto>("/api/items/folder", formData, opts?.onProgress);
+}
+
+export async function deleteItem(id: number): Promise<void> {
+  const res = await fetch(`/api/items/${id}`, { method: "DELETE" });
+  if (res.status === 204) return;
+  if (!res.ok) throw await parseApiError(res);
+}
+
+export async function deleteReadyToDelete(params?: { q?: string; kind?: ItemKind }): Promise<{ deleted: number }> {
+  const query = buildQuery({
+    q: params?.q,
+    kind: params?.kind,
+  });
+  return apiJson<{ deleted: number }>(`/api/items/ready-to-delete${query}`, { method: "DELETE" });
+}
+
+export async function updateItemState(id: number, state: ItemState): Promise<ItemDto> {
+  return apiJson<ItemDto>(`/api/items/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state }),
+  });
+}

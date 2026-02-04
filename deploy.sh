@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# PDF Sharer Deployment Script
+# File Sharer Deployment Script
 # =============================================================================
 
 # Configuration
@@ -34,10 +34,6 @@ check_dependencies() {
     done
 }
 
-generate_secret_key() {
-    python3 -c "import secrets; print(secrets.token_hex(32))"
-}
-
 ensure_env_file() {
     if [[ ! -f .env ]]; then
         if [[ -f .env.example ]]; then
@@ -46,22 +42,6 @@ ensure_env_file() {
         else
             touch .env
         fi
-    fi
-
-    # Ensure SECRET_KEY exists for production
-    if ! grep -q "^SECRET_KEY=." .env 2>/dev/null; then
-        local secret_key
-        secret_key=$(generate_secret_key)
-        if grep -q "^SECRET_KEY=" .env 2>/dev/null; then
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                sed -i '' "s/^SECRET_KEY=.*/SECRET_KEY=$secret_key/" .env
-            else
-                sed -i "s/^SECRET_KEY=.*/SECRET_KEY=$secret_key/" .env
-            fi
-        else
-            echo "SECRET_KEY=$secret_key" >> .env
-        fi
-        success "Generated SECRET_KEY"
     fi
 }
 
@@ -139,15 +119,9 @@ cmd_dev() {
             sleep 2
             docker compose -f docker-compose.dev.yaml exec web flask db upgrade
 
-            # Create/reset admin user with easy dev password
-            info "Ensuring admin user with dev password..."
-            docker compose -f docker-compose.dev.yaml exec web flask create-admin --username admin --password admin123 --force 2>/dev/null || true
-
-            success "Development server running at http://localhost:${HOST_PORT:-$DEFAULT_PORT}"
             echo ""
-            echo "=== Development Credentials ==="
-            echo "  Username: admin"
-            echo "  Password: admin123"
+            success "Frontend: http://localhost:5173"
+            success "API:      http://localhost:${HOST_PORT:-$DEFAULT_PORT}/api/health"
             echo ""
             info "Code changes will auto-reload. View logs with: ./deploy.sh logs"
             ;;
@@ -191,19 +165,8 @@ cmd_prod() {
             if wait_for_health 60; then
                 success "Application is running and healthy!"
 
-                # Create admin user with auto-generated password (capture output)
-                info "Ensuring admin user exists..."
-                local admin_output
-                admin_output=$(docker compose exec -T web flask create-admin --username admin 2>&1) || true
-
                 echo ""
                 cmd_status
-
-                # Print admin credentials if newly created
-                if echo "$admin_output" | grep -q "Admin user created"; then
-                    echo ""
-                    echo "$admin_output"
-                fi
             else
                 warn "Health check timed out. Check logs with: ./deploy.sh logs"
             fi
@@ -295,9 +258,18 @@ cmd_status() {
         echo ""
 
         echo "=== Access ==="
-        local port
-        port=$(docker compose -f "$compose_file" port web 5000 2>/dev/null | cut -d: -f2 || echo "$DEFAULT_PORT")
-        echo "URL: http://localhost:${port}"
+        local backend_port
+        backend_port=$(docker compose -f "$compose_file" port web 5000 2>/dev/null | cut -d: -f2 || echo "$DEFAULT_PORT")
+
+        if [[ "$compose_file" == "docker-compose.dev.yaml" ]]; then
+            local frontend_port
+            frontend_port=$(docker compose -f "$compose_file" port frontend 5173 2>/dev/null | cut -d: -f2 || echo "5173")
+            echo "Frontend: http://localhost:${frontend_port}"
+            echo "API:      http://localhost:${backend_port}/api/health"
+        else
+            echo "URL: http://localhost:${backend_port}"
+            echo "API: http://localhost:${backend_port}/api/health"
+        fi
         echo ""
 
         if [[ "$compose_file" == "docker-compose.dev.yaml" ]]; then
@@ -381,52 +353,7 @@ cmd_shell() {
     fi
 }
 
-cmd_users() {
-    local action="${1:-list}"
-    shift || true
-
-    local compose_file
-    compose_file=$(get_running_compose_file)
-
-    if [[ -z "$compose_file" ]]; then
-        die "No running containers. Start with: ./deploy.sh dev or ./deploy.sh prod"
-    fi
-
-    case "$action" in
-        list)
-            docker compose -f "$compose_file" exec web flask list-users
-            ;;
-        create)
-            local username="${1:-}"
-            local password="${2:-}"
-            if [[ -z "$username" ]]; then
-                die "Username required: ./deploy.sh users create <username> [password]"
-            fi
-            if [[ -n "$password" ]]; then
-                docker compose -f "$compose_file" exec web flask create-admin --username "$username" --password "$password"
-            else
-                docker compose -f "$compose_file" exec web flask create-admin --username "$username"
-            fi
-            ;;
-        delete)
-            local username="${1:-}"
-            if [[ -z "$username" ]]; then
-                die "Username required: ./deploy.sh users delete <username>"
-            fi
-            docker compose -f "$compose_file" exec web flask delete-user "$username"
-            ;;
-        reset)
-            local username="${1:-admin}"
-            info "Resetting user '$username'..."
-            docker compose -f "$compose_file" exec web flask create-admin --username "$username" --force
-            ;;
-        *)
-            die "Unknown users action: $action. Use: list, create, delete, reset"
-            ;;
-    esac
-}
-
-cmd_cleanup_deleted() {
+cmd_prune_orphans() {
     local args=("$@")
 
     local compose_file
@@ -436,8 +363,8 @@ cmd_cleanup_deleted() {
         die "No running containers. Start with: ./deploy.sh dev or ./deploy.sh prod"
     fi
 
-    info "Running soft-delete cleanup..."
-    docker compose -f "$compose_file" exec web flask cleanup-deleted "${args[@]}"
+    info "Pruning orphaned upload files..."
+    docker compose -f "$compose_file" exec web flask prune-orphans "${args[@]}"
 }
 
 cmd_cleanup() {
@@ -488,7 +415,7 @@ cmd_cleanup() {
 
 cmd_help() {
     cat << 'EOF'
-PDF Sharer Deployment Script
+File Sharer Deployment Script
 
 Usage: ./deploy.sh <command> [options]
 
@@ -512,17 +439,12 @@ Logs & Debugging:
                       Options: -f/--follow (default), or number of lines
   shell               Open bash shell in running container
 
-Users:
-  users [action]      Manage application users
-                      Actions: list (default), create <user> [pass], delete <user>, reset [user]
-
 Cleanup:
   cleanup [target]    Remove Docker resources
                       Targets: containers, volumes, images, all (default)
 
 Maintenance:
-  cleanup-deleted [options]  Permanently delete soft-deleted PDFs
-                             Options: --days=N (default: 7), --dry-run
+  prune-orphans [--dry-run]  Delete upload files not referenced in the DB
 
 Examples:
   ./deploy.sh dev                    # Start development (hot-reload)
@@ -530,16 +452,11 @@ Examples:
   ./deploy.sh prod                   # Start production containers
   ./deploy.sh prod down              # Stop production containers
   ./deploy.sh migrate                # Run pending migrations
-  ./deploy.sh migrate create "Add users table"
   ./deploy.sh logs 100               # View last 100 log lines
-  ./deploy.sh users list             # List all users
-  ./deploy.sh users create myuser    # Create user with auto password
-  ./deploy.sh users reset admin      # Reset admin password
   ./deploy.sh cleanup volumes        # Remove data volumes
 
 Notes:
   - Port 5001 is used by default to avoid macOS AirPlay conflict on 5000
-  - SECRET_KEY is auto-generated for production if not set in .env
   - Development mode mounts local code for hot-reloading
   - Migrations run automatically on container startup (production)
 EOF
@@ -558,11 +475,10 @@ main() {
         stop)       cmd_stop ;;
         logs)       shift; cmd_logs "$@" ;;
         migrate)    shift; cmd_migrate "$@" ;;
-        users)      shift; cmd_users "$@" ;;
         shell)      cmd_shell ;;
         rebuild)    cmd_rebuild ;;
         cleanup)    shift; cmd_cleanup "$@" ;;
-        cleanup-deleted) shift; cmd_cleanup_deleted "$@" ;;
+        prune-orphans) shift; cmd_prune_orphans "$@" ;;
         status)     cmd_status ;;
         help|--help|-h) cmd_help ;;
         *)          die "Unknown command: $1. Run './deploy.sh help' for usage." ;;

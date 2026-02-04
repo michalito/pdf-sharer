@@ -1,1 +1,1 @@
-"""Test suite for PDF Sharer application."""
+"""Test suite for File Sharer application."""

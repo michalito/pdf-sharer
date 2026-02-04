@@ -1,7 +1,5 @@
 """Domain layer - core business entities and logic."""
 
-from app.domain.audit_log import AuditAction, AuditLog, ResourceType
-from app.domain.models import PDF, PDFStatus
-from app.domain.user import User
+from app.domain.item import Item, ItemKind, ItemState
 
-__all__ = ["AuditAction", "AuditLog", "PDF", "PDFStatus", "ResourceType", "User"]
+__all__ = ["Item", "ItemKind", "ItemState"]

@@ -1,1 +1,1 @@
-"""Integration tests for PDF Sharer application."""
+"""Integration tests for File Sharer application."""

@@ -1,9 +1,9 @@
 """Application configuration with validation and environment support."""
 
 import os
+import secrets
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional
 
 
 def _get_base_dir() -> Path:
@@ -31,22 +31,19 @@ class Config:
         """Create configuration from environment variables."""
         base_dir = _get_base_dir()
 
-        secret_key = os.environ.get("SECRET_KEY")
-        if not secret_key:
-            raise ValueError(
-                "SECRET_KEY environment variable is required. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
-            )
+        # No authentication is used, but Flask still expects a secret key for
+        # any cookie-based features. Generate one if not provided.
+        secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
         database_uri = os.environ.get("DATABASE_URL") or \
-            f"sqlite:///{base_dir / 'instance' / 'pdfs.db'}"
+            f"sqlite:///{base_dir / 'instance' / 'sharer.db'}"
 
         upload_folder = Path(
             os.environ.get("UPLOAD_FOLDER") or base_dir / "uploads"
         )
 
         max_content_length = int(
-            os.environ.get("MAX_CONTENT_LENGTH", 16 * 1024 * 1024)
+            os.environ.get("MAX_CONTENT_LENGTH", 2 * 1024 * 1024 * 1024)  # 2GB
         )
 
         return cls(
@@ -62,12 +59,12 @@ class Config:
         base_dir = _get_base_dir()
 
         max_content_length = int(
-            os.environ.get("MAX_CONTENT_LENGTH", 64 * 1024 * 1024)  # 64MB default for dev
+            os.environ.get("MAX_CONTENT_LENGTH", 2 * 1024 * 1024 * 1024)  # 2GB default for dev
         )
 
         return cls(
             SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-not-for-production"),
-            DATABASE_URI=f"sqlite:///{base_dir / 'instance' / 'pdfs.db'}",
+            DATABASE_URI=f"sqlite:///{base_dir / 'instance' / 'sharer.db'}",
             UPLOAD_FOLDER=base_dir / "uploads",
             MAX_CONTENT_LENGTH=max_content_length,
             # Disable secure cookies for development (HTTP)
