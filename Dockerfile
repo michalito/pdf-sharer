@@ -1,5 +1,15 @@
-# Build stage
-FROM python:3.12-slim-bookworm AS builder
+FROM node:20-bookworm-slim AS frontend-builder
+
+WORKDIR /frontend
+
+COPY frontend/package.json ./package.json
+RUN npm install
+
+COPY frontend/ ./
+RUN npm run build
+
+# Python dependencies stage
+FROM python:3.12-slim-bookworm AS py-builder
 
 WORKDIR /app
 
@@ -10,8 +20,8 @@ RUN pip install --no-cache-dir --upgrade pip
 COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Production stage
-FROM python:3.12-slim-bookworm
+# Runtime base (shared by dev/prod)
+FROM python:3.12-slim-bookworm AS runtime-base
 
 # Security: Don't run as root
 RUN useradd --create-home --shell /bin/bash app
@@ -25,7 +35,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Copy installed packages from builder
-COPY --from=builder /root/.local /home/app/.local
+COPY --from=py-builder /root/.local /home/app/.local
 
 # Copy application code
 COPY --chown=app:app . .
@@ -43,10 +53,17 @@ EXPOSE 5000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')" || exit 1
 
 # Entrypoint runs migrations before starting
 ENTRYPOINT ["/app/entrypoint.sh"]
 
-# Run with gunicorn in production
+# Development image (backend only; frontend runs separately)
+FROM runtime-base AS dev
+CMD ["flask", "run", "--host=0.0.0.0", "--port=5000", "--reload"]
+
+# Production image (includes built frontend)
+FROM runtime-base AS prod
+COPY --chown=app:app --from=frontend-builder /frontend/dist/index.html /app/app/templates/index.html
+COPY --chown=app:app --from=frontend-builder /frontend/dist/assets /app/app/static/assets
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "run:app"]

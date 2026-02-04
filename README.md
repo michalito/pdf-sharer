@@ -1,219 +1,68 @@
-## Interface
+# File Sharer
 
-![PDF Sharer Interface](./images/pdf_sharer_interface.png)
-
-# PDF Sharer App
-
-PDF Sharer is an open-source web application that allows users to upload, manage, and share PDF files by giving access to the app. It provides a simple and intuitive interface for organizing PDFs into processed and unprocessed categories.
+File Sharer is an internal web application for uploading and sharing **any type of file**, **zip archives**, and **folders** (zipped by the server). It’s designed for deployment on a trusted internal network and intentionally has **no authentication**.
 
 ## Features
 
-- Upload PDF files
-- Drag-and-drop functionality for file uploads and PDF management
-- Categorize PDFs as processed or unprocessed
-- Download PDFs
-- Delete PDFs
-- RESTful API for PDF management
+- Upload any file type
+- Upload folders (the server zips them into a single downloadable `.zip`)
+- Drag-and-drop upload for files
+- Direct internal share links (`/d/<id>`) with “Copy Link”
+- Workflow status: Active / Done / Archived / Ready to delete
+- Safe deletion workflow (mark “Ready to delete”, then delete — per-item or bulk)
+- REST API for automation/integrations
 
-## Tech Stack
-
-- Backend: Flask (Python)
-- Frontend: HTML, CSS, JavaScript
-- Database: SQLite (default), compatible with other SQL databases
-- ORM: SQLAlchemy
-- Migrations: Alembic
-- Containerization: Docker
-
-## Prerequisites
-
-- Docker and Docker Compose
-
-## Quick Start
+## Quick Start (Docker)
 
 ```bash
-# Clone and enter directory
-git clone https://github.com/michalito/pdf-sharer.git
-cd pdf-sharer
-
-# Development (with hot-reload)
-./deploy.sh dev
-
-# Production
-./deploy.sh prod
+./deploy.sh dev   # hot-reload (frontend + backend)
+./deploy.sh prod  # single production container
 ```
 
-The application will be available at `http://localhost:5001`.
+Development:
+- Frontend: `http://localhost:5173`
+- API: `http://localhost:5001/api/health`
+
+Production:
+- UI + API: `http://localhost:5001`
 
 > **Note:** Port 5001 is used by default to avoid conflict with macOS AirPlay Receiver on port 5000.
 
-## Installation and Setup
+## Folder uploads
 
-All operations use Docker via the `deploy.sh` script.
+Folder uploads are supported via `webkitdirectory` (Chrome/Edge). The browser uploads the folder contents + relative paths; the server streams them into a zip archive and stores it as a single downloadable item.
 
-### Development Environment
+## Environment Variables
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/michalito/pdf-sharer.git
-   cd pdf-sharer
-   ```
-
-2. Start the development server:
-   ```bash
-   ./deploy.sh dev
-   ```
-
-The application will be available at `http://localhost:5001` with hot-reload enabled (code changes auto-reload).
-
-#### Development Commands
-
-```bash
-./deploy.sh dev              # Start development containers
-./deploy.sh dev down         # Stop development containers
-./deploy.sh dev restart      # Restart containers
-./deploy.sh logs             # View logs (follow mode)
-./deploy.sh migrate          # Apply pending migrations
-./deploy.sh migrate create "Add new table"  # Create new migration
-```
-
-### Production Environment
-
-1. Start the application:
-   ```bash
-   ./deploy.sh prod
-   ```
-   This will:
-   - Create `.env` from `.env.example` if needed
-   - Auto-generate `SECRET_KEY` if not set
-   - Build the Docker image
-   - Start the container
-   - Run database migrations automatically
-   - Wait for health check to pass
-
-2. Manage the deployment:
-   ```bash
-   ./deploy.sh status          # Check container health
-   ./deploy.sh logs            # View logs (follow mode)
-   ./deploy.sh logs 100        # View last 100 lines
-   ./deploy.sh prod restart    # Restart containers
-   ./deploy.sh prod down       # Stop containers
-   ./deploy.sh rebuild         # Rebuild from scratch
-   ```
-
-3. Cleanup:
-   ```bash
-   ./deploy.sh cleanup containers  # Remove containers only
-   ./deploy.sh cleanup volumes     # Remove data volumes (careful!)
-   ./deploy.sh cleanup all         # Full cleanup
-   ```
-
-The application will be available at `http://localhost:5001`. Configure your reverse proxy (e.g., Nginx) to forward requests to this port and handle SSL termination.
-
-### Environment Variables
-
-Configure in `.env` file (auto-generated from `.env.example`):
+Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh prod`):
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SECRET_KEY` | Session encryption key | Auto-generated |
-| `DATABASE_URL` | Database connection string | SQLite at `instance/pdfs.db` |
-| `UPLOAD_FOLDER` | PDF storage directory | `uploads/` |
-| `MAX_CONTENT_LENGTH` | Max upload size in bytes | 16777216 (16MB) |
+| `SECRET_KEY` | Cookie signing key (optional) | Auto-generated at startup |
+| `DATABASE_URL` | Database connection string | SQLite at `instance/sharer.db` |
+| `UPLOAD_FOLDER` | File storage directory | `uploads/` |
+| `MAX_CONTENT_LENGTH` | Max upload size in bytes | 2147483648 (2GB) |
 | `HOST_PORT` | Docker host port | 5001 |
 
-## API Documentation
-
-The PDF Sharer App provides a RESTful API for PDF management:
+## API
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/pdfs` | List all PDFs (optional `?status=processed\|unprocessed`) |
-| `POST` | `/api/pdfs` | Upload a new PDF (multipart/form-data, field: `file`) |
-| `GET` | `/api/pdfs/<id>` | Download a specific PDF |
-| `PATCH` | `/api/pdfs/<id>` | Update PDF status (JSON: `{"status": "processed"}`) |
-| `DELETE` | `/api/pdfs/<id>` | Delete a specific PDF |
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder&state=active\|done\|archived\|ready_to_delete&page=1&per_page=50`) |
+| `POST` | `/api/items/files` | Upload files (multipart/form-data, field: `files`, repeatable) |
+| `POST` | `/api/items/folder` | Upload a folder (multipart: `files` + `paths` repeatable) |
+| `GET` | `/api/items/<id>` | Fetch item metadata |
+| `PATCH` | `/api/items/<id>` | Update item state (JSON: `{"state":"done"}`) |
+| `GET` | `/api/items/<id>/download` | Download an item |
+| `DELETE` | `/api/items/<id>` | Delete an item (requires state `ready_to_delete`) |
+| `DELETE` | `/api/items/ready-to-delete` | Bulk delete items in state `ready_to_delete` (optional filters: `?q=...&kind=file\|folder`) |
+| `GET` | `/d/<id>` | Public share link (direct download) |
 
-For detailed API usage, refer to `app/api/routes.py`.
+## Upgrading from the old PDF-only app
 
-## Contributing
+This is a breaking rewrite (new schema, new UI, no auth). Remove old Docker volumes before deploying:
 
-We welcome contributions to the PDF Sharer App! Please follow these steps to contribute:
-
-1. Fork the repository
-2. Create a new branch for your feature or bug fix
-3. Make your changes and commit them with clear, descriptive messages
-4. Push your changes to your fork
-5. Submit a pull request to the main repository
-
-Please ensure your code adheres to the project's coding standards and include tests for new features.
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Security Considerations
-
-- Ensure that the `SECRET_KEY` is kept secret and unique for each deployment
-- Regularly update dependencies to patch any security vulnerabilities
-- Implement proper input validation and sanitization to prevent security issues
-- Use HTTPS in production to encrypt data in transit
-- Regularly backup the database and uploaded files
-
-## Support
-
-If you encounter any issues or have questions, please file an issue on the GitHub repository.
-
-
-
-
-
-## Appendix
-
-### Project Structure
-
-```
-pdf-sharer/
-├── app/
-│   ├── __init__.py          # Application factory
-│   ├── config.py            # Configuration management
-│   ├── exceptions.py        # Custom exceptions
-│   ├── api/                  # REST API layer
-│   │   └── routes.py
-│   ├── web/                  # Web page serving
-│   │   └── routes.py
-│   ├── services/             # Business logic
-│   │   └── pdf_service.py
-│   ├── repositories/         # Data access
-│   │   └── pdf_repository.py
-│   ├── domain/               # Models
-│   │   └── models.py
-│   └── static/
-│       ├── css/
-│       ├── js/
-│       └── templates/
-├── migrations/               # Alembic migrations
-├── deploy.sh                 # Deployment script
-├── entrypoint.sh             # Docker entrypoint
-├── Dockerfile
-├── docker-compose.yaml       # Production config
-├── docker-compose.dev.yaml   # Development config (hot-reload)
-├── requirements.txt
-└── run.py                    # Application entry point
-```
-
-### API Usage Example
-
-Upload a PDF using JavaScript:
-
-```javascript
-const formData = new FormData();
-formData.append('file', pdfFile);  // pdfFile is a File object
-
-fetch('/api/pdfs', {
-  method: 'POST',
-  body: formData
-})
-.then(response => response.json())
-.then(data => console.log(data))
-.catch(error => console.error('Error:', error));
+```bash
+./deploy.sh cleanup volumes
 ```

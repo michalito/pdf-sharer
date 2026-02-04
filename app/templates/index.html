@@ -3,104 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Upload, manage, and share PDF files with a simple drag-and-drop interface">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>PDF Sharer</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <meta name="description" content="Internal file and folder sharing portal">
+    <title>File Sharer</title>
 </head>
 <body>
-    <!-- SVG Icon Sprites -->
-    <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
-        <symbol id="icon-upload" viewBox="0 0 24 24">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-        </symbol>
-        <symbol id="icon-download" viewBox="0 0 24 24">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-        </symbol>
-        <symbol id="icon-check" viewBox="0 0 24 24">
-            <path d="M20 6L9 17l-5-5"/>
-        </symbol>
-        <symbol id="icon-trash" viewBox="0 0 24 24">
-            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-        </symbol>
-        <symbol id="icon-moon" viewBox="0 0 24 24">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-        </symbol>
-        <symbol id="icon-sun" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="5"/>
-            <line x1="12" y1="1" x2="12" y2="3"/>
-            <line x1="12" y1="21" x2="12" y2="23"/>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-            <line x1="1" y1="12" x2="3" y2="12"/>
-            <line x1="21" y1="12" x2="23" y2="12"/>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-        </symbol>
-        <symbol id="icon-file-pdf" viewBox="0 0 24 24">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-            <polyline points="10 9 9 9 8 9"/>
-        </symbol>
-    </svg>
+    <div id="root"></div>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
 
-    <header class="header">
-        <h1 class="header__title">PDF Sharer</h1>
-        <nav class="header__actions" aria-label="Main actions">
-            <button type="button" id="upload-btn" class="btn btn--primary" aria-label="Upload PDF files">
-                <svg class="icon" aria-hidden="true"><use href="#icon-upload"></use></svg>
-                <span>Upload</span>
-            </button>
-            <button type="button" id="theme-toggle" class="btn btn--primary" aria-label="Toggle dark mode">
-                <svg class="icon" aria-hidden="true"><use href="#icon-moon"></use></svg>
-            </button>
-        </nav>
-    </header>
-
-    <main class="main" id="main-content">
-        <!-- Upload Area -->
-        <div id="upload-area" class="upload-area" role="button" tabindex="0" aria-label="Drop PDF files here to upload">
-            <svg class="upload-area__icon" aria-hidden="true"><use href="#icon-file-pdf"></use></svg>
-            <p class="upload-area__text">
-                <strong>Click to upload</strong> or drag and drop<br>
-                PDF files only
-            </p>
-            <input type="file" id="file-input" accept=".pdf,application/pdf" multiple aria-label="Select PDF files to upload">
-        </div>
-
-        <!-- PDF Columns -->
-        <div class="columns">
-            <!-- Unprocessed Column -->
-            <section id="unprocessed-column" class="pdf-column" aria-labelledby="unprocessed-title">
-                <header class="pdf-column__header">
-                    <h2 id="unprocessed-title" class="pdf-column__title">Unprocessed</h2>
-                    <span id="unprocessed-count" class="pdf-column__count" aria-label="Number of unprocessed PDFs" hidden>0</span>
-                </header>
-                <p class="pdf-column__hint">Drag PDFs here or to the processed column</p>
-                <div id="unprocessed-list" class="pdf-list" role="list" aria-label="Unprocessed PDFs">
-                    <!-- PDF items will be rendered here by JavaScript -->
-                </div>
-            </section>
-
-            <!-- Processed Column -->
-            <section id="processed-column" class="pdf-column" aria-labelledby="processed-title">
-                <header class="pdf-column__header">
-                    <h2 id="processed-title" class="pdf-column__title">Processed</h2>
-                    <span id="processed-count" class="pdf-column__count" aria-label="Number of processed PDFs" hidden>0</span>
-                </header>
-                <p class="pdf-column__hint">Processed PDFs can be downloaded or deleted</p>
-                <div id="processed-list" class="pdf-list" role="list" aria-label="Processed PDFs">
-                    <!-- PDF items will be rendered here by JavaScript -->
-                </div>
-            </section>
-        </div>
-    </main>
-
-    <!-- Toast Notifications Container -->
-    <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
-
-    <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <!--
+      This file is replaced during the Docker production build with the Vite
+      output (including hashed asset filenames). For local development, use:
+        ./deploy.sh dev
+      and visit http://localhost:5173
+    -->
 </body>
 </html>

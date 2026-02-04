@@ -1,17 +1,17 @@
 """API route definitions."""
 
+from __future__ import annotations
+
 import logging
+from typing import Optional
 
-from flask import g, jsonify, request, send_file, Response
-from flask_login import current_user, login_required
+from flask import Response, g, jsonify, request, send_file
 
-from app import limiter
 from app.api import api
-from app.domain.models import PDFStatus
+from app.domain.item import ItemKind, ItemState
 from app.error_handlers import register_error_handlers
 from app.exceptions import ValidationError
-from app.services.audit_service import AuditService
-from app.services.pdf_service import PDFService
+from app.services.item_service import ItemService
 
 
 logger = logging.getLogger(__name__)
@@ -20,184 +20,133 @@ logger = logging.getLogger(__name__)
 register_error_handlers(api)
 
 
-def _get_service() -> PDFService:
-    """Get the PDF service from the request context."""
-    return g.pdf_service
+def _get_service() -> ItemService:
+    return g.item_service
 
 
-def _get_audit_service() -> AuditService:
-    """Get the audit service from the request context."""
-    return g.audit_service
+@api.route("/health", methods=["GET"])
+def health() -> Response:
+    return jsonify({"ok": True})
 
 
-def _get_user_id() -> int:
-    """Get the current user's ID."""
-    return current_user.id
-
-
-@api.route("/pdfs", methods=["GET"])
-@login_required
-def list_pdfs() -> Response:
-    """
-    List all PDFs for the current user.
-
-    Query Parameters:
-        status: Optional filter by status (unprocessed, processed)
-        page: Page number (default 1)
-        per_page: Items per page (default 20, max 100)
-
-    Returns:
-        JSON object with items array and pagination info
-    """
+@api.route("/items", methods=["GET"])
+def list_items() -> Response:
     service = _get_service()
-    user_id = _get_user_id()
 
-    # Parse status filter
-    status_filter = request.args.get("status")
-    status = None
-    if status_filter:
+    q = request.args.get("q")
+    kind_filter = request.args.get("kind")
+    kind: Optional[ItemKind] = None
+    if kind_filter:
         try:
-            status = PDFStatus.from_string(status_filter)
+            kind = ItemKind.from_string(kind_filter)
         except ValueError as e:
             raise ValidationError(str(e))
 
-    # Parse pagination params
+    state_filter = request.args.get("state")
+    state: Optional[ItemState] = None
+    if state_filter:
+        try:
+            state = ItemState.from_string(state_filter)
+        except ValueError as e:
+            raise ValidationError(str(e))
+
     try:
         page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 20))
+        per_page = int(request.args.get("per_page", 50))
     except ValueError:
         raise ValidationError("Invalid pagination parameters")
 
-    result = service.get_all_pdfs(
-        status=status,
-        user_id=user_id,
-        page=page,
-        per_page=per_page,
+    result = service.list_items(q=q, kind=kind, state=state, page=page, per_page=per_page)
+    return jsonify(
+        {
+            "items": [item.to_dto() for item in result.items],
+            "pagination": result.to_dict(),
+        }
     )
 
-    return jsonify({
-        "items": [pdf.to_dict() for pdf in result.items],
-        "pagination": result.to_dict(),
-    })
 
-
-@api.route("/pdfs", methods=["POST"])
-@login_required
-@limiter.limit("10 per minute")
-def upload_pdf() -> tuple[Response, int]:
-    """
-    Upload a new PDF.
-
-    Request Body:
-        multipart/form-data with 'file' field
-
-    Returns:
-        Created PDF object with 201 status
-    """
+@api.route("/items/files", methods=["POST"])
+def upload_files() -> tuple[Response, int]:
     service = _get_service()
-    audit = _get_audit_service()
-    user_id = _get_user_id()
 
-    if "file" not in request.files:
-        raise ValidationError("No file provided in request")
+    files = request.files.getlist("files")
+    if not files:
+        raise ValidationError("No files provided")
 
-    file = request.files["file"]
-    pdf = service.upload_pdf(file, user_id=user_id)
-
-    audit.log_pdf_upload(user_id, pdf.id, pdf.original_filename)
-
-    return jsonify(pdf.to_dict()), 201
+    items = service.upload_files(files)
+    return jsonify([item.to_dto() for item in items]), 201
 
 
-@api.route("/pdfs/<int:pdf_id>", methods=["GET"])
-@login_required
-def get_pdf(pdf_id: int) -> Response:
-    """
-    Download a PDF file.
-
-    Args:
-        pdf_id: The PDF ID
-
-    Returns:
-        The PDF file as an attachment
-    """
+@api.route("/items/folder", methods=["POST"])
+def upload_folder() -> tuple[Response, int]:
     service = _get_service()
-    audit = _get_audit_service()
-    user_id = _get_user_id()
 
-    pdf = service.get_pdf(pdf_id, user_id=user_id)
-    file_path = service.get_pdf_path(pdf)
+    files = request.files.getlist("files")
+    paths = request.form.getlist("paths")
 
-    audit.log_pdf_download(user_id, pdf_id, pdf.original_filename)
+    item = service.upload_folder(files, paths)
+    return jsonify(item.to_dto()), 201
+
+
+@api.route("/items/<int:item_id>", methods=["GET"])
+def get_item(item_id: int) -> Response:
+    service = _get_service()
+    item = service.get_item(item_id)
+    return jsonify(item.to_dto())
+
+
+@api.route("/items/<int:item_id>/download", methods=["GET"])
+def download_item(item_id: int) -> Response:
+    service = _get_service()
+    item = service.get_item(item_id)
+    file_path = service.get_item_path(item)
+    download_name = service.get_download_name(item)
 
     return send_file(
         file_path,
         as_attachment=True,
-        download_name=pdf.original_filename,
+        download_name=download_name,
+        mimetype=item.mime_type or None,
     )
 
 
-@api.route("/pdfs/<int:pdf_id>", methods=["PATCH"])
-@login_required
-def update_pdf(pdf_id: int) -> Response:
-    """
-    Update a PDF's status.
-
-    Args:
-        pdf_id: The PDF ID
-
-    Request Body:
-        JSON with 'status' field
-
-    Returns:
-        Updated PDF object
-    """
+@api.route("/items/<int:item_id>", methods=["DELETE"])
+def delete_item(item_id: int) -> tuple[str, int]:
     service = _get_service()
-    audit = _get_audit_service()
-    user_id = _get_user_id()
+    service.delete_item(item_id)
+    return "", 204
 
-    data = request.get_json()
-    if not data or "status" not in data:
-        raise ValidationError("Missing 'status' field in request body")
+
+@api.route("/items/ready-to-delete", methods=["DELETE"])
+def delete_ready_to_delete() -> Response:
+    service = _get_service()
+
+    q = request.args.get("q")
+    kind_filter = request.args.get("kind")
+    kind: Optional[ItemKind] = None
+    if kind_filter:
+        try:
+            kind = ItemKind.from_string(kind_filter)
+        except ValueError as e:
+            raise ValidationError(str(e))
+
+    deleted = service.delete_ready_to_delete(q=q, kind=kind)
+    return jsonify({"deleted": deleted})
+
+
+@api.route("/items/<int:item_id>", methods=["PATCH"])
+def update_item(item_id: int) -> Response:
+    service = _get_service()
+
+    data = request.get_json(silent=True) or {}
+    state_raw = data.get("state")
+    if not state_raw:
+        raise ValidationError("Missing 'state' field in request body")
 
     try:
-        status = PDFStatus.from_string(data["status"])
+        state = ItemState.from_string(str(state_raw))
     except ValueError as e:
         raise ValidationError(str(e))
 
-    # Get current PDF to capture old status
-    old_pdf = service.get_pdf(pdf_id, user_id=user_id)
-    old_status = old_pdf.status
-
-    pdf = service.update_status(pdf_id, status, user_id=user_id)
-
-    audit.log_pdf_status_change(user_id, pdf_id, old_status, status.value)
-
-    return jsonify(pdf.to_dict())
-
-
-@api.route("/pdfs/<int:pdf_id>", methods=["DELETE"])
-@login_required
-def delete_pdf(pdf_id: int) -> tuple[Response, int]:
-    """
-    Delete a PDF (soft-delete).
-
-    Args:
-        pdf_id: The PDF ID
-
-    Returns:
-        Empty response with 204 status
-    """
-    service = _get_service()
-    audit = _get_audit_service()
-    user_id = _get_user_id()
-
-    # Get PDF info before deletion for audit log
-    pdf = service.get_pdf(pdf_id, user_id=user_id)
-    filename = pdf.original_filename
-
-    service.delete_pdf(pdf_id, user_id=user_id)
-
-    audit.log_pdf_delete(user_id, pdf_id, filename)
-
-    return jsonify({}), 204
+    item = service.update_state(item_id, state)
+    return jsonify(item.to_dto())

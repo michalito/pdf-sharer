@@ -1,21 +1,38 @@
 services:
   web:
-    build: .
+    build:
+      context: .
+      target: dev
     ports:
       - "${HOST_PORT:-5001}:5000"
     volumes:
       - .:/app
-      - pdf_data:/app/instance
-      - pdf_uploads:/app/uploads
+      - sharer_data:/app/instance
+      - sharer_uploads:/app/uploads
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=1
       - SECRET_KEY=${SECRET_KEY:-dev-only-not-for-production}
       - DATABASE_URL=${DATABASE_URL:-}
-      - MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-67108864}
+      - MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-2147483648}
     command: flask run --host=0.0.0.0 --port=5000 --reload
     restart: unless-stopped
 
+  frontend:
+    image: node:20-bookworm-slim
+    working_dir: /frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_PROXY_TARGET=http://web:5000
+    volumes:
+      - ./frontend:/frontend
+      - frontend_node_modules:/frontend/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    depends_on:
+      - web
+
 volumes:
-  pdf_data:
-  pdf_uploads:
+  sharer_data:
+  sharer_uploads:
+  frontend_node_modules:

@@ -8,7 +8,7 @@ All operations use `./deploy.sh` with Docker:
 
 ```bash
 # Development (hot-reload enabled)
-./deploy.sh dev             # Start dev containers
+./deploy.sh dev             # Start dev containers (backend + frontend)
 ./deploy.sh dev down        # Stop dev containers
 
 # Production
@@ -29,82 +29,65 @@ All operations use `./deploy.sh` with Docker:
 ./deploy.sh cleanup all     # Remove containers, volumes, images
 
 # Maintenance
-./deploy.sh cleanup-deleted         # Remove soft-deleted PDFs older than 7 days
-./deploy.sh cleanup-deleted --days=30  # Custom retention period
-./deploy.sh cleanup-deleted --dry-run  # Preview without deleting
+./deploy.sh prune-orphans --dry-run   # Preview orphaned upload files
+./deploy.sh prune-orphans             # Delete orphaned upload files
 ```
 
 Note: Port 5001 is default to avoid macOS AirPlay conflict on 5000.
 
 ## Architecture
 
-This is a Flask application for PDF upload/management using a clean layered architecture:
+This is a Flask application for internal file/folder sharing using a clean layered architecture:
 
 ```
 app/
 ├── api/          # REST API endpoints (Blueprint at /api)
-├── auth/         # Authentication routes (Blueprint at /auth)
-├── web/          # HTML page serving (Blueprint at /)
-├── services/     # Business logic (PDFService, AuthService, AuditService)
-├── repositories/ # Data access (PDFRepository, UserRepository, AuditRepository)
-├── domain/       # Models and enums (PDF, PDFStatus, User, AuditLog)
+├── web/          # Serves the built React frontend + /d/<id> links
+├── services/     # Business logic (ItemService)
+├── repositories/ # Data access (ItemRepository)
+├── domain/       # Models and enums (Item, ItemKind)
 ├── logging_config.py  # Structured logging (JSON in production)
 └── exceptions.py # Custom exceptions (AppError hierarchy)
 ```
 
 **Request flow:** Routes → Services → Repositories → Database
 
-- **API Blueprint** (`/api`): RESTful endpoints for PDF CRUD operations
-- **Web Blueprint** (`/`): Serves the frontend SPA from templates
-- **PDFService**: Business logic, file validation, unique filename generation
-- **PDFRepository**: SQLAlchemy queries, abstracts database operations
-- **PDF model**: SQLAlchemy model with `to_dict()` for JSON serialization
+- **API Blueprint** (`/api`): RESTful endpoints for Item CRUD operations
+- **Web Blueprint** (`/`): Serves the built frontend (production) and public downloads (`/d/<id>`)
+- **ItemService**: File/folder upload, server-side zipping, disk operations
+- **ItemRepository**: SQLAlchemy queries, pagination, persistence
+- **Item model**: SQLAlchemy model with `to_dto()` for JSON responses
 
 ## Key Patterns
 
 - Application factory pattern in `app/__init__.py` via `create_app()`
 - Configuration via `Config` dataclass with `for_development()` and `from_env()` methods
 - Custom exception hierarchy: `AppError` → `NotFoundError`, `ValidationError`, `FileOperationError`
-- PDFs stored with UUID-suffixed filenames to prevent collisions (`{name}_{uuid16}.pdf`)
-- Status enum: `PDFStatus.UNPROCESSED` / `PDFStatus.PROCESSED`
+- Stored filenames are UUID-based to avoid collisions (`<uuid4><ext>`; folders as `<uuid4>.zip`)
 - Request ID middleware: Every request gets a unique ID (passed through via `X-Request-ID` header)
-- Audit logging: All significant actions are logged to `audit_logs` table
+ 
+## Security Notes
 
-## Security Features
-
-- **CSRF Protection**: All routes require CSRF tokens (via `X-CSRFToken` header)
-- **Rate Limiting**: Auth routes limited to 5 login attempts per minute
-- **Secure Sessions**: HttpOnly, SameSite=Lax, Secure (in production) cookies
-
-## Soft-Delete
-
-PDFs are soft-deleted by default (marked with `deleted_at` timestamp):
-- Deleted PDFs are hidden from listings but can be recovered
-- Use `./deploy.sh cleanup-deleted --days=7` to permanently remove old deleted PDFs
-- `deleted_at` column indexed for efficient queries
-
-## Audit Logging
-
-All significant actions are logged to `audit_logs` table:
-- User actions: login, logout
-- PDF actions: upload, download, status change, delete
-- Each log includes: timestamp, request_id, user_id, IP, action, resource details
-- Logs include request ID for correlation across multiple entries
+- This app is intended for **trusted internal networks** and has **no auth**.
+- Folder uploads use server-side zipping with path sanitization to prevent ZIP slip.
 
 ## API Endpoints
 
 ```
-GET    /api/pdfs            # List all (optional ?status= filter)
-POST   /api/pdfs            # Upload (multipart/form-data, field: 'file')
-GET    /api/pdfs/<id>       # Download
-PATCH  /api/pdfs/<id>       # Update status (JSON: {"status": "processed"})
-DELETE /api/pdfs/<id>       # Delete
+GET    /api/health                # Health
+GET    /api/items                 # List items (?q=&kind=&page=&per_page=)
+POST   /api/items/files           # Upload files (multipart, field: files)
+POST   /api/items/folder          # Upload folder (multipart, files + paths)
+GET    /api/items/<id>            # Metadata
+GET    /api/items/<id>/download   # Download
+DELETE /api/items/<id>            # Immediate delete
+GET    /d/<id>                    # Public share link (download)
 ```
 
 ## Environment Variables
 
-- `SECRET_KEY` (required in production)
-- `DATABASE_URL` (defaults to SQLite at `instance/pdfs.db`)
+- `SECRET_KEY` (optional)
+- `DATABASE_URL` (defaults to SQLite at `instance/sharer.db`)
 - `UPLOAD_FOLDER` (defaults to `uploads/`)
-- `MAX_CONTENT_LENGTH` (defaults to 16MB)
+- `MAX_CONTENT_LENGTH` (defaults to 2GB)
 - `FLASK_ENV` (set to `production` for production config)
