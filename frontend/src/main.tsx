@@ -18,8 +18,17 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <App />
-      <Toaster position="bottom-right" />
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: "var(--app-panel-strong)",
+            border: "1px solid var(--app-border)",
+            color: "var(--app-text)",
+            boxShadow: "0 14px 34px rgba(12, 8, 5, 0.22)",
+          },
+        }}
+      />
     </QueryClientProvider>
   </React.StrictMode>,
 );
-

@@ -1,4 +1,4 @@
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useId } from "react";
 
 export default function ConfirmDialog(props: {
   open: boolean;
@@ -21,6 +21,8 @@ export default function ConfirmDialog(props: {
     onConfirm,
     onCancel,
   } = props;
+  const titleId = useId();
+  const descriptionId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -35,26 +37,38 @@ export default function ConfirmDialog(props: {
 
   const confirmClass =
     confirmVariant === "danger"
-      ? "bg-rose-600 hover:bg-rose-700 focus-visible:outline-rose-400"
-      : "bg-blue-600 hover:bg-blue-700 focus-visible:outline-blue-400";
+      ? "bg-[var(--danger)] hover:brightness-95 focus-visible:outline-[var(--danger)]"
+      : "bg-[var(--accent)] hover:bg-[var(--accent-strong)] focus-visible:outline-[var(--accent)]";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
-      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-900">
-        <div className="text-lg font-semibold">{title}</div>
-        {description ? <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">{description}</div> : null}
-        <div className="mt-5 flex gap-2 justify-end">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descriptionId : undefined}
+        className="glass-panel dialog-pop relative w-full max-w-md rounded-xl p-5"
+      >
+        <div id={titleId} className="font-display text-lg font-semibold text-[var(--app-text)]">
+          {title}
+        </div>
+        {description ? (
+          <div id={descriptionId} className="mt-2 text-sm text-[var(--app-muted)]">
+            {description}
+          </div>
+        ) : null}
+        <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
+            className="pressable rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
             onClick={onCancel}
           >
             {cancelLabel}
           </button>
           <button
             type="button"
-            className={`rounded-xl px-3 py-2 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${confirmClass}`}
+            className={`pressable rounded-lg px-3 py-2 text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${confirmClass}`}
             onClick={onConfirm}
           >
             {confirmLabel}
@@ -64,4 +78,3 @@ export default function ConfirmDialog(props: {
     </div>
   );
 }
-

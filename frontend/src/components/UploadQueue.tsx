@@ -5,6 +5,12 @@ export type UploadTask = {
   status: "uploading" | "done" | "error";
 };
 
+const toneClass = {
+  uploading: "bg-[var(--accent)]",
+  done: "bg-[var(--success)]",
+  error: "bg-[var(--danger)]",
+} as const;
+
 export default function UploadQueue(props: {
   uploads: UploadTask[];
   onDismiss: (id: string) => void;
@@ -16,17 +22,14 @@ export default function UploadQueue(props: {
 
   return (
     <div className="fixed bottom-4 left-4 z-40 w-[min(420px,calc(100vw-2rem))] space-y-2">
-      {visible.map((u) => (
-        <div
-          key={u.id}
-          className="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-lg backdrop-blur dark:border-slate-800 dark:bg-slate-900/80"
-        >
+      {visible.map((u, index) => (
+        <div key={u.id} className={`glass-panel reveal rounded-xl p-3 reveal-d${Math.min(index + 1, 4)}`}>
           <div className="flex items-center justify-between gap-2">
-            <div className="truncate text-sm font-medium">{u.label}</div>
+            <div className="truncate text-sm font-medium text-[var(--app-text)]">{u.label}</div>
             {u.status !== "uploading" ? (
               <button
                 type="button"
-                className="rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                className="rounded-md px-2 py-1 text-xs text-[var(--app-muted)] transition-colors hover:bg-[var(--app-hover)]"
                 onClick={() => onDismiss(u.id)}
               >
                 Dismiss
@@ -34,21 +37,18 @@ export default function UploadQueue(props: {
             ) : null}
           </div>
 
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-sm bg-black/10 dark:bg-white/10">
             <div
-              className={`h-full rounded-full transition-all ${
-                u.status === "error" ? "bg-rose-600" : u.status === "done" ? "bg-emerald-600" : "bg-blue-600"
-              }`}
+              className={`h-full rounded-sm transition-all ${toneClass[u.status]}`}
               style={{ width: `${Math.min(100, Math.max(0, u.progress))}%` }}
             />
           </div>
 
-          <div className="mt-2 text-xs text-slate-600 dark:text-slate-300">
-            {u.status === "uploading" ? `${u.progress}%` : u.status === "error" ? "Failed" : "Done"}
+          <div className="mt-2 text-xs text-[var(--app-muted)]">
+            {u.status === "uploading" ? `${u.progress}% uploaded` : u.status === "error" ? "Upload failed" : "Done"}
           </div>
         </div>
       ))}
     </div>
   );
 }
-
