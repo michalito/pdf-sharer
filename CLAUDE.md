@@ -1,93 +1,116 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file guides Claude Code when working in this repository.
+
+Last verified against code: 2026-02-24.
+
+## Project Snapshot
+
+- App: `saita` internal file and folder sharing
+- Backend: Flask, SQLAlchemy, Alembic
+- Frontend: React + TypeScript + Vite
+- Deployment: Docker Compose via `./deploy.sh`
+- Trust model: internal network, no authentication by design
 
 ## Commands
 
-All operations use `./deploy.sh` with Docker:
+Primary workflow uses `./deploy.sh`:
 
 ```bash
-# Development (hot-reload enabled)
-./deploy.sh dev             # Start dev containers (backend + frontend)
-./deploy.sh dev down        # Stop dev containers
+# Development (hot reload: backend + frontend)
+./deploy.sh dev
+./deploy.sh dev down
+./deploy.sh dev restart
 
 # Production
-./deploy.sh prod            # Build and start production containers
-./deploy.sh prod down       # Stop containers
-./deploy.sh rebuild         # Rebuild from scratch (no cache)
-./deploy.sh status          # Show container health
+./deploy.sh prod
+./deploy.sh prod down
+./deploy.sh prod restart
+
+# Runtime and diagnostics
+./deploy.sh status
+./deploy.sh logs
+./deploy.sh logs 100
+./deploy.sh shell
+./deploy.sh stop
+./deploy.sh rebuild
 
 # Database
-./deploy.sh migrate         # Apply pending migrations
-./deploy.sh migrate create "msg"  # Create new migration
+./deploy.sh migrate
+./deploy.sh migrate create "message"
+./deploy.sh migrate downgrade
+./deploy.sh migrate history
 
-# Utilities
-./deploy.sh logs            # Follow container logs
-./deploy.sh logs 100        # Last 100 lines
-./deploy.sh shell           # Bash into container
-./deploy.sh stop            # Stop any running containers
-./deploy.sh cleanup all     # Remove containers, volumes, images
-
-# Maintenance
-./deploy.sh prune-orphans --dry-run   # Preview orphaned upload files
-./deploy.sh prune-orphans             # Delete orphaned upload files
+# Cleanup and maintenance
+./deploy.sh cleanup containers|volumes|images|all
+./deploy.sh prune-orphans --dry-run
+./deploy.sh prune-orphans
 ```
 
-Note: Port 5001 is default to avoid macOS AirPlay conflict on 5000.
+Useful local checks:
+
+```bash
+pytest
+npm --prefix frontend run typecheck
+npm --prefix frontend run build
+```
+
+Port note: host port defaults to `5001` (`HOST_PORT` can override).
 
 ## Architecture
 
-This is a Flask application for internal file/folder sharing using a clean layered architecture:
+Layered backend (`Routes -> Services -> Repositories -> DB`):
 
-```
+```text
 app/
-├── api/          # REST API endpoints (Blueprint at /api)
-├── web/          # Serves the built React frontend + /d/<id> links
-├── services/     # Business logic (ItemService)
-├── repositories/ # Data access (ItemRepository)
-├── domain/       # Models and enums (Item, ItemKind)
-├── logging_config.py  # Structured logging (JSON in production)
-└── exceptions.py # Custom exceptions (AppError hierarchy)
+  api/routes.py               # REST API under /api
+  web/routes.py               # "/" and public "/d/<id>" download route
+  services/item_service.py    # Upload, zip, delete/state logic
+  repositories/item_repository.py
+  domain/item.py              # Item, ItemKind, ItemState
+  config.py                   # Config dataclass and env mapping
+  logging_config.py
+  exceptions.py
 ```
 
-**Request flow:** Routes → Services → Repositories → Database
+Factory pattern: `app/__init__.py:create_app()`.
 
-- **API Blueprint** (`/api`): RESTful endpoints for Item CRUD operations
-- **Web Blueprint** (`/`): Serves the built frontend (production) and public downloads (`/d/<id>`)
-- **ItemService**: File/folder upload, server-side zipping, disk operations
-- **ItemRepository**: SQLAlchemy queries, pagination, persistence
-- **Item model**: SQLAlchemy model with `to_dto()` for JSON responses
+## Current API Contract
 
-## Key Patterns
+- `GET /api/health`
+- `GET /api/items` with optional `q`, `kind`, `state`, `page`, `per_page`
+- `POST /api/items/files` (multipart field `files`, repeatable)
+- `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`)
+- `GET /api/items/<id>`
+- `PATCH /api/items/<id>` with JSON `{"state":"active|done|archived|ready_to_delete"}`
+- `GET /api/items/<id>/download`
+- `DELETE /api/items/<id>` only when item state is `ready_to_delete`
+- `DELETE /api/items/ready-to-delete` (optional `q`, `kind`)
+- `GET /d/<id>` (public/internal stable download link)
 
-- Application factory pattern in `app/__init__.py` via `create_app()`
-- Configuration via `Config` dataclass with `for_development()` and `from_env()` methods
-- Custom exception hierarchy: `AppError` → `NotFoundError`, `ValidationError`, `FileOperationError`
-- Stored filenames are UUID-based to avoid collisions (`<uuid4><ext>`; folders as `<uuid4>.zip`)
-- Request ID middleware: Every request gets a unique ID (passed through via `X-Request-ID` header)
- 
-## Security Notes
+## Important Behavioral Details
 
-- This app is intended for **trusted internal networks** and has **no auth**.
-- Folder uploads use server-side zipping with path sanitization to prevent ZIP slip.
+- Stored filenames are UUID-based (`<uuid><ext>` for files, `<uuid>.zip` for folder uploads).
+- Folder upload zips are created server-side with zip-path sanitization and de-duplication.
+- Request IDs: middleware sets `g.request_id` and always returns `X-Request-ID`.
+- Delete behavior is intentionally two-step (`PATCH` to `ready_to_delete`, then `DELETE`).
+- `entrypoint.sh` runs migrations on container start.
 
-## API Endpoints
+## Configuration Details
 
-```
-GET    /api/health                # Health
-GET    /api/items                 # List items (?q=&kind=&page=&per_page=)
-POST   /api/items/files           # Upload files (multipart, field: files)
-POST   /api/items/folder          # Upload folder (multipart, files + paths)
-GET    /api/items/<id>            # Metadata
-GET    /api/items/<id>/download   # Download
-DELETE /api/items/<id>            # Immediate delete
-GET    /d/<id>                    # Public share link (download)
-```
+- `FLASK_ENV=production` -> `Config.from_env()` (uses env vars like `DATABASE_URL`, `UPLOAD_FOLDER`).
+- Any non-production env -> `Config.for_development()` (uses local defaults for DB and upload path).
+Main env knobs:
+- `SECRET_KEY` (optional; generated if absent in production config path)
+- `DATABASE_URL`
+- `UPLOAD_FOLDER`
+- `MAX_CONTENT_LENGTH` (default `2147483648`)
+- `HOST_PORT` (Docker host mapping, default `5001`)
 
-## Environment Variables
+## When Changing Code
 
-- `SECRET_KEY` (optional)
-- `DATABASE_URL` (defaults to SQLite at `instance/saita.db`)
-- `UPLOAD_FOLDER` (defaults to `uploads/`)
-- `MAX_CONTENT_LENGTH` (defaults to 2GB)
-- `FLASK_ENV` (set to `production` for production config)
+Keep these aligned:
+
+1. API backend (`app/api/routes.py`) and frontend client (`frontend/src/api/items.ts`).
+2. Data model and migration files when schema changes.
+3. Operational docs: `README.md`, `AGENTS.md`, and this file.
