@@ -36,7 +36,7 @@ class Config:
         secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
         database_uri = os.environ.get("DATABASE_URL") or \
-            f"sqlite:///{base_dir / 'instance' / 'sharer.db'}"
+            f"sqlite:///{base_dir / 'instance' / 'saita.db'}"
 
         upload_folder = Path(
             os.environ.get("UPLOAD_FOLDER") or base_dir / "uploads"
@@ -64,7 +64,7 @@ class Config:
 
         return cls(
             SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-not-for-production"),
-            DATABASE_URI=f"sqlite:///{base_dir / 'instance' / 'sharer.db'}",
+            DATABASE_URI=f"sqlite:///{base_dir / 'instance' / 'saita.db'}",
             UPLOAD_FOLDER=base_dir / "uploads",
             MAX_CONTENT_LENGTH=max_content_length,
             # Disable secure cookies for development (HTTP)

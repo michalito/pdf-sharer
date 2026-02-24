@@ -290,10 +290,10 @@ export default function App() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="grid h-11 w-11 overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] p-0.5">
-                  <img src="/logo.png" alt="File Sharer logo" className="h-full w-full object-contain" />
+                  <img src="/logo.png" alt="saíta logo" className="h-full w-full object-contain" />
                 </div>
                 <div>
-                  <div className="font-display text-[1.15rem] font-semibold">File Sharer</div>
+                  <div className="font-display text-[1.15rem] font-semibold">saíta</div>
                   <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--app-muted)]">
                     Internal exchange, zero login
                   </div>
@@ -580,7 +580,7 @@ export default function App() {
       </main>
 
       <footer className="mx-auto mt-8 mb-4 flex w-full max-w-6xl items-center justify-between gap-3 border-t border-[var(--app-border)]/50 px-4 pt-4 text-[11px] text-[var(--app-muted)]">
-        <div className="font-mono uppercase tracking-[0.08em]">File Sharer · Internal use</div>
+        <div className="font-mono uppercase tracking-[0.08em]">saíta · Internal use</div>
         <button
           type="button"
           onClick={() => setIsGuideOpen(true)}

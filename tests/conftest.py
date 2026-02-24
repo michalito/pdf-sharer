@@ -1,4 +1,4 @@
-"""Pytest configuration and fixtures for File Sharer tests."""
+"""Pytest configuration and fixtures for saíta tests."""
 
 import tempfile
 from pathlib import Path

@@ -87,7 +87,7 @@ GET    /d/<id>                    # Public share link (download)
 ## Environment Variables
 
 - `SECRET_KEY` (optional)
-- `DATABASE_URL` (defaults to SQLite at `instance/sharer.db`)
+- `DATABASE_URL` (defaults to SQLite at `instance/saita.db`)
 - `UPLOAD_FOLDER` (defaults to `uploads/`)
 - `MAX_CONTENT_LENGTH` (defaults to 2GB)
 - `FLASK_ENV` (set to `production` for production config)

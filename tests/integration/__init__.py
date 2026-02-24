@@ -1,1 +1,1 @@
-"""Integration tests for File Sharer application."""
+"""Integration tests for saíta application."""

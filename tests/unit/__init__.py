@@ -1,1 +1,1 @@
-"""Unit tests for File Sharer application."""
+"""Unit tests for saíta application."""

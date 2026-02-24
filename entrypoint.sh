@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== File Sharer Container Starting ==="
+echo "=== saíta Container Starting ==="
 
 # Wait for external database if configured
 if [[ -n "${DATABASE_URL:-}" ]] && [[ "$DATABASE_URL" != sqlite* ]]; then

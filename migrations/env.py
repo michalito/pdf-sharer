@@ -27,7 +27,7 @@ def get_database_url():
 
     # Default to SQLite in instance folder
     base_dir = Path(__file__).parent.parent.resolve()
-    return f"sqlite:///{base_dir / 'instance' / 'sharer.db'}"
+    return f"sqlite:///{base_dir / 'instance' / 'saita.db'}"
 
 
 def get_metadata():

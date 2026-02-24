@@ -1,3 +1,5 @@
+name: saita
+
 services:
   web:
     build:
@@ -6,8 +8,8 @@ services:
     ports:
       - "${HOST_PORT:-5001}:5000"
     volumes:
-      - sharer_data:/app/instance
-      - sharer_uploads:/app/uploads
+      - saita_data:/app/instance
+      - saita_uploads:/app/uploads
     environment:
       - FLASK_ENV=production
       - DATABASE_URL=${DATABASE_URL:-}
@@ -21,5 +23,5 @@ services:
       start_period: 15s
 
 volumes:
-  sharer_data:
-  sharer_uploads:
+  saita_data:
+  saita_uploads:

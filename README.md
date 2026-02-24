@@ -1,6 +1,6 @@
-# File Sharer
+# saíta
 
-File Sharer is an internal web application for uploading and sharing **any type of file**, **zip archives**, and **folders** (zipped by the server). It’s designed for deployment on a trusted internal network and intentionally has **no authentication**.
+saíta is an internal web application for uploading and sharing **any type of file**, **zip archives**, and **folders** (zipped by the server). It is designed for deployment on a trusted internal network and intentionally has **no authentication**.
 
 ## Features
 
@@ -39,7 +39,7 @@ Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh pr
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SECRET_KEY` | Cookie signing key (optional) | Auto-generated at startup |
-| `DATABASE_URL` | Database connection string | SQLite at `instance/sharer.db` |
+| `DATABASE_URL` | Database connection string | SQLite at `instance/saita.db` |
 | `UPLOAD_FOLDER` | File storage directory | `uploads/` |
 | `MAX_CONTENT_LENGTH` | Max upload size in bytes | 2147483648 (2GB) |
 | `HOST_PORT` | Docker host port | 5001 |

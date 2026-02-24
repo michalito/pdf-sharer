@@ -1,3 +1,5 @@
+name: saita
+
 services:
   web:
     build:
@@ -7,8 +9,8 @@ services:
       - "${HOST_PORT:-5001}:5000"
     volumes:
       - .:/app
-      - sharer_data:/app/instance
-      - sharer_uploads:/app/uploads
+      - saita_data:/app/instance
+      - saita_uploads:/app/uploads
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=1
@@ -33,6 +35,6 @@ services:
       - web
 
 volumes:
-  sharer_data:
-  sharer_uploads:
+  saita_data:
+  saita_uploads:
   frontend_node_modules:

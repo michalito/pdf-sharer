@@ -2,11 +2,11 @@
 set -euo pipefail
 
 # =============================================================================
-# File Sharer Deployment Script
+# saíta Deployment Script
 # =============================================================================
 
 # Configuration
-PROJECT_NAME="pdf-sharer"
+PROJECT_NAME="saita"
 DEFAULT_PORT=5001  # Avoid macOS AirPlay conflict on port 5000
 
 # Colors
@@ -415,7 +415,7 @@ cmd_cleanup() {
 
 cmd_help() {
     cat << 'EOF'
-File Sharer Deployment Script
+saíta Deployment Script
 
 Usage: ./deploy.sh <command> [options]
 

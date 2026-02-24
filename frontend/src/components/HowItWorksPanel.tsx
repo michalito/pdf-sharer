@@ -47,7 +47,7 @@ export default function HowItWorksPanel(props: {
             <div>
               <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--app-muted)]">Guide</div>
               <h2 id={titleId} className="font-display text-xl font-semibold">
-                How File Sharer Works
+                How saíta Works
               </h2>
             </div>
             <button
@@ -61,7 +61,7 @@ export default function HowItWorksPanel(props: {
           </div>
 
           <p id={descriptionId} className="mt-3 text-sm text-[var(--app-muted)]">
-            File Sharer is built for quick internal file handoff without accounts. Upload once, share the link, and
+            saíta is built for quick internal file handoff without accounts. Upload once, share the link, and
             manage lifecycle status from the list.
           </p>
 
@@ -153,7 +153,7 @@ export default function HowItWorksPanel(props: {
                         </code>
                         ). Metadata is stored in the app database (default:{" "}
                         <code className="rounded-sm bg-black/10 px-1 py-0.5 text-[11px] dark:bg-white/10">
-                          ./instance/sharer.db
+                          ./instance/saita.db
                         </code>
                         ). Folder uploads are saved as zip files.
                       </p>
