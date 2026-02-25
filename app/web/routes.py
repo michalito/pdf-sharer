@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from flask import Response, g, render_template, send_file
+import os
+
+from flask import Response, current_app, g, render_template, send_file, send_from_directory
 
 from app.exceptions import AppError
 from app.services.item_service import ItemService
@@ -16,6 +18,16 @@ def _get_service() -> ItemService:
 @web.route("/")
 def index() -> str:
     """Serve the React application (built during Docker production build)."""
+    return render_template("index.html")
+
+
+@web.route("/<path:filename>")
+def serve_public(filename: str):
+    """Serve public files (logo, etc.) at root path, falling back to SPA."""
+    static_folder = current_app.static_folder
+    file_path = os.path.join(static_folder, filename)
+    if os.path.isfile(file_path):
+        return send_from_directory(static_folder, filename)
     return render_template("index.html")
 
 

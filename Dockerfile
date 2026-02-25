@@ -66,4 +66,5 @@ CMD ["flask", "run", "--host=0.0.0.0", "--port=5000", "--reload"]
 FROM runtime-base AS prod
 COPY --chown=app:app --from=frontend-builder /frontend/dist/index.html /app/app/templates/index.html
 COPY --chown=app:app --from=frontend-builder /frontend/dist/assets /app/app/static/assets
+COPY --chown=app:app --from=frontend-builder /frontend/dist/logo.png /app/app/static/logo.png
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "run:app"]

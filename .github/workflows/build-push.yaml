@@ -38,6 +38,7 @@ jobs:
           mkdir -p app/templates app/static/assets
           cp frontend/dist/index.html app/templates/index.html
           cp -r frontend/dist/assets/* app/static/assets/
+          cp frontend/dist/logo.png app/static/logo.png
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
