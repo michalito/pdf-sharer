@@ -38,6 +38,7 @@ class Config:
     DATABASE_URI: str
     UPLOAD_FOLDER: Path
     MAX_CONTENT_LENGTH: int
+    APP_VERSION: str = "dev"
     NOTE_EXCERPT_LENGTH: int = DEFAULT_NOTE_EXCERPT_LENGTH
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
     # Session security settings
@@ -73,6 +74,7 @@ class Config:
             UPLOAD_FOLDER=upload_folder,
             MAX_CONTENT_LENGTH=max_content_length,
             NOTE_EXCERPT_LENGTH=note_excerpt_length,
+            APP_VERSION=os.environ.get("APP_VERSION", "dev"),
         )
 
     @classmethod
@@ -89,6 +91,7 @@ class Config:
             UPLOAD_FOLDER=base_dir / "uploads",
             MAX_CONTENT_LENGTH=max_content_length,
             NOTE_EXCERPT_LENGTH=note_excerpt_length,
+            APP_VERSION=os.environ.get("APP_VERSION", "dev"),
             # Disable secure cookies for development (HTTP)
             SESSION_COOKIE_SECURE=False,
         )
@@ -106,6 +109,7 @@ class Config:
             "SESSION_COOKIE_HTTPONLY": self.SESSION_COOKIE_HTTPONLY,
             "SESSION_COOKIE_SAMESITE": self.SESSION_COOKIE_SAMESITE,
             "PERMANENT_SESSION_LIFETIME": self.PERMANENT_SESSION_LIFETIME,
+            "APP_VERSION": self.APP_VERSION,
         }
 
 

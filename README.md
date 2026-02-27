@@ -46,13 +46,14 @@ Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh pr
 | `UPLOAD_FOLDER` | File storage directory | `uploads/` |
 | `MAX_CONTENT_LENGTH` | Max upload size in bytes | 2147483648 (2GB) |
 | `NOTE_EXCERPT_LENGTH` | Max note preview length in list responses (bounded 40..1000) | 180 |
+| `APP_VERSION` | Version string exposed by `GET /api/health` and shown in the UI footer. `deploy.sh` auto-detects from latest git tag when unset. | Latest git tag (fallback `dev`) |
 | `HOST_PORT` | Docker host port | 5001 |
 
 ## API
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/health` | Health check |
+| `GET` | `/api/health` | Health check (`{"ok": true, "version": "<app-version>"}`) |
 | `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&protected=true\|false&page=1&per_page=50`; `q` matches names and unprotected note body text; note items include `noteExcerpt`, not full `noteText`) |
 | `POST` | `/api/items/files` | Upload files (multipart/form-data, field: `files`, repeatable; optional `password`) |
 | `POST` | `/api/items/folder` | Upload a folder (multipart: `files` + `paths` repeatable; optional `password`) |

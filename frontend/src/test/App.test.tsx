@@ -18,6 +18,7 @@ vi.mock("../api/items", async () => {
     deleteItem: vi.fn(),
     deleteReadyToDelete: vi.fn(),
     updateItemState: vi.fn(),
+    fetchVersion: vi.fn(),
   };
 });
 
@@ -51,6 +52,7 @@ function makePagination(total: number) {
 beforeEach(() => {
   vi.clearAllMocks();
 
+  vi.mocked(api.fetchVersion).mockResolvedValue("dev");
   vi.mocked(api.listItems).mockResolvedValue({
     items: [],
     pagination: makePagination(0),

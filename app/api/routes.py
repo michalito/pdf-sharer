@@ -93,7 +93,7 @@ def _present_item(
 
 @api.route("/health", methods=["GET"])
 def health() -> Response:
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "version": current_app.config["APP_VERSION"]})
 
 
 @api.route("/items", methods=["GET"])
