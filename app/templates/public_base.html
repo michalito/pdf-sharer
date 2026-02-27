@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{% block meta_description %}Shared item from saíta{% endblock %}">
+    <title>{% block title %}saíta{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='public-pages.css') }}">
+</head>
+<body>
+    <div class="page-shell">
+        <header class="brand-strip reveal">
+            <a class="brand-home" href="{{ url_for('web.index') }}">
+                <div class="brand-mark">
+                    <img src="{{ url_for('static', filename='logo.png') }}" alt="saíta logo">
+                </div>
+                <div class="brand-copy">
+                    <div class="brand-title">saíta</div>
+                    <div class="brand-subtitle">Shared via saíta</div>
+                </div>
+            </a>
+        </header>
+
+        <main class="content-shell {% block content_shell_class %}{% endblock %} reveal reveal-d1">
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer class="page-footer reveal reveal-d2">
+            <a class="footer-link" href="{{ url_for('web.index') }}">Open saíta home</a>
+        </footer>
+    </div>
+</body>
+</html>

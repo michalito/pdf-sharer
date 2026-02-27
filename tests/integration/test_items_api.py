@@ -238,6 +238,10 @@ def test_create_note_and_public_view(client: FlaskClient):
     assert public.status_code == 200
     assert payload["title"].encode() in public.data
     assert b"Deploy at 18:00 UTC." in public.data
+    public_text = public.get_data(as_text=True)
+    assert "Shared via saíta" in public_text
+    assert "Open saíta home" in public_text
+    assert "/static/public-pages.css" in public_text
 
     download = client.get(f"/api/items/{item['id']}/download")
     assert download.status_code == 400
@@ -392,11 +396,19 @@ def test_password_protected_link_hides_target_until_unlock(app: Flask, client: F
 
     locked_public = other_client.get(f"/d/{item_id}")
     assert locked_public.status_code == 200
-    assert b"Password required" in locked_public.data
+    locked_public_text = locked_public.get_data(as_text=True)
+    assert "Password required" in locked_public_text
+    assert "Shared via saíta" in locked_public_text
+    assert "Open saíta home" in locked_public_text
+    assert "/static/public-pages.css" in locked_public_text
 
     wrong = other_client.post(f"/d/{item_id}", data={"password": "wrongpass"})
     assert wrong.status_code == 401
-    assert b"Invalid password" in wrong.data
+    wrong_text = wrong.get_data(as_text=True)
+    assert "Invalid password" in wrong_text
+    assert "Shared via saíta" in wrong_text
+    assert "Open saíta home" in wrong_text
+    assert "/static/public-pages.css" in wrong_text
 
     unlocked = other_client.post(f"/d/{item_id}", data={"password": "linksecret"}, follow_redirects=False)
     assert unlocked.status_code == 302
@@ -447,6 +459,16 @@ def test_password_protected_note_hides_text_and_excerpt_until_unlock(app: Flask,
     assert unlocked_payload["noteText"] == "Rotate tokens before deployment window."
     assert unlocked_payload["noteExcerpt"] is not None
     _assert_password_flags(unlocked_payload, protected=True, unlocked=True)
+
+
+def test_public_error_page_uses_shared_brand_shell(client: FlaskClient):
+    missing = client.get("/d/99999999")
+    assert missing.status_code == 404
+    page = missing.get_data(as_text=True)
+    assert "Shared via saíta" in page
+    assert "Open saíta home" in page
+    assert "/static/public-pages.css" in page
+    assert "404" in page
 
 
 def test_protected_note_body_search_is_disabled(client: FlaskClient):

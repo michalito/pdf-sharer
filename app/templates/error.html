@@ -1,100 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Error {{ error_code }} - saíta</title>
-    <style>
-        :root {
-            --bg: #0b1220;
-            --card: rgba(255, 255, 255, 0.06);
-            --border: rgba(255, 255, 255, 0.14);
-            --text: rgba(255, 255, 255, 0.92);
-            --muted: rgba(255, 255, 255, 0.68);
-            --primary: #60a5fa;
-            --primary-hover: #3b82f6;
-        }
+{% extends "public_base.html" %}
 
-        * { box-sizing: border-box; }
+{% block title %}Error {{ error_code }} - saíta{% endblock %}
+{% block meta_description %}Error page for shared item links{% endblock %}
+{% block content_shell_class %}content-shell--centered{% endblock %}
 
-        body {
-            margin: 0;
-            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: radial-gradient(1200px 600px at 10% 10%, rgba(96,165,250,0.2), transparent 60%),
-                        radial-gradient(1200px 600px at 90% 20%, rgba(16,185,129,0.12), transparent 60%),
-                        var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-        }
-
-        .error-page {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            text-align: center;
-            padding: 2rem;
-        }
-
-        .error-code {
-            font-size: 6rem;
-            font-weight: 700;
-            color: var(--primary);
-            margin: 0;
-            line-height: 1;
-        }
-
-        .error-message {
-            font-size: 1.25rem;
-            color: var(--muted);
-            margin: 1rem 0 2rem;
-            max-width: 400px;
-        }
-
-        .card {
-            border: 1px solid var(--border);
-            background: var(--card);
-            padding: 2rem;
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-            width: min(520px, 100%);
-        }
-
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            padding: 0.75rem 1rem;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            background: rgba(255, 255, 255, 0.08);
-            color: var(--text);
-            text-decoration: none;
-            transition: background 150ms ease, transform 150ms ease;
-        }
-
-        .btn:hover { background: rgba(255, 255, 255, 0.12); }
-        .btn:active { transform: translateY(1px); }
-
-        .btn--primary {
-            border-color: rgba(96, 165, 250, 0.6);
-            background: rgba(96, 165, 250, 0.18);
-        }
-
-        .btn--primary:hover {
-            background: rgba(59, 130, 246, 0.24);
-        }
-    </style>
-</head>
-<body>
-    <main class="error-page">
-        <div class="card">
+{% block content %}
+    <section class="surface-panel error-panel">
+        <div class="panel-inner">
+            <p class="panel-kicker">Public share link error</p>
             <h1 class="error-code">{{ error_code }}</h1>
             <p class="error-message">{{ error_message }}</p>
-            <a href="{{ url_for('web.index') }}" class="btn btn--primary">Go Home</a>
+            <a href="{{ url_for('web.index') }}" class="btn-secondary">Go Home</a>
         </div>
-    </main>
-</body>
-</html>
+    </section>
+{% endblock %}
