@@ -10,6 +10,7 @@ import uuid
 import zipfile
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
@@ -27,6 +28,11 @@ logger = logging.getLogger(__name__)
 
 class ItemService:
     """Service for Item operations."""
+
+    MAX_DISPLAY_NAME_LENGTH = 255
+    MAX_LINK_URL_LENGTH = 2048
+    MAX_NOTE_TITLE_LENGTH = 120
+    MAX_NOTE_TEXT_LENGTH = 4000
 
     def __init__(self, repository: Optional[ItemRepository] = None):
         self.repository = repository or ItemRepository()
@@ -46,6 +52,9 @@ class ItemService:
         return self.repository.get_by_id_or_raise(item_id)
 
     def get_item_path(self, item: Item) -> Path:
+        if not self._item_has_stored_file(item):
+            raise ValidationError(f"Item kind '{item.kind}' does not have downloadable file content")
+
         upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
         file_path = upload_folder / item.stored_name
 
@@ -159,6 +168,56 @@ class ItemService:
             logger.error("Database error creating folder item: %s", e, exc_info=True)
             raise FileOperationError("Failed to create item record")
 
+    def create_link(self, *, url: str, name: Optional[str] = None) -> Item:
+        normalized_url = self._normalize_link_url(url)
+        display_name = self._normalize_display_name(name) or self._derive_link_display_name(normalized_url)
+        stored_name = self._synthetic_stored_name("link")
+        meta_json = json.dumps({"url": normalized_url}, separators=(",", ":"))
+
+        try:
+            return self.repository.create(
+                stored_name=stored_name,
+                display_name=display_name,
+                kind=ItemKind.LINK,
+                state=ItemState.ACTIVE,
+                mime_type="text/uri-list",
+                size_bytes=len(normalized_url.encode("utf-8")),
+                meta_json=meta_json,
+            )
+        except SQLAlchemyError as e:
+            logger.error("Database error creating link item: %s", e, exc_info=True)
+            raise FileOperationError("Failed to create item record")
+
+    def create_note(self, *, text: str, title: Optional[str] = None) -> Item:
+        normalized_text = self._normalize_note_text(text)
+        display_name = self._normalize_note_title(title) or self._derive_note_title(normalized_text)
+        stored_name = self._synthetic_stored_name("note")
+        meta_json = json.dumps({"text": normalized_text}, separators=(",", ":"))
+
+        try:
+            return self.repository.create(
+                stored_name=stored_name,
+                display_name=display_name,
+                kind=ItemKind.NOTE,
+                state=ItemState.ACTIVE,
+                mime_type="text/plain",
+                size_bytes=len(normalized_text.encode("utf-8")),
+                meta_json=meta_json,
+            )
+        except SQLAlchemyError as e:
+            logger.error("Database error creating note item: %s", e, exc_info=True)
+            raise FileOperationError("Failed to create item record")
+
+    def get_link_url(self, item: Item) -> str:
+        if item.kind != ItemKind.LINK.value:
+            raise ValidationError(f"Item kind '{item.kind}' is not a link")
+        return self._meta_string(item, "url", label="link URL")
+
+    def get_note_text(self, item: Item) -> str:
+        if item.kind != ItemKind.NOTE.value:
+            raise ValidationError(f"Item kind '{item.kind}' is not a note")
+        return self._meta_string(item, "text", label="note text")
+
     def delete_item(self, item_id: int) -> None:
         item = self.repository.get_by_id(item_id)
         if item is None:
@@ -167,8 +226,10 @@ class ItemService:
         if item.state != ItemState.READY_TO_DELETE.value:
             raise ValidationError("Item must be marked 'ready_to_delete' before deletion")
 
-        upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
-        file_path = upload_folder / item.stored_name
+        file_path: Optional[Path] = None
+        if self._item_has_stored_file(item):
+            upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
+            file_path = upload_folder / item.stored_name
 
         try:
             self.repository.delete(item)
@@ -176,12 +237,13 @@ class ItemService:
             logger.error("Failed to delete item record %s: %s", item_id, e, exc_info=True)
             raise FileOperationError("Failed to delete item record")
 
-        try:
-            file_path.unlink(missing_ok=True)
-        except OSError as e:
-            # Best-effort deletion: the DB record is already gone. Log and rely on
-            # `flask prune-orphans` for cleanup if needed.
-            logger.error("Failed to delete file %s: %s", file_path, e, exc_info=True)
+        if file_path is not None:
+            try:
+                file_path.unlink(missing_ok=True)
+            except OSError as e:
+                # Best-effort deletion: the DB record is already gone. Log and rely on
+                # `flask prune-orphans` for cleanup if needed.
+                logger.error("Failed to delete file %s: %s", file_path, e, exc_info=True)
 
     def delete_ready_to_delete(
         self,
@@ -194,7 +256,7 @@ class ItemService:
             return 0
 
         upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
-        stored_names = [item.stored_name for item in items]
+        stored_names = [item.stored_name for item in items if self._item_has_stored_file(item)]
 
         try:
             self.repository.delete_many(items)
@@ -218,7 +280,7 @@ class ItemService:
         if failures:
             logger.warning("Bulk delete completed with %s file deletion failure(s)", failures)
 
-        return len(stored_names)
+        return len(items)
 
     def update_state(self, item_id: int, state: ItemState) -> Item:
         item = self.repository.get_by_id_or_raise(item_id)
@@ -230,6 +292,9 @@ class ItemService:
         return updated
 
     def get_download_name(self, item: Item) -> str:
+        if not self._item_has_stored_file(item):
+            raise ValidationError(f"Item kind '{item.kind}' does not have downloadable file content")
+
         if item.kind == ItemKind.FOLDER.value:
             name = item.display_name
             return name if name.lower().endswith(".zip") else f"{name}.zip"
@@ -241,3 +306,96 @@ class ItemService:
         root = root.strip() or "folder"
         root = secure_filename(root) or root
         return root
+
+    def _item_has_stored_file(self, item: Item) -> bool:
+        return item.kind in {ItemKind.FILE.value, ItemKind.FOLDER.value}
+
+    def _synthetic_stored_name(self, suffix: str) -> str:
+        return f"{uuid.uuid4().hex}.{suffix}"
+
+    def _normalize_display_name(self, raw: Optional[str]) -> Optional[str]:
+        if raw is None:
+            return None
+
+        value = raw.strip()
+        if not value:
+            return None
+        if len(value) > self.MAX_DISPLAY_NAME_LENGTH:
+            raise ValidationError(
+                f"Name is too long (max {self.MAX_DISPLAY_NAME_LENGTH} characters)"
+            )
+        return value
+
+    def _normalize_note_title(self, raw: Optional[str]) -> Optional[str]:
+        if raw is None:
+            return None
+
+        value = raw.strip()
+        if not value:
+            return None
+        if len(value) > self.MAX_NOTE_TITLE_LENGTH:
+            raise ValidationError(
+                f"Note title is too long (max {self.MAX_NOTE_TITLE_LENGTH} characters)"
+            )
+        return value
+
+    def _normalize_link_url(self, raw_url: str) -> str:
+        url = (raw_url or "").strip()
+        if not url:
+            raise ValidationError("Missing 'url' field in request body")
+        if len(url) > self.MAX_LINK_URL_LENGTH:
+            raise ValidationError(
+                f"URL is too long (max {self.MAX_LINK_URL_LENGTH} characters)"
+            )
+        if any(ch.isspace() for ch in url):
+            raise ValidationError("URL must not contain spaces")
+
+        parsed = urlparse(url)
+        if parsed.scheme.lower() not in {"http", "https"}:
+            raise ValidationError("URL must start with http:// or https://")
+        if not parsed.netloc:
+            raise ValidationError("URL must include a host")
+
+        return url
+
+    def _normalize_note_text(self, raw_text: str) -> str:
+        text = (raw_text or "").strip()
+        if not text:
+            raise ValidationError("Missing 'text' field in request body")
+        if len(text) > self.MAX_NOTE_TEXT_LENGTH:
+            raise ValidationError(
+                f"Note is too long (max {self.MAX_NOTE_TEXT_LENGTH} characters)"
+            )
+        return text
+
+    def _derive_link_display_name(self, normalized_url: str) -> str:
+        parsed = urlparse(normalized_url)
+        host = parsed.netloc or "link"
+        leaf = Path(parsed.path).name if parsed.path else ""
+
+        if leaf:
+            derived = f"{leaf} ({host})"
+        else:
+            derived = host
+
+        return derived[: self.MAX_DISPLAY_NAME_LENGTH]
+
+    def _derive_note_title(self, note_text: str) -> str:
+        first_line = note_text.splitlines()[0].strip()
+        if not first_line:
+            return "Note"
+        if len(first_line) <= self.MAX_NOTE_TITLE_LENGTH:
+            return first_line
+        return f"{first_line[: self.MAX_NOTE_TITLE_LENGTH - 3]}..."
+
+    def _meta_string(self, item: Item, key: str, *, label: str) -> str:
+        try:
+            meta = json.loads(item.meta_json) if item.meta_json else {}
+        except json.JSONDecodeError:
+            meta = {}
+
+        value = meta.get(key) if isinstance(meta, dict) else None
+        if isinstance(value, str) and value:
+            return value
+
+        raise ValidationError(f"Item metadata is missing {label}")

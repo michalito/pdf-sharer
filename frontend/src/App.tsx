@@ -6,11 +6,14 @@ import {
   Copy,
   ChevronDown,
   Download,
+  ExternalLink,
   File as FileIcon,
   FolderArchive,
   FolderUp,
+  Link2,
   Moon,
   Search,
+  StickyNote,
   Sun,
   Trash2,
   Upload,
@@ -19,8 +22,11 @@ import ConfirmDialog from "./components/ConfirmDialog";
 import HowItWorksPanel from "./components/HowItWorksPanel";
 import UploadQueue, { UploadTask } from "./components/UploadQueue";
 import {
+  createLink,
+  createNote,
   deleteItem,
   deleteReadyToDelete,
+  getItem,
   ItemDto,
   ItemKind,
   ItemState,
@@ -67,6 +73,19 @@ function inferFolderName(files: File[]): string {
   return rel.split("/")[0] || "folder";
 }
 
+function kindLabel(kind: ItemKind): string {
+  if (kind === "folder") return "Folder archive";
+  if (kind === "file") return "Single file";
+  if (kind === "link") return "External link";
+  return "Shared note";
+}
+
+function kindPreview(item: ItemDto): string | null {
+  if (item.kind === "link" && item.linkUrl) return item.linkUrl;
+  if (item.kind === "note") return item.noteExcerpt;
+  return null;
+}
+
 export default function App() {
   const queryClient = useQueryClient();
   const theme = useTheme();
@@ -86,6 +105,15 @@ export default function App() {
   const [uploads, setUploads] = useState<UploadTask[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<ItemDto | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [notePreviewItem, setNotePreviewItem] = useState<ItemDto | null>(null);
+  const [notePreviewLoadingItemId, setNotePreviewLoadingItemId] = useState<number | null>(null);
+  const notePreviewFetchInFlightRef = useRef(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkName, setLinkName] = useState("");
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteText, setNoteText] = useState("");
 
   const queryKey = useMemo(
     () => ["items", { q: debouncedSearch, kind: kindFilter, state: stateFilter, page, perPage }] as const,
@@ -150,6 +178,24 @@ export default function App() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Bulk delete failed"),
   });
 
+  const createLinkMutation = useMutation({
+    mutationFn: async (vars: { url: string; name?: string }) => createLink(vars),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["items"] });
+      toast.success("Link saved");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to save link"),
+  });
+
+  const createNoteMutation = useMutation({
+    mutationFn: async (vars: { text: string; title?: string }) => createNote(vars),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["items"] });
+      toast.success("Note saved");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to save note"),
+  });
+
   async function runUpload<T>(task: UploadTask, fn: (onProgress: (pct: number) => void) => Promise<T>): Promise<T> {
     setUploads((prev) => [task, ...prev].slice(0, 8));
 
@@ -210,6 +256,40 @@ export default function App() {
     }
   }
 
+  async function handleCreateLink() {
+    const url = linkUrl.trim();
+    if (!url || createLinkMutation.isPending) return;
+
+    try {
+      await createLinkMutation.mutateAsync({
+        url,
+        name: linkName.trim() || undefined,
+      });
+      setLinkDialogOpen(false);
+      setLinkUrl("");
+      setLinkName("");
+    } catch {
+      // Error toast is handled by mutation onError.
+    }
+  }
+
+  async function handleCreateNote() {
+    const text = noteText.trim();
+    if (!text || createNoteMutation.isPending) return;
+
+    try {
+      await createNoteMutation.mutateAsync({
+        text,
+        title: noteTitle.trim() || undefined,
+      });
+      setNoteDialogOpen(false);
+      setNoteTitle("");
+      setNoteText("");
+    } catch {
+      // Error toast is handled by mutation onError.
+    }
+  }
+
   async function copyLink(id: number) {
     const url = `${window.location.origin}/d/${id}`;
     try {
@@ -222,6 +302,26 @@ export default function App() {
 
   function download(id: number) {
     window.location.assign(`/api/items/${id}/download`);
+  }
+
+  function openExternal(url: string) {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function openNotePreview(itemId: number) {
+    if (notePreviewFetchInFlightRef.current) return;
+    notePreviewFetchInFlightRef.current = true;
+    setNotePreviewLoadingItemId(itemId);
+
+    try {
+      const detail = await getItem(itemId);
+      setNotePreviewItem(detail);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load note");
+    } finally {
+      notePreviewFetchInFlightRef.current = false;
+      setNotePreviewLoadingItemId(null);
+    }
   }
 
   function onDragOver(e: React.DragEvent) {
@@ -264,10 +364,12 @@ export default function App() {
   const controlButtonClass = `${controlClass} pressable`;
   const selectControlClass = `${controlClass} appearance-none pl-3.5 pr-9`;
   const rowActionBaseClass =
-    "pressable inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2";
+    "pressable inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
   const rowActionPrimaryClass = `${rowActionBaseClass} border-transparent bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)] focus-visible:outline-[var(--accent)]`;
   const rowActionNeutralClass = `${rowActionBaseClass} border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text)] hover:bg-[var(--app-hover)] focus-visible:outline-[var(--accent)]`;
   const rowActionDangerClass = `${rowActionBaseClass} border-rose-600/45 bg-transparent text-rose-700 hover:bg-rose-600/10 focus-visible:outline-rose-600 dark:text-rose-200`;
+  const dialogFieldClass =
+    "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
   const metaTagClass =
     "inline-flex h-6 w-[8.5rem] items-center rounded-md border border-[var(--app-border)] bg-transparent px-2 text-[11px] font-medium tracking-[0.01em] text-[var(--app-muted)]";
   const stateSelectClass =
@@ -321,6 +423,24 @@ export default function App() {
 
                 <button
                   type="button"
+                  onClick={() => setLinkDialogOpen(true)}
+                  className={`inline-flex items-center gap-2 ${controlButtonClass}`}
+                >
+                  <Link2 className="h-4 w-4" />
+                  Save link
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setNoteDialogOpen(true)}
+                  className={`inline-flex items-center gap-2 ${controlButtonClass}`}
+                >
+                  <StickyNote className="h-4 w-4" />
+                  Save note
+                </button>
+
+                <button
+                  type="button"
                   onClick={theme.toggle}
                   className={`inline-flex h-10 w-10 items-center justify-center ${controlButtonClass}`}
                   aria-label="Toggle theme"
@@ -340,7 +460,7 @@ export default function App() {
                     setSearchText(e.target.value);
                     setPage(1);
                   }}
-                  placeholder="Search files and folders"
+                  placeholder="Search files, folders, links, or notes"
                   className={`w-full pl-10 ${controlClass}`}
                 />
               </label>
@@ -358,6 +478,8 @@ export default function App() {
                   <option value="all">All items</option>
                   <option value="file">Files only</option>
                   <option value="folder">Folders only</option>
+                  <option value="link">Links only</option>
+                  <option value="note">Notes only</option>
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
               </label>
@@ -401,7 +523,8 @@ export default function App() {
               </div>
               <div className="font-display text-xl font-semibold">Drop files here to share instantly</div>
               <p className="max-w-2xl text-sm text-[var(--app-muted)]">
-                Any file type is supported. Folder uploads are zipped automatically and keep internal structure.
+                Any file type is supported. Folder uploads are zipped automatically. You can also save quick links and
+                short notes.
               </p>
               <div className="flex flex-wrap justify-center gap-2">
                 <button
@@ -419,6 +542,22 @@ export default function App() {
                 >
                   <FolderUp className="h-4 w-4" />
                   Choose folder
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLinkDialogOpen(true)}
+                  className={`inline-flex items-center gap-2 ${controlButtonClass}`}
+                >
+                  <Link2 className="h-4 w-4" />
+                  Save link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNoteDialogOpen(true)}
+                  className={`inline-flex items-center gap-2 ${controlButtonClass}`}
+                >
+                  <StickyNote className="h-4 w-4" />
+                  Save note
                 </button>
               </div>
             </div>
@@ -464,90 +603,128 @@ export default function App() {
           ) : items.length === 0 ? (
             <div className="px-4 py-10 text-center">
               <div className="font-display text-lg font-semibold">No items found</div>
-              <div className="mt-1 text-sm text-[var(--app-muted)]">Upload files to create your first shareable link.</div>
+              <div className="mt-1 text-sm text-[var(--app-muted)]">
+                Upload a file/folder, save a link, or write a note to create your first shareable item.
+              </div>
             </div>
           ) : (
             <div className="stagger-list divide-y divide-[var(--app-border)]">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="item-row group flex flex-col gap-4 px-4 py-4 hover:bg-[var(--app-hover)] md:flex-row md:items-center md:justify-between"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--accent-cool)]">
-                        {item.kind === "folder" ? <FolderArchive className="h-4 w-4" /> : <FileIcon className="h-4 w-4" />}
-                      </div>
+              {items.map((item) => {
+                const preview = kindPreview(item);
+                const isBinary = item.kind === "file" || item.kind === "folder";
+                const linkUrl = item.linkUrl;
+                const isNotePreviewLoading = notePreviewLoadingItemId !== null;
+                const isLoadingThisNote = notePreviewLoadingItemId === item.id;
 
-                      <div className="min-w-0">
-                        <div className="truncate font-semibold" title={item.name}>
-                          {item.name}
+                return (
+                  <div
+                    key={item.id}
+                    className="item-row group flex flex-col gap-4 px-4 py-4 hover:bg-[var(--app-hover)] md:flex-row md:items-center md:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--accent-cool)]">
+                          {item.kind === "folder" ? (
+                            <FolderArchive className="h-4 w-4" />
+                          ) : item.kind === "link" ? (
+                            <Link2 className="h-4 w-4" />
+                          ) : item.kind === "note" ? (
+                            <StickyNote className="h-4 w-4" />
+                          ) : (
+                            <FileIcon className="h-4 w-4" />
+                          )}
                         </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--app-muted)] md:flex-nowrap">
-                          <span className={metaTagClass}>
-                            {item.kind === "folder" ? "Folder archive" : "Single file"}
-                          </span>
 
-                          <div className={`${stateSelectClass} ${stateChipClass[item.state]}`}>
-                            <span className={`h-2 w-2 shrink-0 rounded-[2px] ${stateDotClass[item.state]}`} aria-hidden />
-                            <select
-                              value={item.state}
-                              disabled={updateStateMutation.isPending && updateStateMutation.variables?.id === item.id}
-                              onChange={(e) =>
-                                updateStateMutation.mutate({ id: item.id, state: e.target.value as ItemState })
-                              }
-                              className="h-full w-full appearance-none bg-transparent pr-1 text-xs font-semibold outline-none disabled:cursor-not-allowed disabled:opacity-70"
-                              aria-label="Set status"
-                              title="Set status"
-                            >
-                              {itemStateOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                            <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 opacity-70" />
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold" title={item.name}>
+                            {item.name}
                           </div>
+                          {preview ? <div className="mt-0.5 truncate text-xs text-[var(--app-muted)]">{preview}</div> : null}
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--app-muted)] md:flex-nowrap">
+                            <span className={metaTagClass}>{kindLabel(item.kind)}</span>
 
-                          <span className="font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
-                          <span>{formatDateTime(item.createdAt)}</span>
+                            <div className={`${stateSelectClass} ${stateChipClass[item.state]}`}>
+                              <span className={`h-2 w-2 shrink-0 rounded-[2px] ${stateDotClass[item.state]}`} aria-hidden />
+                              <select
+                                value={item.state}
+                                disabled={updateStateMutation.isPending && updateStateMutation.variables?.id === item.id}
+                                onChange={(e) =>
+                                  updateStateMutation.mutate({ id: item.id, state: e.target.value as ItemState })
+                                }
+                                className="h-full w-full appearance-none bg-transparent pr-1 text-xs font-semibold outline-none disabled:cursor-not-allowed disabled:opacity-70"
+                                aria-label="Set status"
+                                title="Set status"
+                              >
+                                {itemStateOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 opacity-70" />
+                            </div>
+
+                            <span className="font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
+                            <span>{formatDateTime(item.createdAt)}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => download(item.id)}
-                      className={rowActionPrimaryClass}
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      Download
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isBinary ? (
+                        <button
+                          type="button"
+                          onClick={() => download(item.id)}
+                          className={rowActionPrimaryClass}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Download
+                        </button>
+                      ) : item.kind === "link" && typeof linkUrl === "string" ? (
+                        <button
+                          type="button"
+                          onClick={() => openExternal(linkUrl)}
+                          className={rowActionPrimaryClass}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Open URL
+                        </button>
+                      ) : item.kind === "note" ? (
+                        <button
+                          type="button"
+                          disabled={isNotePreviewLoading}
+                          onClick={() => void openNotePreview(item.id)}
+                          className={rowActionPrimaryClass}
+                        >
+                          <StickyNote className="h-3.5 w-3.5" />
+                          {isLoadingThisNote ? "Opening..." : isNotePreviewLoading ? "Please wait..." : "View note"}
+                        </button>
+                      ) : null}
 
-                    <button
-                      type="button"
-                      onClick={() => void copyLink(item.id)}
-                      className={rowActionNeutralClass}
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                      Copy link
-                    </button>
-
-                    {item.state === "ready_to_delete" ? (
                       <button
                         type="button"
-                        onClick={() => setDeleteTarget(item)}
-                        className={rowActionDangerClass}
+                        onClick={() => void copyLink(item.id)}
+                        className={rowActionNeutralClass}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete
+                        <Copy className="h-3.5 w-3.5" />
+                        Copy link
                       </button>
-                    ) : null}
+
+                      {item.state === "ready_to_delete" ? (
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(item)}
+                          className={rowActionDangerClass}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -651,6 +828,107 @@ export default function App() {
             .finally(() => setBulkDeleteOpen(false));
         }}
       />
+
+      <ConfirmDialog
+        open={linkDialogOpen}
+        title="Save external link"
+        description="Store a URL as a shareable item in the same workflow as files."
+        confirmLabel={createLinkMutation.isPending ? "Saving..." : "Save link"}
+        cancelLabel="Cancel"
+        confirmDisabled={!linkUrl.trim() || createLinkMutation.isPending}
+        formMode
+        onCancel={() => {
+          if (createLinkMutation.isPending) return;
+          setLinkDialogOpen(false);
+        }}
+        onConfirm={() => {
+          void handleCreateLink();
+        }}
+      >
+        <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          URL
+          <input
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            placeholder="https://example.com/docs"
+            className={dialogFieldClass}
+            autoFocus
+          />
+        </label>
+
+        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Label (optional)
+          <input
+            value={linkName}
+            onChange={(e) => setLinkName(e.target.value)}
+            placeholder="Team docs"
+            className={dialogFieldClass}
+          />
+        </label>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={noteDialogOpen}
+        title="Save note"
+        description="Write a short note and share it with a stable /d/<id> link."
+        confirmLabel={createNoteMutation.isPending ? "Saving..." : "Save note"}
+        cancelLabel="Cancel"
+        confirmDisabled={!noteText.trim() || createNoteMutation.isPending}
+        formMode
+        onCancel={() => {
+          if (createNoteMutation.isPending) return;
+          setNoteDialogOpen(false);
+        }}
+        onConfirm={() => {
+          void handleCreateNote();
+        }}
+      >
+        <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Title (optional)
+          <input
+            value={noteTitle}
+            onChange={(e) => setNoteTitle(e.target.value)}
+            placeholder="Meeting summary"
+            className={dialogFieldClass}
+            autoFocus
+          />
+        </label>
+
+        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Note
+          <textarea
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              if (!(e.metaKey || e.ctrlKey)) return;
+              e.preventDefault();
+              void handleCreateNote();
+            }}
+            placeholder="Write a short note..."
+            rows={6}
+            className={`${dialogFieldClass} resize-y`}
+          />
+        </label>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={Boolean(notePreviewItem)}
+        title={notePreviewItem?.name || "Note"}
+        description={notePreviewItem ? `Created ${formatDateTime(notePreviewItem.createdAt)}` : undefined}
+        confirmLabel="Copy share link"
+        cancelLabel="Close"
+        onCancel={() => setNotePreviewItem(null)}
+        onConfirm={() => {
+          if (!notePreviewItem) return;
+          void copyLink(notePreviewItem.id);
+          setNotePreviewItem(null);
+        }}
+      >
+        <div className="mt-4 max-h-[45vh] overflow-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap">
+          {notePreviewItem?.noteText || "(empty)"}
+        </div>
+      </ConfirmDialog>
 
       <UploadQueue uploads={uploads} onDismiss={dismissUpload} />
       <HowItWorksPanel open={isGuideOpen} onClose={() => setIsGuideOpen(false)} />

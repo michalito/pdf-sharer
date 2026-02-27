@@ -1,11 +1,12 @@
-"""Web routes for serving the frontend and public download links."""
+"""Web routes for serving the frontend and public share links."""
 
 from __future__ import annotations
 
 import os
 
-from flask import Response, current_app, g, render_template, send_file, send_from_directory
+from flask import Response, current_app, g, redirect, render_template, send_file, send_from_directory
 
+from app.domain.item import ItemKind
 from app.exceptions import AppError
 from app.services.item_service import ItemService
 from app.web import web
@@ -33,18 +34,38 @@ def serve_public(filename: str):
 
 @web.route("/d/<int:item_id>")
 def public_download(item_id: int) -> Response:
-    """Public, stable download link for sharing inside the network."""
+    """Public, stable share link for sharing inside the network."""
     service = _get_service()
     item = service.get_item(item_id)
-    file_path = service.get_item_path(item)
-    download_name = service.get_download_name(item)
 
-    return send_file(
-        file_path,
-        as_attachment=True,
-        download_name=download_name,
-        mimetype=item.mime_type or None,
-    )
+    if item.kind in {ItemKind.FILE.value, ItemKind.FOLDER.value}:
+        file_path = service.get_item_path(item)
+        download_name = service.get_download_name(item)
+
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=download_name,
+            mimetype=item.mime_type or None,
+        )
+
+    if item.kind == ItemKind.LINK.value:
+        return redirect(service.get_link_url(item), code=302)
+
+    if item.kind == ItemKind.NOTE.value:
+        return render_template(
+            "note.html",
+            note_title=item.display_name,
+            note_text=service.get_note_text(item),
+            created_at=item.created_at,
+            item_id=item.id,
+        )
+
+    return render_template(
+        "error.html",
+        error_code=400,
+        error_message=f"Unsupported item kind '{item.kind}'",
+    ), 400
 
 
 @web.errorhandler(AppError)

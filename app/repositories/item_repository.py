@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Generic, Optional, TypeVar
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 
 from app import db
 from app.domain.item import Item, ItemKind, ItemState
@@ -51,16 +51,7 @@ class ItemRepository:
         state: Optional[ItemState] = None,
     ) -> list[Item]:
         query = Item.query.order_by(Item.created_at.desc())
-
-        if kind is not None:
-            query = query.filter(Item.kind == kind.value)
-
-        if state is not None:
-            query = query.filter(Item.state == state.value)
-
-        if q:
-            needle = f"%{q.strip().lower()}%"
-            query = query.filter(func.lower(Item.display_name).like(needle))
+        query = self._apply_filters(query, q=q, kind=kind, state=state)
 
         return query.all()
 
@@ -76,16 +67,7 @@ class ItemRepository:
         per_page = min(max(1, per_page), self.MAX_PER_PAGE)
 
         query = Item.query.order_by(Item.created_at.desc())
-
-        if kind is not None:
-            query = query.filter(Item.kind == kind.value)
-
-        if state is not None:
-            query = query.filter(Item.state == state.value)
-
-        if q:
-            needle = f"%{q.strip().lower()}%"
-            query = query.filter(func.lower(Item.display_name).like(needle))
+        query = self._apply_filters(query, q=q, kind=kind, state=state)
 
         total = query.count()
         pages = (total + per_page - 1) // per_page if total > 0 else 1
@@ -157,3 +139,29 @@ class ItemRepository:
         for item in items:
             db.session.delete(item)
         db.session.commit()
+
+    def _apply_filters(
+        self,
+        query,
+        *,
+        q: Optional[str],
+        kind: Optional[ItemKind],
+        state: Optional[ItemState],
+    ):
+        if kind is not None:
+            query = query.filter(Item.kind == kind.value)
+
+        if state is not None:
+            query = query.filter(Item.state == state.value)
+
+        search = q.strip().lower() if q else ""
+        if search:
+            needle = f"%{search}%"
+            display_name_match = func.lower(Item.display_name).like(needle)
+            note_text_match = and_(
+                Item.kind == ItemKind.NOTE.value,
+                func.lower(func.coalesce(Item.meta_json, "")).like(needle),
+            )
+            query = query.filter(or_(display_name_match, note_text_match))
+
+        return query

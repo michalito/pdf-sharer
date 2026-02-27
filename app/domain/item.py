@@ -1,16 +1,21 @@
 """Item domain model.
 
-An Item represents a shareable resource stored on disk. Items may be regular
-files or folders (stored as a zip archive created by the server).
+An Item represents a shareable resource. Items may be:
+- regular files
+- folders (stored as a zip archive created by the server)
+- external links
+- text notes
 """
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
 from app import db
+from app.constants import DEFAULT_NOTE_EXCERPT_LENGTH
 
 
 class ItemKind(str, Enum):
@@ -18,6 +23,8 @@ class ItemKind(str, Enum):
 
     FILE = "file"
     FOLDER = "folder"
+    LINK = "link"
+    NOTE = "note"
 
     @classmethod
     def from_string(cls, value: str) -> "ItemKind":
@@ -77,8 +84,18 @@ class Item(db.Model):
     def kind_enum(self) -> ItemKind:
         return ItemKind(self.kind)
 
-    def to_dto(self) -> dict[str, Any]:
+    def to_dto(
+        self,
+        *,
+        include_note_text: bool = True,
+        note_excerpt_chars: int = DEFAULT_NOTE_EXCERPT_LENGTH,
+    ) -> dict[str, Any]:
         """Serialize the item for API responses."""
+        meta = self._meta_dict()
+        link_url = meta.get("url") if self.kind == ItemKind.LINK.value else None
+        note_text = meta.get("text") if self.kind == ItemKind.NOTE.value else None
+        note_excerpt = self._note_excerpt(note_text, max_chars=note_excerpt_chars)
+
         return {
             "id": self.id,
             "name": self.display_name,
@@ -87,4 +104,31 @@ class Item(db.Model):
             "mimeType": self.mime_type,
             "sizeBytes": self.size_bytes,
             "createdAt": self.created_at.isoformat(),
+            "linkUrl": link_url if isinstance(link_url, str) else None,
+            "noteText": note_text if include_note_text and isinstance(note_text, str) else None,
+            "noteExcerpt": note_excerpt,
         }
+
+    def _meta_dict(self) -> dict[str, Any]:
+        if not self.meta_json:
+            return {}
+
+        try:
+            parsed = json.loads(self.meta_json)
+        except json.JSONDecodeError:
+            return {}
+
+        return parsed if isinstance(parsed, dict) else {}
+
+    def _note_excerpt(self, note_text: Any, *, max_chars: int) -> Optional[str]:
+        if not isinstance(note_text, str):
+            return None
+
+        compact = " ".join(note_text.split()).strip()
+        if not compact:
+            return None
+
+        if len(compact) <= max_chars:
+            return compact
+
+        return f"{compact[: max_chars - 3].rstrip()}..."

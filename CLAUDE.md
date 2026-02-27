@@ -6,7 +6,7 @@ Last verified against code: 2026-02-24.
 
 ## Project Snapshot
 
-- App: `saita` internal file and folder sharing
+- App: `saita` internal file, folder, link, and note sharing
 - Backend: Flask, SQLAlchemy, Alembic
 - Frontend: React + TypeScript + Vite
 - Deployment: Docker Compose via `./deploy.sh`
@@ -64,7 +64,7 @@ Layered backend (`Routes -> Services -> Repositories -> DB`):
 ```text
 app/
   api/routes.py               # REST API under /api
-  web/routes.py               # "/" and public "/d/<id>" download route
+  web/routes.py               # "/" and public "/d/<id>" share route
   services/item_service.py    # Upload, zip, delete/state logic
   repositories/item_repository.py
   domain/item.py              # Item, ItemKind, ItemState
@@ -81,12 +81,18 @@ Factory pattern: `app/__init__.py:create_app()`.
 - `GET /api/items` with optional `q`, `kind`, `state`, `page`, `per_page`
 - `POST /api/items/files` (multipart field `files`, repeatable)
 - `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`)
+- `POST /api/items/link` (JSON: `{"url":"https://...","name?":"optional label"}`)
+- `POST /api/items/note` (JSON: `{"text":"...","title?":"optional title"}`)
 - `GET /api/items/<id>`
 - `PATCH /api/items/<id>` with JSON `{"state":"active|done|archived|ready_to_delete"}`
 - `GET /api/items/<id>/download`
 - `DELETE /api/items/<id>` only when item state is `ready_to_delete`
 - `DELETE /api/items/ready-to-delete` (optional `q`, `kind`)
-- `GET /d/<id>` (public/internal stable download link)
+- `GET /d/<id>` (public/internal stable share link: download file/folder, redirect link, render note)
+
+Note payload behavior:
+- List endpoint (`GET /api/items`) returns note summaries via `noteExcerpt`
+- Detail endpoint (`GET /api/items/<id>`) returns full note body in `noteText`
 
 ## Important Behavioral Details
 
@@ -105,6 +111,7 @@ Main env knobs:
 - `DATABASE_URL`
 - `UPLOAD_FOLDER`
 - `MAX_CONTENT_LENGTH` (default `2147483648`)
+- `NOTE_EXCERPT_LENGTH` (default `180`, bounded `40..1000`)
 - `HOST_PORT` (Docker host mapping, default `5001`)
 
 ## When Changing Code

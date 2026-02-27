@@ -1,4 +1,4 @@
-export type ItemKind = "file" | "folder";
+export type ItemKind = "file" | "folder" | "link" | "note";
 
 export type ItemState = "active" | "done" | "archived" | "ready_to_delete";
 
@@ -10,6 +10,9 @@ export type ItemDto = {
   mimeType: string | null;
   sizeBytes: number;
   createdAt: string;
+  linkUrl: string | null;
+  noteText: string | null;
+  noteExcerpt: string | null;
 };
 
 export type PaginationDto = {
@@ -72,6 +75,10 @@ export async function listItems(params: {
   return apiJson<ListItemsResponse>(`/api/items${query}`);
 }
 
+export async function getItem(id: number): Promise<ItemDto> {
+  return apiJson<ItemDto>(`/api/items/${id}`);
+}
+
 function xhrForm<T>(url: string, formData: FormData, onProgress?: (pct: number) => void): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -121,6 +128,22 @@ export async function uploadFolder(
     formData.append("paths", relPath);
   }
   return xhrForm<ItemDto>("/api/items/folder", formData, opts?.onProgress);
+}
+
+export async function createLink(params: { url: string; name?: string }): Promise<ItemDto> {
+  return apiJson<ItemDto>("/api/items/link", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+}
+
+export async function createNote(params: { text: string; title?: string }): Promise<ItemDto> {
+  return apiJson<ItemDto>("/api/items/note", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
 }
 
 export async function deleteItem(id: number): Promise<void> {

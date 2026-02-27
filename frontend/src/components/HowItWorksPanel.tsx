@@ -61,7 +61,7 @@ export default function HowItWorksPanel(props: {
           </div>
 
           <p id={descriptionId} className="mt-3 text-sm text-[var(--app-muted)]">
-            saíta is built for quick internal file handoff without accounts. Upload once, share the link, and
+            saíta is built for quick internal handoff without accounts. Upload once, share the link, and
             manage lifecycle status from the list.
           </p>
 
@@ -74,9 +74,10 @@ export default function HowItWorksPanel(props: {
                     <Upload className="h-3 w-3" />
                   </div>
                   <div>
-                    <div className="text-sm font-semibold">Upload files or folders</div>
+                    <div className="text-sm font-semibold">Upload files, links, or notes</div>
                     <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-muted)]">
-                      Drag files in or choose files/folders manually. Folder uploads are zipped to preserve structure.
+                      Drag files in or choose files/folders manually. Save links and short notes from the top action
+                      buttons.
                     </p>
                   </div>
                 </li>
@@ -86,10 +87,10 @@ export default function HowItWorksPanel(props: {
                     <Link2 className="h-3 w-3" />
                   </div>
                   <div>
-                    <div className="text-sm font-semibold">Share links or download directly</div>
+                    <div className="text-sm font-semibold">Share links or open content directly</div>
                     <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-muted)]">
-                      Use <strong>Copy link</strong> for handoff. <strong>Download</strong> fetches the same file
-                      immediately.
+                      Use <strong>Copy link</strong> for handoff. Files/folders download, saved links redirect, and
+                      notes render in the browser.
                     </p>
                   </div>
                 </li>
@@ -155,7 +156,7 @@ export default function HowItWorksPanel(props: {
                         <code className="rounded-sm bg-black/10 px-1 py-0.5 text-[11px] dark:bg-white/10">
                           ./instance/saita.db
                         </code>
-                        ). Folder uploads are saved as zip files.
+                        ). Folder uploads are saved as zip files. Links and notes are saved as metadata records.
                       </p>
                     </div>
                   ) : null}
@@ -183,8 +184,9 @@ export default function HowItWorksPanel(props: {
                       <p className="text-xs leading-relaxed text-rose-900/90 dark:text-rose-100/90">
                         This app has no login or permission checks. Anyone with a valid{" "}
                         <code className="rounded-sm bg-rose-600/20 px-1 py-0.5 text-[11px]">/d/&lt;id&gt;</code> link
-                        can download that item. Admins or operators with server storage/backups access may also read
-                        files and metadata. Files remain available until explicitly deleted.
+                        can access that item (download file, redirect to URL, or open note). Admins or operators with
+                        server storage/backups access may also read files and metadata. Items remain available until
+                        explicitly deleted.
                       </p>
                     </div>
                   ) : null}

@@ -4,7 +4,7 @@ Repository guide for coding agents working in this project.
 
 ## Project Summary
 
-- Name: `saita` (internal file/folder sharing app)
+- Name: `saita` (internal file/folder/link/note sharing app)
 - Backend: Flask + SQLAlchemy + Alembic
 - Frontend: React + TypeScript + Vite
 - Runtime: Docker Compose (`docker-compose.yaml` for prod, `docker-compose.dev.yaml` for dev)
@@ -52,7 +52,13 @@ npm --prefix frontend run build
 ## Operational Facts (Important)
 
 - Default host port is `5001` (`HOST_PORT` override supported).
-- Public share links are served at `/d/<id>`.
+- Public share links are served at `/d/<id>` and resolve by kind:
+  - file/folder: direct download
+  - link: HTTP redirect to target URL
+  - note: rendered note page
+- Note payload shape:
+  - `GET /api/items` returns note summaries (`noteExcerpt`)
+  - `GET /api/items/<id>` returns full `noteText`
 - Deletion workflow is strict: `DELETE /api/items/<id>` only works when item state is `ready_to_delete`.
 - Bulk cleanup exists at `DELETE /api/items/ready-to-delete`.
 - Folder uploads are zipped server-side with zip path sanitization (`app/utils/zip_utils.py`).
@@ -64,6 +70,8 @@ npm --prefix frontend run build
 - `GET /api/items` with optional `q`, `kind`, `state`, `page`, `per_page`
 - `POST /api/items/files`
 - `POST /api/items/folder`
+- `POST /api/items/link`
+- `POST /api/items/note`
 - `GET /api/items/<id>`
 - `PATCH /api/items/<id>` with body `{"state":"active|done|archived|ready_to_delete"}`
 - `GET /api/items/<id>/download`
@@ -76,6 +84,7 @@ npm --prefix frontend run build
 - `FLASK_ENV=production` uses `Config.from_env()` and honors `DATABASE_URL`, `UPLOAD_FOLDER`, etc.
 - Any non-production `FLASK_ENV` uses `Config.for_development()`, which currently fixes DB path and upload folder to local defaults.
 - `MAX_CONTENT_LENGTH` default is `2147483648` (2GB).
+- `NOTE_EXCERPT_LENGTH` controls note preview length in `GET /api/items` and is bounded to `40..1000` (default `180`).
 
 ## Change Checklist For Agents
 

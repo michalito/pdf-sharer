@@ -5,10 +5,30 @@ import secrets
 from pathlib import Path
 from dataclasses import dataclass
 
+from app.constants import (
+    DEFAULT_MAX_CONTENT_LENGTH,
+    DEFAULT_NOTE_EXCERPT_LENGTH,
+    MAX_NOTE_EXCERPT_LENGTH,
+    MIN_NOTE_EXCERPT_LENGTH,
+)
+
 
 def _get_base_dir() -> Path:
     """Get the base directory of the application."""
     return Path(__file__).parent.parent.resolve()
+
+
+def _parse_note_excerpt_length(raw: str | None) -> int:
+    """Parse note excerpt length from env and enforce safe bounds."""
+    if raw is None:
+        return DEFAULT_NOTE_EXCERPT_LENGTH
+
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_NOTE_EXCERPT_LENGTH
+
+    return max(MIN_NOTE_EXCERPT_LENGTH, min(MAX_NOTE_EXCERPT_LENGTH, value))
 
 
 @dataclass(frozen=True)
@@ -19,6 +39,7 @@ class Config:
     DATABASE_URI: str
     UPLOAD_FOLDER: Path
     MAX_CONTENT_LENGTH: int
+    NOTE_EXCERPT_LENGTH: int = DEFAULT_NOTE_EXCERPT_LENGTH
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
     # Session security settings
     SESSION_COOKIE_SECURE: bool = True
@@ -42,15 +63,15 @@ class Config:
             os.environ.get("UPLOAD_FOLDER") or base_dir / "uploads"
         )
 
-        max_content_length = int(
-            os.environ.get("MAX_CONTENT_LENGTH", 2 * 1024 * 1024 * 1024)  # 2GB
-        )
+        max_content_length = int(os.environ.get("MAX_CONTENT_LENGTH", DEFAULT_MAX_CONTENT_LENGTH))
+        note_excerpt_length = _parse_note_excerpt_length(os.environ.get("NOTE_EXCERPT_LENGTH"))
 
         return cls(
             SECRET_KEY=secret_key,
             DATABASE_URI=database_uri,
             UPLOAD_FOLDER=upload_folder,
             MAX_CONTENT_LENGTH=max_content_length,
+            NOTE_EXCERPT_LENGTH=note_excerpt_length,
         )
 
     @classmethod
@@ -58,15 +79,15 @@ class Config:
         """Create configuration for development."""
         base_dir = _get_base_dir()
 
-        max_content_length = int(
-            os.environ.get("MAX_CONTENT_LENGTH", 2 * 1024 * 1024 * 1024)  # 2GB default for dev
-        )
+        max_content_length = int(os.environ.get("MAX_CONTENT_LENGTH", DEFAULT_MAX_CONTENT_LENGTH))
+        note_excerpt_length = _parse_note_excerpt_length(os.environ.get("NOTE_EXCERPT_LENGTH"))
 
         return cls(
             SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-not-for-production"),
             DATABASE_URI=f"sqlite:///{base_dir / 'instance' / 'saita.db'}",
             UPLOAD_FOLDER=base_dir / "uploads",
             MAX_CONTENT_LENGTH=max_content_length,
+            NOTE_EXCERPT_LENGTH=note_excerpt_length,
             # Disable secure cookies for development (HTTP)
             SESSION_COOKIE_SECURE=False,
         )
@@ -79,6 +100,7 @@ class Config:
             "SQLALCHEMY_TRACK_MODIFICATIONS": self.SQLALCHEMY_TRACK_MODIFICATIONS,
             "UPLOAD_FOLDER": str(self.UPLOAD_FOLDER),
             "MAX_CONTENT_LENGTH": self.MAX_CONTENT_LENGTH,
+            "NOTE_EXCERPT_LENGTH": self.NOTE_EXCERPT_LENGTH,
             "SESSION_COOKIE_SECURE": self.SESSION_COOKIE_SECURE,
             "SESSION_COOKIE_HTTPONLY": self.SESSION_COOKIE_HTTPONLY,
             "SESSION_COOKIE_SAMESITE": self.SESSION_COOKIE_SAMESITE,
