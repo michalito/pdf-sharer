@@ -1,14 +1,14 @@
 # CLAUDE.md
 
-This file guides Claude Code when working in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Last verified against code: 2026-02-27.
 
 ## Project Snapshot
 
-- App: `saita` internal file, folder, link, and note sharing
+- App: `saita` — internal file, folder, link, and note sharing
 - Backend: Flask, SQLAlchemy, Alembic
-- Frontend: React + TypeScript + Vite
+- Frontend: React + TypeScript + Vite (TanStack Query for server state)
 - Deployment: Docker Compose via `./deploy.sh`
 - Trust model: internal network, no authentication by design
 
@@ -47,33 +47,61 @@ Primary workflow uses `./deploy.sh`:
 ./deploy.sh prune-orphans
 ```
 
-Useful local checks:
+Local checks (outside Docker):
 
 ```bash
-pytest
+# Backend tests
+pytest                                          # all tests
+pytest tests/integration/test_items_api.py      # one file
+pytest tests/unit/test_zip_utils.py::test_sanitize_rejects_parent_traversal  # one test
+pytest -k "test_search"                         # substring match
+
+# Frontend
 npm --prefix frontend run typecheck
 npm --prefix frontend run build
+npm --prefix frontend run test                  # vitest single pass
+npm --prefix frontend run test:watch            # vitest watch mode
 ```
 
-Port note: host port defaults to `5001` (`HOST_PORT` can override).
+Port note: host port defaults to `5001` (`HOST_PORT` can override). Dev frontend runs on `5173` and proxies API to Flask.
 
 ## Architecture
 
-Layered backend (`Routes -> Services -> Repositories -> DB`):
+### Backend
+
+Layered: `Routes -> Services -> Repositories -> DB`
 
 ```text
 app/
-  api/routes.py               # REST API under /api
-  web/routes.py               # "/" and public "/d/<id>" share route
-  services/item_service.py    # Upload, zip, delete/state logic
+  __init__.py                   # create_app() factory; registers blueprints, request hooks
+  api/routes.py                 # REST API under /api
+  web/routes.py                 # "/" SPA fallback + "/d/<id>" share route
+  services/item_service.py      # Upload, zip, delete/state logic, validation limits
   repositories/item_repository.py
-  domain/item.py              # Item, ItemKind, ItemState
-  config.py                   # Config dataclass and env mapping
-  logging_config.py
-  exceptions.py
+  domain/item.py                # Item model, ItemKind, ItemState, to_dto()
+  config.py                     # Config dataclass (from_env / for_development)
+  constants.py                  # Upload size, note excerpt bounds
+  exceptions.py                 # AppError hierarchy (NotFoundError, ValidationError, etc.)
+  error_handlers.py             # register_error_handlers() — called on both blueprints
+  logging_config.py             # JSON logging in prod, plain text in dev
+  utils/zip_utils.py            # sanitize_zip_path(), dedupe_zip_path()
+  cli.py                        # flask prune-orphans command
 ```
 
-Factory pattern: `app/__init__.py:create_app()`.
+Key patterns:
+- **Per-request DI**: `before_request` hook creates `g.item_service`; routes call `_get_service()`. Tests override via `app.config["ITEM_SERVICE_OVERRIDE"]`.
+- **Request IDs**: middleware sets `g.request_id` (from `X-Request-ID` header or new UUID), returned on every response.
+- **Serialization**: `Item.to_dto()` on the model handles all DTO conversion. List endpoint omits `noteText` (returns `noteExcerpt`); detail endpoint includes full `noteText`.
+- **meta_json column**: Links store `{"url": "..."}`, notes store `{"text": "..."}`, folders store `{"file_count": N, "top_level_dir": "..."}`.
+
+### Frontend
+
+Single-page app — **no client-side router**. `App.tsx` is the sole root component.
+
+- **Server state**: TanStack Query (`useQuery`/`useMutation`). Query key for items: `["items", { q, kind, state, page, perPage }]`.
+- **Uploads**: Use raw `XMLHttpRequest` (via `xhrForm()` in `api/items.ts`) for progress tracking. JSON endpoints use `fetch` via `apiJson()`.
+- **Styling**: Tailwind CSS, dark/light theme via `useTheme` hook (localStorage-persisted).
+- **No global state store** — all local UI state is `useState` in `App.tsx`.
 
 ## Current API Contract
 
@@ -88,7 +116,7 @@ Factory pattern: `app/__init__.py:create_app()`.
 - `GET /api/items/<id>/download`
 - `DELETE /api/items/<id>` only when item state is `ready_to_delete`
 - `DELETE /api/items/ready-to-delete` (optional `q`, `kind`)
-- `GET /d/<id>` (public/internal stable share link: download file/folder, redirect link, render note)
+- `GET /d/<id>` (public share link: download file/folder, redirect link, render note)
 
 Note payload behavior:
 - List endpoint (`GET /api/items`) returns note summaries via `noteExcerpt`
@@ -99,21 +127,22 @@ Note payload behavior:
 
 - Stored filenames are UUID-based (`<uuid><ext>` for files, `<uuid>.zip` for folder uploads).
 - Folder upload zips are created server-side with zip-path sanitization and de-duplication.
-- Request IDs: middleware sets `g.request_id` and always returns `X-Request-ID`.
 - Delete behavior is intentionally two-step (`PATCH` to `ready_to_delete`, then `DELETE`).
-- `entrypoint.sh` runs migrations on container start.
+- `entrypoint.sh` runs migrations on every container start (zero-touch schema updates).
+- Migration files use manual prefixes (`0001_`, `0002_`) instead of Alembic hex IDs.
+- Service validation limits: display name 255 chars, link URL 2048, note title 120, note text 4000.
 
-## Configuration Details
+## Testing
 
-- `FLASK_ENV=production` -> `Config.from_env()` (uses env vars like `DATABASE_URL`, `UPLOAD_FOLDER`).
-- Any non-production env -> `Config.for_development()` (uses local defaults for DB and upload path).
-Main env knobs:
-- `SECRET_KEY` (optional; generated if absent in production config path)
-- `DATABASE_URL`
-- `UPLOAD_FOLDER`
-- `MAX_CONTENT_LENGTH` (default `2147483648`)
-- `NOTE_EXCERPT_LENGTH` (default `180`, bounded `40..1000`)
-- `HOST_PORT` (Docker host mapping, default `5001`)
+Backend fixtures (`tests/conftest.py`): `app` creates a full Flask app with in-memory SQLite and temp upload dir; `client` is the Flask test client. Each test gets a fresh DB via `create_all`/`drop_all`.
+
+Frontend tests (`frontend/src/test/`): Vitest + jsdom + Testing Library. API module is mocked via `vi.mock()`.
+
+## Configuration
+
+- `FLASK_ENV=production` → `Config.from_env()` (reads `DATABASE_URL`, `UPLOAD_FOLDER`, etc.)
+- Any other `FLASK_ENV` → `Config.for_development()` (local SQLite defaults)
+- Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `HOST_PORT` (default 5001)
 
 ## When Changing Code
 
