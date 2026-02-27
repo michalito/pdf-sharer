@@ -77,7 +77,7 @@ export default function HowItWorksPanel(props: {
                     <div className="text-sm font-semibold">Upload files, links, or notes</div>
                     <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-muted)]">
                       Drag files in or choose files/folders manually. Save links and short notes from the top action
-                      buttons.
+                      buttons. You can optionally set a per-item password during creation.
                     </p>
                   </div>
                 </li>
@@ -90,7 +90,7 @@ export default function HowItWorksPanel(props: {
                     <div className="text-sm font-semibold">Share links or open content directly</div>
                     <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-muted)]">
                       Use <strong>Copy link</strong> for handoff. Files/folders download, saved links redirect, and
-                      notes render in the browser.
+                      notes render in the browser. Protected items ask for the password before opening.
                     </p>
                   </div>
                 </li>
@@ -182,10 +182,11 @@ export default function HowItWorksPanel(props: {
                   {openInfoSection === "privacy" ? (
                     <div className="border-t border-rose-600/25 px-3 py-2">
                       <p className="text-xs leading-relaxed text-rose-900/90 dark:text-rose-100/90">
-                        This app has no login or permission checks. Anyone with a valid{" "}
+                        This app has no user accounts or ACLs. Anyone with a valid{" "}
                         <code className="rounded-sm bg-rose-600/20 px-1 py-0.5 text-[11px]">/d/&lt;id&gt;</code> link
-                        can access that item (download file, redirect to URL, or open note). Admins or operators with
-                        server storage/backups access may also read files and metadata. Items remain available until
+                        can access unprotected items. If a password is set, that item requires password entry before
+                        opening and stays unlocked for the current browser session. Admins or operators with server
+                        storage/backups access may still read files and metadata. Items remain available until
                         explicitly deleted.
                       </p>
                     </div>

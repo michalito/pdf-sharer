@@ -4,10 +4,21 @@ from __future__ import annotations
 
 import os
 
-from flask import Response, current_app, g, redirect, render_template, send_file, send_from_directory
+from flask import (
+    Response,
+    current_app,
+    g,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    send_from_directory,
+    url_for,
+)
 
 from app.domain.item import ItemKind
-from app.exceptions import AppError
+from app.exceptions import AppError, ValidationError
+from app.services.item_access import is_item_unlocked, mark_item_unlocked
 from app.services.item_service import ItemService
 from app.web import web
 
@@ -38,6 +49,57 @@ def public_download(item_id: int) -> Response:
     service = _get_service()
     item = service.get_item(item_id)
 
+    if service.item_requires_password(item) and not is_item_unlocked(item.id):
+        return _render_password_prompt(item)
+
+    return _serve_public_item(service, item)
+
+
+@web.route("/d/<int:item_id>", methods=["POST"])
+def unlock_public_item(item_id: int) -> Response:
+    """Unlock a protected public item for the current browser session."""
+    service = _get_service()
+    item = service.get_item(item_id)
+
+    if not service.item_requires_password(item):
+        return redirect(url_for("web.public_download", item_id=item_id), code=302)
+
+    password = request.form.get("password")
+    try:
+        is_valid = service.verify_item_password(item, password)
+    except ValidationError:
+        is_valid = False
+
+    if not is_valid:
+        return _render_password_prompt(
+            item,
+            error_message="Invalid password. Please try again.",
+            status_code=401,
+        )
+
+    mark_item_unlocked(item.id)
+    return redirect(url_for("web.public_download", item_id=item_id), code=302)
+
+
+def _render_password_prompt(
+    item,
+    *,
+    error_message: str | None = None,
+    status_code: int = 200,
+) -> tuple[str, int]:
+    return (
+        render_template(
+            "password_prompt.html",
+            item_id=item.id,
+            item_name=item.display_name,
+            item_kind=item.kind,
+            error_message=error_message,
+        ),
+        status_code,
+    )
+
+
+def _serve_public_item(service: ItemService, item) -> Response:
     if item.kind in {ItemKind.FILE.value, ItemKind.FOLDER.value}:
         file_path = service.get_item_path(item)
         download_name = service.get_download_name(item)

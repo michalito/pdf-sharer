@@ -10,6 +10,7 @@ import {
   File as FileIcon,
   FolderArchive,
   FolderUp,
+  Lock,
   Link2,
   Moon,
   Search,
@@ -32,6 +33,7 @@ import {
   ItemState,
   listItems,
   updateItemState,
+  unlockItem,
   uploadFiles,
   uploadFolder,
 } from "./api/items";
@@ -41,6 +43,7 @@ import { useTheme } from "./lib/useTheme";
 
 type KindFilter = "all" | ItemKind;
 type StateFilter = "all" | ItemState;
+type AccessFilter = "all" | "protected" | "unprotected";
 
 const itemStateOptions: Array<{ value: ItemState; label: string }> = [
   { value: "active", label: "Active" },
@@ -81,9 +84,30 @@ function kindLabel(kind: ItemKind): string {
 }
 
 function kindPreview(item: ItemDto): string | null {
+  if (item.isPasswordProtected && !item.isPasswordUnlocked && (item.kind === "link" || item.kind === "note")) {
+    return "Protected content - unlock required";
+  }
   if (item.kind === "link" && item.linkUrl) return item.linkUrl;
   if (item.kind === "note") return item.noteExcerpt;
   return null;
+}
+
+type PasswordValidationResult =
+  | { ok: true; password: string | undefined }
+  | { ok: false; message: string };
+
+function validateOptionalPassword(passwordRaw: string, confirmRaw: string): PasswordValidationResult {
+  const password = passwordRaw.trim();
+  const confirm = confirmRaw.trim();
+
+  if (!password && !confirm) return { ok: true, password: undefined };
+  if (password.length < 8 || password.length > 128) {
+    return { ok: false, message: "Password must be 8-128 characters." };
+  }
+  if (password !== confirm) {
+    return { ok: false, message: "Password and confirmation must match." };
+  }
+  return { ok: true, password };
 }
 
 export default function App() {
@@ -97,6 +121,7 @@ export default function App() {
   const debouncedSearch = useDebouncedValue(searchText.trim(), 250);
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [stateFilter, setStateFilter] = useState<StateFilter>("active");
+  const [accessFilter, setAccessFilter] = useState<AccessFilter>("all");
   const [page, setPage] = useState(1);
   const perPage = 50;
 
@@ -112,12 +137,30 @@ export default function App() {
   const notePreviewFetchInFlightRef = useRef(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkName, setLinkName] = useState("");
+  const [linkPassword, setLinkPassword] = useState("");
+  const [linkPasswordConfirm, setLinkPasswordConfirm] = useState("");
   const [noteTitle, setNoteTitle] = useState("");
   const [noteText, setNoteText] = useState("");
+  const [notePassword, setNotePassword] = useState("");
+  const [notePasswordConfirm, setNotePasswordConfirm] = useState("");
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [uploadDialogKind, setUploadDialogKind] = useState<"files" | "folder">("files");
+  const [uploadDialogFiles, setUploadDialogFiles] = useState<File[]>([]);
+  const [uploadPassword, setUploadPassword] = useState("");
+  const [uploadPasswordConfirm, setUploadPasswordConfirm] = useState("");
+  const [unlockTarget, setUnlockTarget] = useState<{ item: ItemDto; action: "download" | "link" | "note" } | null>(
+    null,
+  );
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [isUnlocking, setIsUnlocking] = useState(false);
 
   const queryKey = useMemo(
-    () => ["items", { q: debouncedSearch, kind: kindFilter, state: stateFilter, page, perPage }] as const,
-    [debouncedSearch, kindFilter, stateFilter, page, perPage],
+    () =>
+      [
+        "items",
+        { q: debouncedSearch, kind: kindFilter, state: stateFilter, access: accessFilter, page, perPage },
+      ] as const,
+    [debouncedSearch, kindFilter, stateFilter, accessFilter, page, perPage],
   );
 
   const itemsQuery = useQuery({
@@ -127,6 +170,7 @@ export default function App() {
         q: debouncedSearch || undefined,
         kind: kindFilter === "all" ? undefined : kindFilter,
         state: stateFilter === "all" ? undefined : stateFilter,
+        protected: accessFilter === "all" ? undefined : accessFilter === "protected",
         page,
         perPage,
       }),
@@ -169,7 +213,7 @@ export default function App() {
   });
 
   const bulkDeleteMutation = useMutation({
-    mutationFn: async (vars: { q?: string; kind?: ItemKind }) => deleteReadyToDelete(vars),
+    mutationFn: async (vars: { q?: string; kind?: ItemKind; protected?: boolean }) => deleteReadyToDelete(vars),
     onSuccess: async (res) => {
       setPage(1);
       await queryClient.invalidateQueries({ queryKey: ["items"] });
@@ -179,7 +223,7 @@ export default function App() {
   });
 
   const createLinkMutation = useMutation({
-    mutationFn: async (vars: { url: string; name?: string }) => createLink(vars),
+    mutationFn: async (vars: { url: string; name?: string; password?: string }) => createLink(vars),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       toast.success("Link saved");
@@ -188,7 +232,7 @@ export default function App() {
   });
 
   const createNoteMutation = useMutation({
-    mutationFn: async (vars: { text: string; title?: string }) => createNote(vars),
+    mutationFn: async (vars: { text: string; title?: string; password?: string }) => createNote(vars),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       toast.success("Note saved");
@@ -230,44 +274,80 @@ export default function App() {
     el.click();
   }
 
-  async function handleUploadFiles(files: File[]) {
+  function openUploadDialog(kind: "files" | "folder", files: File[]) {
+    if (files.length === 0) return;
+    setUploadDialogKind(kind);
+    setUploadDialogFiles(files);
+    setUploadPassword("");
+    setUploadPasswordConfirm("");
+    setUploadDialogOpen(true);
+  }
+
+  async function handleUploadFiles(files: File[], password?: string) {
     if (files.length === 0) return;
     const label = files.length === 1 ? `Uploading ${files[0].name}` : `Uploading ${files.length} files`;
     const task: UploadTask = { id: uuid(), label, progress: 0, status: "uploading" };
 
     try {
-      const created = await runUpload(task, (onProgress) => uploadFiles(files, { onProgress }));
+      const created = await runUpload(task, (onProgress) => uploadFiles(files, { onProgress, password }));
       toast.success(created.length === 1 ? "Uploaded" : `Uploaded ${created.length} files`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Upload failed");
     }
   }
 
-  async function handleUploadFolder(files: File[]) {
+  async function handleUploadFolder(files: File[], password?: string) {
     if (files.length === 0) return;
     const folderName = inferFolderName(files);
     const task: UploadTask = { id: uuid(), label: `Uploading folder “${folderName}”`, progress: 0, status: "uploading" };
 
     try {
-      await runUpload(task, (onProgress) => uploadFolder(files, { onProgress }));
+      await runUpload(task, (onProgress) => uploadFolder(files, { onProgress, password }));
       toast.success(`Uploaded folder “${folderName}”`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Folder upload failed");
     }
   }
 
+  async function handleConfirmUploadDialog() {
+    if (uploadDialogFiles.length === 0) return;
+
+    const validation = validateOptionalPassword(uploadPassword, uploadPasswordConfirm);
+    if (!validation.ok) {
+      toast.error(validation.message);
+      return;
+    }
+
+    setUploadDialogOpen(false);
+    if (uploadDialogKind === "files") {
+      await handleUploadFiles(uploadDialogFiles, validation.password);
+    } else {
+      await handleUploadFolder(uploadDialogFiles, validation.password);
+    }
+    setUploadDialogFiles([]);
+  }
+
   async function handleCreateLink() {
     const url = linkUrl.trim();
     if (!url || createLinkMutation.isPending) return;
+
+    const validation = validateOptionalPassword(linkPassword, linkPasswordConfirm);
+    if (!validation.ok) {
+      toast.error(validation.message);
+      return;
+    }
 
     try {
       await createLinkMutation.mutateAsync({
         url,
         name: linkName.trim() || undefined,
+        password: validation.password,
       });
       setLinkDialogOpen(false);
       setLinkUrl("");
       setLinkName("");
+      setLinkPassword("");
+      setLinkPasswordConfirm("");
     } catch {
       // Error toast is handled by mutation onError.
     }
@@ -277,14 +357,23 @@ export default function App() {
     const text = noteText.trim();
     if (!text || createNoteMutation.isPending) return;
 
+    const validation = validateOptionalPassword(notePassword, notePasswordConfirm);
+    if (!validation.ok) {
+      toast.error(validation.message);
+      return;
+    }
+
     try {
       await createNoteMutation.mutateAsync({
         text,
         title: noteTitle.trim() || undefined,
+        password: validation.password,
       });
       setNoteDialogOpen(false);
       setNoteTitle("");
       setNoteText("");
+      setNotePassword("");
+      setNotePasswordConfirm("");
     } catch {
       // Error toast is handled by mutation onError.
     }
@@ -304,8 +393,48 @@ export default function App() {
     window.location.assign(`/api/items/${id}/download`);
   }
 
-  function openExternal(url: string) {
-    window.open(url, "_blank", "noopener,noreferrer");
+  function openSharedLink(id: number) {
+    window.location.assign(`/d/${id}`);
+  }
+
+  async function performItemAction(item: ItemDto, action: "download" | "link" | "note") {
+    if (action === "download") {
+      download(item.id);
+      return;
+    }
+    if (action === "link") {
+      openSharedLink(item.id);
+      return;
+    }
+    await openNotePreview(item.id);
+  }
+
+  function requestUnlockThenAction(item: ItemDto, action: "download" | "link" | "note") {
+    setUnlockTarget({ item, action });
+    setUnlockPassword("");
+  }
+
+  async function handleUnlockTarget() {
+    if (!unlockTarget || isUnlocking) return;
+    const password = unlockPassword.trim();
+    if (!password) {
+      toast.error("Password is required.");
+      return;
+    }
+
+    setIsUnlocking(true);
+    try {
+      await unlockItem(unlockTarget.item.id, password);
+      await queryClient.invalidateQueries({ queryKey: ["items"] });
+      const unlockedItem = await getItem(unlockTarget.item.id);
+      setUnlockTarget(null);
+      setUnlockPassword("");
+      await performItemAction(unlockedItem, unlockTarget.action);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to unlock item");
+    } finally {
+      setIsUnlocking(false);
+    }
   }
 
   async function openNotePreview(itemId: number) {
@@ -345,7 +474,7 @@ export default function App() {
     if (hasDirectory) toast("Folder dropped - use Upload Folder instead");
 
     const files = Array.from(e.dataTransfer.files ?? []);
-    void handleUploadFiles(files);
+    openUploadDialog("files", files);
   }
 
   const items = itemsQuery.data?.items ?? [];
@@ -451,7 +580,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid gap-2 md:grid-cols-[1fr_170px_180px]">
+            <div className="grid gap-2 md:grid-cols-[1fr_170px_180px_170px]">
               <label className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
                 <input
@@ -499,6 +628,23 @@ export default function App() {
                   <option value="done">Done</option>
                   <option value="archived">Archived</option>
                   <option value="ready_to_delete">Ready to delete</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
+              </label>
+
+              <label className="relative">
+                <select
+                  value={accessFilter}
+                  onChange={(e) => {
+                    setAccessFilter(e.target.value as AccessFilter);
+                    setPage(1);
+                  }}
+                  className={`w-full ${selectControlClass}`}
+                  aria-label="Filter by protection"
+                >
+                  <option value="all">All access</option>
+                  <option value="protected">Protected only</option>
+                  <option value="unprotected">Unprotected only</option>
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
               </label>
@@ -612,9 +758,9 @@ export default function App() {
               {items.map((item) => {
                 const preview = kindPreview(item);
                 const isBinary = item.kind === "file" || item.kind === "folder";
-                const linkUrl = item.linkUrl;
                 const isNotePreviewLoading = notePreviewLoadingItemId !== null;
                 const isLoadingThisNote = notePreviewLoadingItemId === item.id;
+                const requiresUnlock = item.isPasswordProtected && !item.isPasswordUnlocked;
 
                 return (
                   <div
@@ -642,6 +788,12 @@ export default function App() {
                           {preview ? <div className="mt-0.5 truncate text-xs text-[var(--app-muted)]">{preview}</div> : null}
                           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--app-muted)] md:flex-nowrap">
                             <span className={metaTagClass}>{kindLabel(item.kind)}</span>
+                            {item.isPasswordProtected ? (
+                              <span className={metaTagClass}>
+                                <Lock className="mr-1 h-3 w-3" />
+                                {item.isPasswordUnlocked ? "Unlocked" : "Protected"}
+                              </span>
+                            ) : null}
 
                             <div className={`${stateSelectClass} ${stateChipClass[item.state]}`}>
                               <span className={`h-2 w-2 shrink-0 rounded-[2px] ${stateDotClass[item.state]}`} aria-hidden />
@@ -675,26 +827,44 @@ export default function App() {
                       {isBinary ? (
                         <button
                           type="button"
-                          onClick={() => download(item.id)}
+                          onClick={() => {
+                            if (requiresUnlock) {
+                              requestUnlockThenAction(item, "download");
+                              return;
+                            }
+                            void performItemAction(item, "download");
+                          }}
                           className={rowActionPrimaryClass}
                         >
                           <Download className="h-3.5 w-3.5" />
                           Download
                         </button>
-                      ) : item.kind === "link" && typeof linkUrl === "string" ? (
+                      ) : item.kind === "link" ? (
                         <button
                           type="button"
-                          onClick={() => openExternal(linkUrl)}
+                          onClick={() => {
+                            if (requiresUnlock) {
+                              requestUnlockThenAction(item, "link");
+                              return;
+                            }
+                            void performItemAction(item, "link");
+                          }}
                           className={rowActionPrimaryClass}
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
-                          Open URL
+                          Open link
                         </button>
                       ) : item.kind === "note" ? (
                         <button
                           type="button"
                           disabled={isNotePreviewLoading}
-                          onClick={() => void openNotePreview(item.id)}
+                          onClick={() => {
+                            if (requiresUnlock) {
+                              requestUnlockThenAction(item, "note");
+                              return;
+                            }
+                            void performItemAction(item, "note");
+                          }}
                           className={rowActionPrimaryClass}
                         >
                           <StickyNote className="h-3.5 w-3.5" />
@@ -776,7 +946,7 @@ export default function App() {
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           e.target.value = "";
-          void handleUploadFiles(files);
+          openUploadDialog("files", files);
         }}
       />
 
@@ -788,7 +958,7 @@ export default function App() {
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           e.target.value = "";
-          void handleUploadFolder(files);
+          openUploadDialog("folder", files);
         }}
       />
 
@@ -824,10 +994,89 @@ export default function App() {
             .mutateAsync({
               q: debouncedSearch || undefined,
               kind: kindFilter === "all" ? undefined : kindFilter,
+              protected: accessFilter === "all" ? undefined : accessFilter === "protected",
             })
             .finally(() => setBulkDeleteOpen(false));
         }}
       />
+
+      <ConfirmDialog
+        open={uploadDialogOpen}
+        title={uploadDialogKind === "files" ? "Upload files" : "Upload folder"}
+        description={
+          uploadDialogKind === "files"
+            ? `Selected ${uploadDialogFiles.length} file(s). Optional password protects all uploaded files.`
+            : `Selected ${uploadDialogFiles.length} file(s) from a folder. Optional password protects the folder archive.`
+        }
+        confirmLabel="Start upload"
+        cancelLabel="Cancel"
+        formMode
+        onCancel={() => {
+          setUploadDialogOpen(false);
+          setUploadDialogFiles([]);
+          setUploadPassword("");
+          setUploadPasswordConfirm("");
+        }}
+        onConfirm={() => {
+          void handleConfirmUploadDialog();
+        }}
+      >
+        <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Password (optional)
+          <input
+            type="password"
+            value={uploadPassword}
+            onChange={(e) => setUploadPassword(e.target.value)}
+            placeholder="8-128 characters"
+            className={dialogFieldClass}
+            autoFocus
+            autoComplete="new-password"
+          />
+        </label>
+
+        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Confirm password
+          <input
+            type="password"
+            value={uploadPasswordConfirm}
+            onChange={(e) => setUploadPasswordConfirm(e.target.value)}
+            placeholder="Repeat password"
+            className={dialogFieldClass}
+            autoComplete="new-password"
+          />
+        </label>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={Boolean(unlockTarget)}
+        title="Unlock protected item"
+        description={unlockTarget ? `Enter the password for “${unlockTarget.item.name}”.` : undefined}
+        confirmLabel={isUnlocking ? "Unlocking..." : "Unlock"}
+        cancelLabel="Cancel"
+        confirmDisabled={isUnlocking}
+        formMode
+        onCancel={() => {
+          if (isUnlocking) return;
+          setUnlockTarget(null);
+          setUnlockPassword("");
+        }}
+        onConfirm={() => {
+          void handleUnlockTarget();
+        }}
+      >
+        <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Password
+          <input
+            type="password"
+            value={unlockPassword}
+            onChange={(e) => setUnlockPassword(e.target.value)}
+            placeholder="Enter password"
+            className={dialogFieldClass}
+            autoFocus
+            autoComplete="current-password"
+          />
+        </label>
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={linkDialogOpen}
@@ -840,6 +1089,8 @@ export default function App() {
         onCancel={() => {
           if (createLinkMutation.isPending) return;
           setLinkDialogOpen(false);
+          setLinkPassword("");
+          setLinkPasswordConfirm("");
         }}
         onConfirm={() => {
           void handleCreateLink();
@@ -865,6 +1116,30 @@ export default function App() {
             className={dialogFieldClass}
           />
         </label>
+
+        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Password (optional)
+          <input
+            type="password"
+            value={linkPassword}
+            onChange={(e) => setLinkPassword(e.target.value)}
+            placeholder="8-128 characters"
+            className={dialogFieldClass}
+            autoComplete="new-password"
+          />
+        </label>
+
+        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Confirm password
+          <input
+            type="password"
+            value={linkPasswordConfirm}
+            onChange={(e) => setLinkPasswordConfirm(e.target.value)}
+            placeholder="Repeat password"
+            className={dialogFieldClass}
+            autoComplete="new-password"
+          />
+        </label>
       </ConfirmDialog>
 
       <ConfirmDialog
@@ -878,6 +1153,8 @@ export default function App() {
         onCancel={() => {
           if (createNoteMutation.isPending) return;
           setNoteDialogOpen(false);
+          setNotePassword("");
+          setNotePasswordConfirm("");
         }}
         onConfirm={() => {
           void handleCreateNote();
@@ -908,6 +1185,30 @@ export default function App() {
             placeholder="Write a short note..."
             rows={6}
             className={`${dialogFieldClass} resize-y`}
+          />
+        </label>
+
+        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Password (optional)
+          <input
+            type="password"
+            value={notePassword}
+            onChange={(e) => setNotePassword(e.target.value)}
+            placeholder="8-128 characters"
+            className={dialogFieldClass}
+            autoComplete="new-password"
+          />
+        </label>
+
+        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Confirm password
+          <input
+            type="password"
+            value={notePasswordConfirm}
+            onChange={(e) => setNotePasswordConfirm(e.target.value)}
+            placeholder="Repeat password"
+            className={dialogFieldClass}
+            autoComplete="new-password"
           />
         </label>
       </ConfirmDialog>

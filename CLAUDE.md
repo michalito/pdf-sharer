@@ -91,8 +91,9 @@ app/
 Key patterns:
 - **Per-request DI**: `before_request` hook creates `g.item_service`; routes call `_get_service()`. Tests override via `app.config["ITEM_SERVICE_OVERRIDE"]`.
 - **Request IDs**: middleware sets `g.request_id` (from `X-Request-ID` header or new UUID), returned on every response.
-- **Serialization**: `Item.to_dto()` on the model handles all DTO conversion. List endpoint omits `noteText` (returns `noteExcerpt`); detail endpoint includes full `noteText`.
+- **Serialization**: `Item.to_dto()` on the model handles all DTO conversion. Protected locked items hide `linkUrl`/`noteText`/`noteExcerpt` and expose `isPasswordProtected` + `isPasswordUnlocked`.
 - **meta_json column**: Links store `{"url": "..."}`, notes store `{"text": "..."}`, folders store `{"file_count": N, "top_level_dir": "..."}`.
+- **Session unlocks**: Per-item unlock state is tracked in signed Flask session cookies (`app/services/item_access.py`).
 
 ### Frontend
 
@@ -106,22 +107,24 @@ Single-page app — **no client-side router**. `App.tsx` is the sole root compon
 ## Current API Contract
 
 - `GET /api/health`
-- `GET /api/items` with optional `q`, `kind`, `state`, `page`, `per_page`
-- `POST /api/items/files` (multipart field `files`, repeatable)
-- `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`)
-- `POST /api/items/link` (JSON: `{"url":"https://...","name?":"optional label"}`)
-- `POST /api/items/note` (JSON: `{"text":"...","title?":"optional title"}`)
+- `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `page`, `per_page`
+- `POST /api/items/files` (multipart field `files`, repeatable; optional `password`)
+- `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`; optional `password`)
+- `POST /api/items/link` (JSON: `{"url":"https://...","name?":"optional label","password?":"optional password"}`)
+- `POST /api/items/note` (JSON: `{"text":"...","title?":"optional title","password?":"optional password"}`)
 - `GET /api/items/<id>`
+- `POST /api/items/<id>/unlock` (JSON: `{"password":"..."}`)
 - `PATCH /api/items/<id>` with JSON `{"state":"active|done|archived|ready_to_delete"}`
 - `GET /api/items/<id>/download`
 - `DELETE /api/items/<id>` only when item state is `ready_to_delete`
-- `DELETE /api/items/ready-to-delete` (optional `q`, `kind`)
-- `GET /d/<id>` (public share link: download file/folder, redirect link, render note)
+- `DELETE /api/items/ready-to-delete` (optional `q`, `kind`, `protected`)
+- `GET /d/<id>` (public share link: download file/folder, redirect link, render note, or show password prompt)
+- `POST /d/<id>` (submit password for protected share links)
 
 Note payload behavior:
 - List endpoint (`GET /api/items`) returns note summaries via `noteExcerpt`
 - Detail endpoint (`GET /api/items/<id>`) returns full note body in `noteText` (and includes `noteExcerpt`)
-- Search query `q` matches item names and note body text
+- Search query `q` matches item names and unprotected note body text (protected notes match by title only)
 
 ## Important Behavioral Details
 
@@ -140,8 +143,9 @@ Frontend tests (`frontend/src/test/`): Vitest + jsdom + Testing Library. API mod
 
 ## Configuration
 
-- `FLASK_ENV=production` → `Config.from_env()` (reads `DATABASE_URL`, `UPLOAD_FOLDER`, etc.)
+- `FLASK_ENV=production` → `Config.from_env()` (reads `DATABASE_URL`, `UPLOAD_FOLDER`, etc.) and **requires** `SECRET_KEY`.
 - Any other `FLASK_ENV` → `Config.for_development()` (local SQLite defaults)
+- Keep `SECRET_KEY` stable across production restarts/deploys to preserve protected-item unlock sessions.
 - Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `HOST_PORT` (default 5001)
 
 ## When Changing Code

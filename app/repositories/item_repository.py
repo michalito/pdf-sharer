@@ -49,9 +49,10 @@ class ItemRepository:
         q: Optional[str] = None,
         kind: Optional[ItemKind] = None,
         state: Optional[ItemState] = None,
+        protected: Optional[bool] = None,
     ) -> list[Item]:
         query = Item.query.order_by(Item.created_at.desc())
-        query = self._apply_filters(query, q=q, kind=kind, state=state)
+        query = self._apply_filters(query, q=q, kind=kind, state=state, protected=protected)
 
         return query.all()
 
@@ -60,6 +61,7 @@ class ItemRepository:
         q: Optional[str] = None,
         kind: Optional[ItemKind] = None,
         state: Optional[ItemState] = None,
+        protected: Optional[bool] = None,
         page: int = 1,
         per_page: int = 50,
     ) -> PaginatedResult[Item]:
@@ -67,7 +69,7 @@ class ItemRepository:
         per_page = min(max(1, per_page), self.MAX_PER_PAGE)
 
         query = Item.query.order_by(Item.created_at.desc())
-        query = self._apply_filters(query, q=q, kind=kind, state=state)
+        query = self._apply_filters(query, q=q, kind=kind, state=state, protected=protected)
 
         total = query.count()
         pages = (total + per_page - 1) // per_page if total > 0 else 1
@@ -112,6 +114,7 @@ class ItemRepository:
         mime_type: Optional[str],
         size_bytes: int,
         meta_json: Optional[str] = None,
+        password_hash: Optional[str] = None,
     ) -> Item:
         item = Item(
             stored_name=stored_name,
@@ -121,6 +124,7 @@ class ItemRepository:
             mime_type=mime_type,
             size_bytes=size_bytes,
             meta_json=meta_json,
+            password_hash=password_hash,
         )
         db.session.add(item)
         db.session.commit()
@@ -147,6 +151,7 @@ class ItemRepository:
         q: Optional[str],
         kind: Optional[ItemKind],
         state: Optional[ItemState],
+        protected: Optional[bool],
     ):
         if kind is not None:
             query = query.filter(Item.kind == kind.value)
@@ -154,12 +159,18 @@ class ItemRepository:
         if state is not None:
             query = query.filter(Item.state == state.value)
 
+        if protected is True:
+            query = query.filter(Item.password_hash.is_not(None))
+        elif protected is False:
+            query = query.filter(Item.password_hash.is_(None))
+
         search = q.strip().lower() if q else ""
         if search:
             needle = f"%{search}%"
             display_name_match = func.lower(Item.display_name).like(needle)
             note_text_match = and_(
                 Item.kind == ItemKind.NOTE.value,
+                Item.password_hash.is_(None),
                 func.lower(func.coalesce(Item.meta_json, "")).like(needle),
             )
             query = query.filter(or_(display_name_match, note_text_match))

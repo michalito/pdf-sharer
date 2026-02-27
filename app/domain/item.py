@@ -69,6 +69,7 @@ class Item(db.Model):
     )
     mime_type: Optional[str] = db.Column(db.String(255), nullable=True)
     size_bytes: int = db.Column(db.Integer, nullable=False, default=0)
+    password_hash: Optional[str] = db.Column(db.String(255), nullable=True)
     created_at: datetime = db.Column(
         db.DateTime(timezone=True),
         nullable=False,
@@ -84,6 +85,10 @@ class Item(db.Model):
     def kind_enum(self) -> ItemKind:
         return ItemKind(self.kind)
 
+    @property
+    def is_password_protected(self) -> bool:
+        return bool(self.password_hash)
+
     def to_dto(
         self,
         *,
@@ -93,8 +98,9 @@ class Item(db.Model):
         """Serialize the item for API responses."""
         meta = self._meta_dict()
         link_url = meta.get("url") if self.kind == ItemKind.LINK.value else None
-        note_text = meta.get("text") if self.kind == ItemKind.NOTE.value else None
-        note_excerpt = self._note_excerpt(note_text, max_chars=note_excerpt_chars)
+        note_raw_text = meta.get("text") if self.kind == ItemKind.NOTE.value else None
+        note_excerpt = self._note_excerpt(note_raw_text, max_chars=note_excerpt_chars)
+        note_text = note_raw_text if include_note_text else None
 
         return {
             "id": self.id,
@@ -105,8 +111,9 @@ class Item(db.Model):
             "sizeBytes": self.size_bytes,
             "createdAt": self.created_at.isoformat(),
             "linkUrl": link_url if isinstance(link_url, str) else None,
-            "noteText": note_text if include_note_text and isinstance(note_text, str) else None,
+            "noteText": note_text if isinstance(note_text, str) else None,
             "noteExcerpt": note_excerpt,
+            "isPasswordProtected": self.is_password_protected,
         }
 
     def _meta_dict(self) -> dict[str, Any]:

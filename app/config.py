@@ -1,7 +1,6 @@
 """Application configuration with validation and environment support."""
 
 import os
-import secrets
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -52,9 +51,11 @@ class Config:
         """Create configuration from environment variables."""
         base_dir = _get_base_dir()
 
-        # No authentication is used, but Flask still expects a secret key for
-        # any cookie-based features. Generate one if not provided.
-        secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+        # Production must use a stable key because session cookies now carry
+        # unlock state for password-protected items.
+        secret_key = (os.environ.get("SECRET_KEY") or "").strip()
+        if not secret_key:
+            raise ValueError("SECRET_KEY environment variable is required in production")
 
         database_uri = os.environ.get("DATABASE_URL") or \
             f"sqlite:///{base_dir / 'instance' / 'saita.db'}"

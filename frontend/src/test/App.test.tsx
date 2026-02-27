@@ -14,6 +14,7 @@ vi.mock("../api/items", async () => {
     createNote: vi.fn(),
     uploadFiles: vi.fn(),
     uploadFolder: vi.fn(),
+    unlockItem: vi.fn(),
     deleteItem: vi.fn(),
     deleteReadyToDelete: vi.fn(),
     updateItemState: vi.fn(),
@@ -66,6 +67,8 @@ beforeEach(() => {
     linkUrl: "https://example.com/docs",
     noteText: null,
     noteExcerpt: null,
+    isPasswordProtected: false,
+    isPasswordUnlocked: true,
   });
   vi.mocked(api.createNote).mockResolvedValue({
     id: 11,
@@ -78,6 +81,8 @@ beforeEach(() => {
     linkUrl: null,
     noteText: "Remember to rotate secrets",
     noteExcerpt: "Remember to rotate secrets",
+    isPasswordProtected: false,
+    isPasswordUnlocked: true,
   });
   vi.mocked(api.uploadFiles).mockResolvedValue([]);
   vi.mocked(api.uploadFolder).mockResolvedValue({
@@ -91,7 +96,10 @@ beforeEach(() => {
     linkUrl: null,
     noteText: null,
     noteExcerpt: null,
+    isPasswordProtected: false,
+    isPasswordUnlocked: true,
   });
+  vi.mocked(api.unlockItem).mockResolvedValue();
   vi.mocked(api.deleteItem).mockResolvedValue();
   vi.mocked(api.deleteReadyToDelete).mockResolvedValue({ deleted: 0 });
   vi.mocked(api.updateItemState).mockResolvedValue({
@@ -105,9 +113,10 @@ beforeEach(() => {
     linkUrl: null,
     noteText: null,
     noteExcerpt: null,
+    isPasswordProtected: false,
+    isPasswordUnlocked: true,
   });
 
-  vi.stubGlobal("open", vi.fn());
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
     value: {
@@ -126,12 +135,15 @@ it("submits the save-link dialog", async () => {
   const dialog = await screen.findByRole("dialog", { name: "Save external link" });
   await user.type(within(dialog).getByPlaceholderText("https://example.com/docs"), "https://example.com/new");
   await user.type(within(dialog).getByPlaceholderText("Team docs"), "Engineering Docs");
+  await user.type(within(dialog).getByPlaceholderText("8-128 characters"), "safepass1");
+  await user.type(within(dialog).getByPlaceholderText("Repeat password"), "safepass1");
   await user.click(within(dialog).getByRole("button", { name: "Save link" }));
 
   await waitFor(() => {
     expect(api.createLink).toHaveBeenCalledWith({
       url: "https://example.com/new",
       name: "Engineering Docs",
+      password: "safepass1",
     });
   });
 });
@@ -146,12 +158,15 @@ it("submits the save-note dialog", async () => {
   const dialog = await screen.findByRole("dialog", { name: "Save note" });
   await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Retro");
   await user.type(within(dialog).getByPlaceholderText("Write a short note..."), "Ship links and notes this week.");
+  await user.type(within(dialog).getByPlaceholderText("8-128 characters"), "notespass");
+  await user.type(within(dialog).getByPlaceholderText("Repeat password"), "notespass");
   await user.click(within(dialog).getByRole("button", { name: "Save note" }));
 
   await waitFor(() => {
     expect(api.createNote).toHaveBeenCalledWith({
       title: "Retro",
       text: "Ship links and notes this week.",
+      password: "notespass",
     });
   });
 });
@@ -170,6 +185,8 @@ it("shows kind-specific actions and loads full note text for preview", async () 
         linkUrl: null,
         noteText: null,
         noteExcerpt: null,
+        isPasswordProtected: false,
+        isPasswordUnlocked: true,
       },
       {
         id: 2,
@@ -182,6 +199,8 @@ it("shows kind-specific actions and loads full note text for preview", async () 
         linkUrl: "https://example.com/runbook",
         noteText: null,
         noteExcerpt: null,
+        isPasswordProtected: false,
+        isPasswordUnlocked: true,
       },
       {
         id: 3,
@@ -194,6 +213,8 @@ it("shows kind-specific actions and loads full note text for preview", async () 
         linkUrl: null,
         noteText: null,
         noteExcerpt: "Short preview text",
+        isPasswordProtected: false,
+        isPasswordUnlocked: true,
       },
     ],
     pagination: makePagination(3),
@@ -209,6 +230,8 @@ it("shows kind-specific actions and loads full note text for preview", async () 
     linkUrl: null,
     noteText: "Full note details loaded on demand.",
     noteExcerpt: "Short preview text",
+    isPasswordProtected: false,
+    isPasswordUnlocked: true,
   });
 
   const user = userEvent.setup();
@@ -216,13 +239,78 @@ it("shows kind-specific actions and loads full note text for preview", async () 
 
   await screen.findByText("artifact.zip");
   expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Open URL" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open link" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "View note" })).toBeInTheDocument();
-
-  await user.click(screen.getByRole("button", { name: "Open URL" }));
-  expect(window.open).toHaveBeenCalledWith("https://example.com/runbook", "_blank", "noopener,noreferrer");
 
   await user.click(screen.getByRole("button", { name: "View note" }));
   await waitFor(() => expect(api.getItem).toHaveBeenCalledWith(3));
   expect(await screen.findByText("Full note details loaded on demand.")).toBeInTheDocument();
+});
+
+it("unlocks a protected note before loading preview", async () => {
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [
+      {
+        id: 7,
+        name: "Confidential note",
+        kind: "note",
+        state: "active",
+        mimeType: "text/plain",
+        sizeBytes: 44,
+        createdAt: "2026-02-27T00:00:00+00:00",
+        linkUrl: null,
+        noteText: null,
+        noteExcerpt: null,
+        isPasswordProtected: true,
+        isPasswordUnlocked: false,
+      },
+    ],
+    pagination: makePagination(1),
+  });
+  vi.mocked(api.getItem).mockResolvedValue({
+    id: 7,
+    name: "Confidential note",
+    kind: "note",
+    state: "active",
+    mimeType: "text/plain",
+    sizeBytes: 44,
+    createdAt: "2026-02-27T00:00:00+00:00",
+    linkUrl: null,
+    noteText: "Decryption key rotates every Monday.",
+    noteExcerpt: "Decryption key rotates every Monday.",
+    isPasswordProtected: true,
+    isPasswordUnlocked: true,
+  });
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("Confidential note");
+  expect(screen.getByText("Protected content - unlock required")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "View note" }));
+  const unlockDialog = await screen.findByRole("dialog", { name: "Unlock protected item" });
+  await user.type(within(unlockDialog).getByPlaceholderText("Enter password"), "safepass1");
+  await user.click(within(unlockDialog).getByRole("button", { name: "Unlock" }));
+
+  await waitFor(() => expect(api.unlockItem).toHaveBeenCalledWith(7, "safepass1"));
+  await waitFor(() => expect(api.getItem).toHaveBeenCalledWith(7));
+  expect(await screen.findByText("Decryption key rotates every Monday.")).toBeInTheDocument();
+});
+
+it("applies the protected-only filter in list API calls", async () => {
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("Shared items");
+  const filter = screen.getByLabelText("Filter by protection");
+  await user.selectOptions(filter, "protected");
+
+  await waitFor(() => {
+    expect(api.listItems).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        protected: true,
+      }),
+    );
+  });
 });

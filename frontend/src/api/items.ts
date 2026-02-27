@@ -13,6 +13,8 @@ export type ItemDto = {
   linkUrl: string | null;
   noteText: string | null;
   noteExcerpt: string | null;
+  isPasswordProtected: boolean;
+  isPasswordUnlocked: boolean;
 };
 
 export type PaginationDto = {
@@ -62,6 +64,7 @@ export async function listItems(params: {
   q?: string;
   kind?: ItemKind;
   state?: ItemState;
+  protected?: boolean;
   page?: number;
   perPage?: number;
 }): Promise<ListItemsResponse> {
@@ -69,6 +72,7 @@ export async function listItems(params: {
     q: params.q,
     kind: params.kind,
     state: params.state,
+    protected: params.protected === undefined ? undefined : params.protected ? "true" : "false",
     page: params.page ?? 1,
     per_page: params.perPage ?? 50,
   });
@@ -110,16 +114,17 @@ function xhrForm<T>(url: string, formData: FormData, onProgress?: (pct: number) 
 
 export async function uploadFiles(
   files: File[],
-  opts?: { onProgress?: (pct: number) => void },
+  opts?: { onProgress?: (pct: number) => void; password?: string },
 ): Promise<ItemDto[]> {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
+  if (opts?.password) formData.append("password", opts.password);
   return xhrForm<ItemDto[]>("/api/items/files", formData, opts?.onProgress);
 }
 
 export async function uploadFolder(
   files: File[],
-  opts?: { onProgress?: (pct: number) => void },
+  opts?: { onProgress?: (pct: number) => void; password?: string },
 ): Promise<ItemDto> {
   const formData = new FormData();
   for (const file of files) {
@@ -127,10 +132,11 @@ export async function uploadFolder(
     formData.append("files", file);
     formData.append("paths", relPath);
   }
+  if (opts?.password) formData.append("password", opts.password);
   return xhrForm<ItemDto>("/api/items/folder", formData, opts?.onProgress);
 }
 
-export async function createLink(params: { url: string; name?: string }): Promise<ItemDto> {
+export async function createLink(params: { url: string; name?: string; password?: string }): Promise<ItemDto> {
   return apiJson<ItemDto>("/api/items/link", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -138,12 +144,22 @@ export async function createLink(params: { url: string; name?: string }): Promis
   });
 }
 
-export async function createNote(params: { text: string; title?: string }): Promise<ItemDto> {
+export async function createNote(params: { text: string; title?: string; password?: string }): Promise<ItemDto> {
   return apiJson<ItemDto>("/api/items/note", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
+}
+
+export async function unlockItem(id: number, password: string): Promise<void> {
+  const res = await fetch(`/api/items/${id}/unlock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (res.status === 204) return;
+  if (!res.ok) throw await parseApiError(res);
 }
 
 export async function deleteItem(id: number): Promise<void> {
@@ -152,10 +168,11 @@ export async function deleteItem(id: number): Promise<void> {
   if (!res.ok) throw await parseApiError(res);
 }
 
-export async function deleteReadyToDelete(params?: { q?: string; kind?: ItemKind }): Promise<{ deleted: number }> {
+export async function deleteReadyToDelete(params?: { q?: string; kind?: ItemKind; protected?: boolean }): Promise<{ deleted: number }> {
   const query = buildQuery({
     q: params?.q,
     kind: params?.kind,
+    protected: params?.protected === undefined ? undefined : params.protected ? "true" : "false",
   });
   return apiJson<{ deleted: number }>(`/api/items/ready-to-delete${query}`, { method: "DELETE" });
 }

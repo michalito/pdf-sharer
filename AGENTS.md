@@ -56,7 +56,8 @@ npm --prefix frontend run build
   - file/folder: direct download
   - link: HTTP redirect to target URL
   - note: rendered note page
-- Search behavior (`q` on `GET /api/items`) matches item names and note body text.
+  - protected item: password prompt first (session unlock)
+- Search behavior (`q` on `GET /api/items`) matches item names and unprotected note body text.
 - Note payload shape:
   - `GET /api/items` returns note summaries (`noteExcerpt`)
   - `GET /api/items/<id>` returns full `noteText` (and `noteExcerpt`)
@@ -68,21 +69,24 @@ npm --prefix frontend run build
 ## API Surface (Current)
 
 - `GET /api/health`
-- `GET /api/items` with optional `q`, `kind`, `state`, `page`, `per_page`
+- `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `page`, `per_page`
 - `POST /api/items/files`
 - `POST /api/items/folder`
 - `POST /api/items/link`
 - `POST /api/items/note`
 - `GET /api/items/<id>`
+- `POST /api/items/<id>/unlock`
 - `PATCH /api/items/<id>` with body `{"state":"active|done|archived|ready_to_delete"}`
 - `GET /api/items/<id>/download`
 - `DELETE /api/items/<id>` (requires `ready_to_delete`)
-- `DELETE /api/items/ready-to-delete`
+- `DELETE /api/items/ready-to-delete` (optional `q`, `kind`, `protected`)
 - `GET /d/<id>`
+- `POST /d/<id>`
 
 ## Config Gotchas
 
 - `FLASK_ENV=production` uses `Config.from_env()` and honors `DATABASE_URL`, `UPLOAD_FOLDER`, etc.
+- `SECRET_KEY` is required in production (`Config.from_env()` raises if missing). Keep it stable across restarts, otherwise protected-item unlock sessions are invalidated.
 - Any non-production `FLASK_ENV` uses `Config.for_development()`, which currently fixes DB path and upload folder to local defaults.
 - `MAX_CONTENT_LENGTH` default is `2147483648` (2GB).
 - `NOTE_EXCERPT_LENGTH` controls note preview length in `GET /api/items` and is bounded to `40..1000` (default `180`).

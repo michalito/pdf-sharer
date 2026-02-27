@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.datastructures import FileStorage
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 from app.domain.item import Item, ItemKind, ItemState
@@ -33,6 +34,8 @@ class ItemService:
     MAX_LINK_URL_LENGTH = 2048
     MAX_NOTE_TITLE_LENGTH = 120
     MAX_NOTE_TEXT_LENGTH = 4000
+    MIN_ITEM_PASSWORD_LENGTH = 8
+    MAX_ITEM_PASSWORD_LENGTH = 128
 
     def __init__(self, repository: Optional[ItemRepository] = None):
         self.repository = repository or ItemRepository()
@@ -43,10 +46,18 @@ class ItemService:
         q: Optional[str] = None,
         kind: Optional[ItemKind] = None,
         state: Optional[ItemState] = None,
+        protected: Optional[bool] = None,
         page: int = 1,
         per_page: int = 50,
     ) -> PaginatedResult[Item]:
-        return self.repository.get_all(q=q, kind=kind, state=state, page=page, per_page=per_page)
+        return self.repository.get_all(
+            q=q,
+            kind=kind,
+            state=state,
+            protected=protected,
+            page=page,
+            per_page=per_page,
+        )
 
     def get_item(self, item_id: int) -> Item:
         return self.repository.get_by_id_or_raise(item_id)
@@ -64,16 +75,28 @@ class ItemService:
 
         return file_path
 
-    def upload_files(self, files: list[FileStorage]) -> list[Item]:
+    def upload_files(
+        self,
+        files: list[FileStorage],
+        password: Optional[str] = None,
+    ) -> list[Item]:
         if not files:
             raise ValidationError("No files provided")
 
+        normalized_password = self.normalize_item_password(password)
         created: list[Item] = []
         for file in files:
-            created.append(self._upload_single_file(file))
+            created.append(
+                self._upload_single_file(file, normalized_password=normalized_password)
+            )
         return created
 
-    def _upload_single_file(self, file: FileStorage) -> Item:
+    def _upload_single_file(
+        self,
+        file: FileStorage,
+        *,
+        normalized_password: Optional[str] = None,
+    ) -> Item:
         if not file or not file.filename:
             raise ValidationError("File is missing a filename")
 
@@ -96,6 +119,11 @@ class ItemService:
             raise FileOperationError("Failed to save file")
 
         mime_type = file.mimetype or mimetypes.guess_type(original_name)[0]
+        password_hash = (
+            self.hash_item_password(normalized_password)
+            if normalized_password is not None
+            else None
+        )
 
         try:
             item = self.repository.create(
@@ -104,6 +132,7 @@ class ItemService:
                 kind=ItemKind.FILE,
                 mime_type=mime_type,
                 size_bytes=size_bytes,
+                password_hash=password_hash,
             )
             return item
         except SQLAlchemyError as e:
@@ -111,7 +140,12 @@ class ItemService:
             logger.error("Database error creating item: %s", e, exc_info=True)
             raise FileOperationError("Failed to create item record")
 
-    def upload_folder(self, files: list[FileStorage], paths: list[str]) -> Item:
+    def upload_folder(
+        self,
+        files: list[FileStorage],
+        paths: list[str],
+        password: Optional[str] = None,
+    ) -> Item:
         if not files:
             raise ValidationError("No files provided")
         if not paths:
@@ -119,6 +153,7 @@ class ItemService:
         if len(files) != len(paths):
             raise ValidationError("Files and paths counts do not match")
 
+        normalized_password = self.normalize_item_password(password)
         folder_name = self._infer_folder_name(paths)
         stored_name = f"{uuid.uuid4().hex}.zip"
 
@@ -151,6 +186,11 @@ class ItemService:
             {"file_count": len(files), "top_level_dir": folder_name},
             separators=(",", ":"),
         )
+        password_hash = (
+            self.hash_item_password(normalized_password)
+            if normalized_password is not None
+            else None
+        )
 
         try:
             item = self.repository.create(
@@ -161,6 +201,7 @@ class ItemService:
                 mime_type="application/zip",
                 size_bytes=size_bytes,
                 meta_json=meta_json,
+                password_hash=password_hash,
             )
             return item
         except SQLAlchemyError as e:
@@ -168,11 +209,23 @@ class ItemService:
             logger.error("Database error creating folder item: %s", e, exc_info=True)
             raise FileOperationError("Failed to create item record")
 
-    def create_link(self, *, url: str, name: Optional[str] = None) -> Item:
+    def create_link(
+        self,
+        *,
+        url: str,
+        name: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> Item:
         normalized_url = self._normalize_link_url(url)
+        normalized_password = self.normalize_item_password(password)
         display_name = self._normalize_display_name(name) or self._derive_link_display_name(normalized_url)
         stored_name = self._synthetic_stored_name("link")
         meta_json = json.dumps({"url": normalized_url}, separators=(",", ":"))
+        password_hash = (
+            self.hash_item_password(normalized_password)
+            if normalized_password is not None
+            else None
+        )
 
         try:
             return self.repository.create(
@@ -183,16 +236,29 @@ class ItemService:
                 mime_type="text/uri-list",
                 size_bytes=len(normalized_url.encode("utf-8")),
                 meta_json=meta_json,
+                password_hash=password_hash,
             )
         except SQLAlchemyError as e:
             logger.error("Database error creating link item: %s", e, exc_info=True)
             raise FileOperationError("Failed to create item record")
 
-    def create_note(self, *, text: str, title: Optional[str] = None) -> Item:
+    def create_note(
+        self,
+        *,
+        text: str,
+        title: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> Item:
         normalized_text = self._normalize_note_text(text)
+        normalized_password = self.normalize_item_password(password)
         display_name = self._normalize_note_title(title) or self._derive_note_title(normalized_text)
         stored_name = self._synthetic_stored_name("note")
         meta_json = json.dumps({"text": normalized_text}, separators=(",", ":"))
+        password_hash = (
+            self.hash_item_password(normalized_password)
+            if normalized_password is not None
+            else None
+        )
 
         try:
             return self.repository.create(
@@ -203,6 +269,7 @@ class ItemService:
                 mime_type="text/plain",
                 size_bytes=len(normalized_text.encode("utf-8")),
                 meta_json=meta_json,
+                password_hash=password_hash,
             )
         except SQLAlchemyError as e:
             logger.error("Database error creating note item: %s", e, exc_info=True)
@@ -250,8 +317,14 @@ class ItemService:
         *,
         q: Optional[str] = None,
         kind: Optional[ItemKind] = None,
+        protected: Optional[bool] = None,
     ) -> int:
-        items = self.repository.find_all(q=q, kind=kind, state=ItemState.READY_TO_DELETE)
+        items = self.repository.find_all(
+            q=q,
+            kind=kind,
+            state=ItemState.READY_TO_DELETE,
+            protected=protected,
+        )
         if not items:
             return 0
 
@@ -299,6 +372,41 @@ class ItemService:
             name = item.display_name
             return name if name.lower().endswith(".zip") else f"{name}.zip"
         return item.display_name
+
+    def item_requires_password(self, item: Item) -> bool:
+        return bool(item.password_hash)
+
+    def normalize_item_password(self, raw: Optional[str]) -> Optional[str]:
+        if raw is None:
+            return None
+        if not isinstance(raw, str):
+            raise ValidationError("Password must be a string")
+
+        value = raw.strip()
+        if not value:
+            return None
+        if len(value) < self.MIN_ITEM_PASSWORD_LENGTH:
+            raise ValidationError(
+                f"Password must be at least {self.MIN_ITEM_PASSWORD_LENGTH} characters"
+            )
+        if len(value) > self.MAX_ITEM_PASSWORD_LENGTH:
+            raise ValidationError(
+                f"Password must be at most {self.MAX_ITEM_PASSWORD_LENGTH} characters"
+            )
+        return value
+
+    def hash_item_password(self, password: str) -> str:
+        return generate_password_hash(password)
+
+    def verify_item_password(self, item: Item, raw_password: Optional[str]) -> bool:
+        if not self.item_requires_password(item):
+            return True
+
+        normalized = self.normalize_item_password(raw_password)
+        if normalized is None or not item.password_hash:
+            return False
+
+        return check_password_hash(item.password_hash, normalized)
 
     def _infer_folder_name(self, paths: list[str]) -> str:
         first = sanitize_zip_path(paths[0])
