@@ -106,7 +106,7 @@ Single-page app — **no client-side router**. `App.tsx` is the sole root compon
 
 ## Current API Contract
 
-- `GET /api/health`
+- `GET /api/health` (returns `{"ok": true, "version": "<app-version>"}`)
 - `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `page`, `per_page`
 - `POST /api/items/files` (multipart field `files`, repeatable; optional `password`)
 - `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`; optional `password`)
@@ -146,7 +146,7 @@ Frontend tests (`frontend/src/test/`): Vitest + jsdom + Testing Library. API mod
 - `FLASK_ENV=production` → `Config.from_env()` (reads `DATABASE_URL`, `UPLOAD_FOLDER`, etc.) and **requires** `SECRET_KEY`.
 - Any other `FLASK_ENV` → `Config.for_development()` (local SQLite defaults)
 - Keep `SECRET_KEY` stable across production restarts/deploys to preserve protected-item unlock sessions.
-- Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `HOST_PORT` (default 5001)
+- Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `APP_VERSION` (health/UI version string; auto-detected from latest git tag by `deploy.sh`, fallback `dev`), `HOST_PORT` (default 5001)
 
 ## When Changing Code
 

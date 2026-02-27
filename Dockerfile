@@ -27,10 +27,12 @@ FROM python:3.12-slim-bookworm AS runtime-base
 RUN useradd --create-home --shell /bin/bash app
 
 # Set environment variables
+ARG APP_VERSION=dev
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/home/app/.local/bin:$PATH" \
-    FLASK_APP=run.py
+    FLASK_APP=run.py \
+    APP_VERSION=${APP_VERSION}
 
 WORKDIR /app
 

@@ -6,7 +6,7 @@ from flask import Flask
 from flask.testing import FlaskClient
 from werkzeug.datastructures import MultiDict
 
-from app import db
+from app import create_app, db
 from app.domain.item import Item
 
 
@@ -18,7 +18,31 @@ def _assert_password_flags(payload: dict, *, protected: bool, unlocked: bool):
 def test_health(client: FlaskClient):
     res = client.get("/api/health")
     assert res.status_code == 200
-    assert res.get_json() == {"ok": True}
+    data = res.get_json()
+    assert data["ok"] is True
+    assert data["version"] == "dev"
+
+
+def test_health_returns_configured_version(temp_upload_dir):
+    """Version from config propagates to /api/health response."""
+    from app.config import Config
+
+    cfg = Config(
+        SECRET_KEY="test",
+        DATABASE_URI="sqlite:///:memory:",
+        UPLOAD_FOLDER=temp_upload_dir,
+        MAX_CONTENT_LENGTH=2 * 1024 * 1024 * 1024,
+        SESSION_COOKIE_SECURE=False,
+        APP_VERSION="1.2.3",
+    )
+    flask_app = create_app(cfg)
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        db.create_all()
+        client = flask_app.test_client()
+        res = client.get("/api/health")
+        assert res.get_json()["version"] == "1.2.3"
+        db.drop_all()
 
 
 def test_upload_files_list_download_and_delete(app: Flask, client: FlaskClient):

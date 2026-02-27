@@ -177,6 +177,11 @@ export async function deleteReadyToDelete(params?: { q?: string; kind?: ItemKind
   return apiJson<{ deleted: number }>(`/api/items/ready-to-delete${query}`, { method: "DELETE" });
 }
 
+export async function fetchVersion(): Promise<string> {
+  const data = await apiJson<{ ok: boolean; version: string }>("/api/health");
+  return data.version ?? "dev";
+}
+
 export async function updateItemState(id: number, state: ItemState): Promise<ItemDto> {
   return apiJson<ItemDto>(`/api/items/${id}`, {
     method: "PATCH",

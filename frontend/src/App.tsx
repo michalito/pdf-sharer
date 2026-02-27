@@ -27,6 +27,7 @@ import {
   createNote,
   deleteItem,
   deleteReadyToDelete,
+  fetchVersion,
   getItem,
   ItemDto,
   ItemKind,
@@ -162,6 +163,12 @@ export default function App() {
       ] as const,
     [debouncedSearch, kindFilter, stateFilter, accessFilter, page, perPage],
   );
+
+  const versionQuery = useQuery({
+    queryKey: ["version"],
+    queryFn: fetchVersion,
+    staleTime: Infinity,
+  });
 
   const itemsQuery = useQuery({
     queryKey,
@@ -927,7 +934,7 @@ export default function App() {
       </main>
 
       <footer className="mx-auto mt-8 mb-4 flex w-full max-w-6xl items-center justify-between gap-3 border-t border-[var(--app-border)]/50 px-4 pt-4 text-[11px] text-[var(--app-muted)]">
-        <div className="font-mono uppercase tracking-[0.08em]">saíta · Internal use</div>
+        <div className="font-mono uppercase tracking-[0.08em]">saíta{versionQuery.data ? ` · v${versionQuery.data}` : ""} · Internal use</div>
         <button
           type="button"
           onClick={() => setIsGuideOpen(true)}

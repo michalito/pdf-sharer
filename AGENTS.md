@@ -65,10 +65,11 @@ npm --prefix frontend run build
 - Bulk cleanup exists at `DELETE /api/items/ready-to-delete`.
 - Folder uploads are zipped server-side with zip path sanitization (`app/utils/zip_utils.py`).
 - Every request gets `X-Request-ID` (incoming value reused if provided).
+- `GET /api/health` returns `{"ok": true, "version": "<app-version>"}`.
 
 ## API Surface (Current)
 
-- `GET /api/health`
+- `GET /api/health` (returns `ok` + `version`)
 - `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `page`, `per_page`
 - `POST /api/items/files`
 - `POST /api/items/folder`
@@ -90,6 +91,7 @@ npm --prefix frontend run build
 - Any non-production `FLASK_ENV` uses `Config.for_development()`, which currently fixes DB path and upload folder to local defaults.
 - `MAX_CONTENT_LENGTH` default is `2147483648` (2GB).
 - `NOTE_EXCERPT_LENGTH` controls note preview length in `GET /api/items` and is bounded to `40..1000` (default `180`).
+- `APP_VERSION` is exposed by `GET /api/health` and the UI footer; when unset, `deploy.sh` auto-detects from latest git tag (fallback `dev`).
 
 ## Change Checklist For Agents
 

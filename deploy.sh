@@ -34,6 +34,17 @@ check_dependencies() {
     done
 }
 
+detect_app_version() {
+    # Use APP_VERSION from env/.env if already set, otherwise derive from git
+    if [[ -n "${APP_VERSION:-}" ]]; then
+        return
+    fi
+    local ver
+    ver=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+    ver="${ver#v}"  # strip leading 'v'
+    export APP_VERSION="${ver:-dev}"
+}
+
 ensure_env_file() {
     if [[ ! -f .env ]]; then
         if [[ -f .env.example ]]; then
@@ -109,6 +120,7 @@ cmd_dev() {
         up|start)
             info "Starting development containers..."
             load_env
+            detect_app_version
 
             # Build and start with dev config (detached)
             docker compose -f docker-compose.dev.yaml build
@@ -155,6 +167,7 @@ cmd_prod() {
             info "Starting production containers..."
             ensure_env_file
             load_env
+            detect_app_version
 
             # Build and start (detached)
             docker compose build
@@ -216,6 +229,7 @@ cmd_rebuild() {
         ensure_env_file
     fi
     load_env
+    detect_app_version
 
     docker compose -f "$compose_file" down
     docker compose -f "$compose_file" build --no-cache
