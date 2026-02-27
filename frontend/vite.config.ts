@@ -11,6 +11,7 @@ export default defineConfig(({ command }) => {
       proxy: {
         "/api": { target: proxyTarget, changeOrigin: true },
         "/d": { target: proxyTarget, changeOrigin: true },
+        "/static": { target: proxyTarget, changeOrigin: true },
       },
     },
     build: {
