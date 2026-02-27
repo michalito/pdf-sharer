@@ -52,12 +52,12 @@ Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh pr
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/health` | Health check |
-| `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&page=1&per_page=50`; note items include `noteExcerpt`, not full text) |
+| `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&page=1&per_page=50`; `q` matches names and note body text; note items include `noteExcerpt`, not full `noteText`) |
 | `POST` | `/api/items/files` | Upload files (multipart/form-data, field: `files`, repeatable) |
 | `POST` | `/api/items/folder` | Upload a folder (multipart: `files` + `paths` repeatable) |
 | `POST` | `/api/items/link` | Save a URL (JSON: `{"url":"https://...","name?":"optional label"}`) |
 | `POST` | `/api/items/note` | Save a note (JSON: `{"text":"...","title?":"optional title"}`) |
-| `GET` | `/api/items/<id>` | Fetch item metadata (includes full `noteText` for note items) |
+| `GET` | `/api/items/<id>` | Fetch item metadata (note items include full `noteText` and `noteExcerpt`) |
 | `PATCH` | `/api/items/<id>` | Update item state (JSON: `{"state":"done"}`) |
 | `GET` | `/api/items/<id>/download` | Download a file/folder item |
 | `DELETE` | `/api/items/<id>` | Delete an item (requires state `ready_to_delete`) |

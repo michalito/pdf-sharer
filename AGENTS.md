@@ -56,9 +56,10 @@ npm --prefix frontend run build
   - file/folder: direct download
   - link: HTTP redirect to target URL
   - note: rendered note page
+- Search behavior (`q` on `GET /api/items`) matches item names and note body text.
 - Note payload shape:
   - `GET /api/items` returns note summaries (`noteExcerpt`)
-  - `GET /api/items/<id>` returns full `noteText`
+  - `GET /api/items/<id>` returns full `noteText` (and `noteExcerpt`)
 - Deletion workflow is strict: `DELETE /api/items/<id>` only works when item state is `ready_to_delete`.
 - Bulk cleanup exists at `DELETE /api/items/ready-to-delete`.
 - Folder uploads are zipped server-side with zip path sanitization (`app/utils/zip_utils.py`).

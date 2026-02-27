@@ -2,7 +2,7 @@
 
 This file guides Claude Code when working in this repository.
 
-Last verified against code: 2026-02-24.
+Last verified against code: 2026-02-27.
 
 ## Project Snapshot
 
@@ -92,7 +92,8 @@ Factory pattern: `app/__init__.py:create_app()`.
 
 Note payload behavior:
 - List endpoint (`GET /api/items`) returns note summaries via `noteExcerpt`
-- Detail endpoint (`GET /api/items/<id>`) returns full note body in `noteText`
+- Detail endpoint (`GET /api/items/<id>`) returns full note body in `noteText` (and includes `noteExcerpt`)
+- Search query `q` matches item names and note body text
 
 ## Important Behavioral Details
 
