@@ -6,10 +6,12 @@
 
 {% block content %}
     <section class="surface-panel error-panel">
-        <div class="panel-inner">
+        <div class="panel-head">
             <p class="panel-kicker">Public share link error</p>
             <h1 class="error-code">{{ error_code }}</h1>
             <p class="error-message">{{ error_message }}</p>
+        </div>
+        <div class="panel-body panel-body-center">
             <a href="{{ url_for('web.index') }}" class="btn-secondary">Go Home</a>
         </div>
     </section>

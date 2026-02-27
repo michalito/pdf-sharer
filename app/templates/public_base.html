@@ -9,7 +9,7 @@
 </head>
 <body>
     <div class="page-shell">
-        <header class="brand-strip reveal">
+        <header class="brand-strip">
             <a class="brand-home" href="{{ url_for('web.index') }}">
                 <div class="brand-mark">
                     <img src="{{ url_for('static', filename='logo.png') }}" alt="saíta logo">
@@ -21,11 +21,11 @@
             </a>
         </header>
 
-        <main class="content-shell {% block content_shell_class %}{% endblock %} reveal reveal-d1">
+        <main class="content-shell {% block content_shell_class %}{% endblock %}">
             {% block content %}{% endblock %}
         </main>
 
-        <footer class="page-footer reveal reveal-d2">
+        <footer class="page-footer">
             <a class="footer-link" href="{{ url_for('web.index') }}">Open saíta home</a>
         </footer>
     </div>
