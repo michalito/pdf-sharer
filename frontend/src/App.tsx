@@ -7,6 +7,7 @@ import {
   Copy,
   ChevronDown,
   Download,
+  Eye,
   ExternalLink,
   File as FileIcon,
   FolderArchive,
@@ -15,6 +16,7 @@ import {
   Lock,
   Link2,
   Moon,
+  Pencil,
   Pin,
   Plus,
   Search,
@@ -31,6 +33,7 @@ import {
 } from "lucide-react";
 import ConfirmDialog from "./components/ConfirmDialog";
 import DropOverlay from "./components/DropOverlay";
+import MarkdownProse from "./components/MarkdownProse";
 import HowItWorksPanel from "./components/HowItWorksPanel";
 import StorageDashboard from "./components/StorageDashboard";
 import Select from "./components/Select";
@@ -225,6 +228,8 @@ export default function App() {
   const [linkPasswordConfirm, setLinkPasswordConfirm] = useState("");
   const [noteTitle, setNoteTitle] = useState("");
   const [noteText, setNoteText] = useState("");
+  const [noteEditTab, setNoteEditTab] = useState<"write" | "preview">("write");
+  const [notePreviewShowRaw, setNotePreviewShowRaw] = useState(false);
   const [notePassword, setNotePassword] = useState("");
   const [notePasswordConfirm, setNotePasswordConfirm] = useState("");
   const [uploadDialog, dispatchUploadDialog] = useReducer(uploadDialogReducer, initialUploadDialogState);
@@ -606,6 +611,7 @@ export default function App() {
       setNoteDialogOpen(false);
       setNoteTitle("");
       setNoteText("");
+      setNoteEditTab("write");
       setNotePassword("");
       setNotePasswordConfirm("");
       setNoteTtl("");
@@ -1585,6 +1591,7 @@ export default function App() {
         onCancel={() => {
           if (createNoteMutation.isPending) return;
           setNoteDialogOpen(false);
+          setNoteEditTab("write");
           setNotePassword("");
           setNotePasswordConfirm("");
           setNoteSpaceId(undefined);
@@ -1605,22 +1612,69 @@ export default function App() {
           />
         </label>
 
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Note
-          <textarea
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter") return;
-              if (!(e.metaKey || e.ctrlKey)) return;
-              e.preventDefault();
-              void handleCreateNote();
-            }}
-            placeholder="Write a short note..."
-            rows={6}
-            className={`${dialogFieldClass} resize-y`}
-          />
-        </label>
+        <div className="mt-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+              Note
+            </span>
+            <div className="inline-flex overflow-hidden rounded-md border border-[var(--app-border)]">
+              <button
+                type="button"
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium transition-colors ${
+                  noteEditTab === "write"
+                    ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                    : "bg-[var(--app-panel)] text-[var(--app-muted)] hover:bg-[var(--app-hover)]"
+                }`}
+                onClick={() => setNoteEditTab("write")}
+              >
+                <Pencil className="h-3 w-3" />
+                Write
+              </button>
+              <button
+                type="button"
+                className={`inline-flex items-center gap-1.5 border-l border-[var(--app-border)] px-2.5 py-1 text-xs font-medium transition-colors ${
+                  noteEditTab === "preview"
+                    ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                    : "bg-[var(--app-panel)] text-[var(--app-muted)] hover:bg-[var(--app-hover)]"
+                }`}
+                onClick={() => setNoteEditTab("preview")}
+              >
+                <Eye className="h-3 w-3" />
+                Preview
+              </button>
+            </div>
+          </div>
+
+          {noteEditTab === "write" ? (
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                if (!(e.metaKey || e.ctrlKey)) return;
+                e.preventDefault();
+                void handleCreateNote();
+              }}
+              placeholder="Write a note... (supports markdown)"
+              rows={6}
+              className={`${dialogFieldClass} resize-y`}
+            />
+          ) : (
+            <div className="mt-1 min-h-[9.5rem] max-h-[20rem] overflow-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-2">
+              {noteText.trim() ? (
+                <MarkdownProse content={noteText} />
+              ) : (
+                <p className="text-sm italic text-[var(--app-muted)]">Nothing to preview</p>
+              )}
+            </div>
+          )}
+
+          {noteEditTab === "write" && (
+            <p className="mt-1 text-[11px] text-[var(--app-muted)]">
+              Supports <strong>markdown</strong>: headings, bold, italic, lists, links, code, and tables.
+            </p>
+          )}
+        </div>
 
         {spaces.length > 0 ? (
           <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
@@ -1686,15 +1740,45 @@ export default function App() {
         description={notePreviewItem ? `Created ${formatDateTime(notePreviewItem.createdAt)}` : undefined}
         confirmLabel="Copy share link"
         cancelLabel="Close"
-        onCancel={() => setNotePreviewItem(null)}
+        size="lg"
+        onCancel={() => {
+          setNotePreviewItem(null);
+          setNotePreviewShowRaw(false);
+        }}
         onConfirm={() => {
           if (!notePreviewItem) return;
           void copyLink(notePreviewItem.id);
           setNotePreviewItem(null);
+          setNotePreviewShowRaw(false);
         }}
       >
-        <div className="mt-4 max-h-[45vh] overflow-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap">
-          {notePreviewItem?.noteText || "(empty)"}
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setNotePreviewShowRaw((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--app-muted)] transition-colors hover:bg-[var(--app-hover)] hover:text-[var(--app-text)]"
+          >
+            {notePreviewShowRaw ? (
+              <>
+                <Eye className="h-3 w-3" />
+                Rendered
+              </>
+            ) : (
+              <>
+                <Pencil className="h-3 w-3" />
+                Source
+              </>
+            )}
+          </button>
+        </div>
+        <div className="mt-1 max-h-[45vh] overflow-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-2">
+          {notePreviewShowRaw ? (
+            <pre className="text-sm leading-relaxed whitespace-pre-wrap">{notePreviewItem?.noteText || "(empty)"}</pre>
+          ) : notePreviewItem?.noteText ? (
+            <MarkdownProse content={notePreviewItem.noteText} />
+          ) : (
+            <span className="text-sm text-[var(--app-muted)]">(empty)</span>
+          )}
         </div>
       </ConfirmDialog>
 
