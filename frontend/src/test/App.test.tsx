@@ -132,7 +132,9 @@ it("submits the save-link dialog", async () => {
   renderApp();
 
   await screen.findByText("Shared items");
-  await user.click(screen.getAllByRole("button", { name: "Save link" })[0]);
+  const newMenu = screen.getByTestId("new-menu");
+  await user.click(within(newMenu).getByRole("button", { name: "New" }));
+  await user.click(within(newMenu).getByRole("button", { name: "Save link" }));
 
   const dialog = await screen.findByRole("dialog", { name: "Save external link" });
   await user.type(within(dialog).getByPlaceholderText("https://example.com/docs"), "https://example.com/new");
@@ -155,7 +157,9 @@ it("submits the save-note dialog", async () => {
   renderApp();
 
   await screen.findByText("Shared items");
-  await user.click(screen.getAllByRole("button", { name: "Save note" })[0]);
+  const newMenu = screen.getByTestId("new-menu");
+  await user.click(within(newMenu).getByRole("button", { name: "New" }));
+  await user.click(within(newMenu).getByRole("button", { name: "Save note" }));
 
   const dialog = await screen.findByRole("dialog", { name: "Save note" });
   await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Retro");
@@ -171,6 +175,29 @@ it("submits the save-note dialog", async () => {
       password: "notespass",
     });
   });
+});
+
+it("opens and closes the New dropdown", async () => {
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("Shared items");
+  const newMenu = screen.getByTestId("new-menu");
+  const newBtn = within(newMenu).getByRole("button", { name: "New" });
+
+  // Opens on click
+  await user.click(newBtn);
+  expect(within(newMenu).getByRole("button", { name: "Upload files" })).toBeInTheDocument();
+
+  // Closes on Escape
+  await user.keyboard("{Escape}");
+  expect(within(newMenu).queryByRole("button", { name: "Upload files" })).not.toBeInTheDocument();
+
+  // Opens again, closes on outside click
+  await user.click(newBtn);
+  expect(within(newMenu).getByRole("button", { name: "Upload files" })).toBeInTheDocument();
+  await user.click(document.body);
+  expect(within(newMenu).queryByRole("button", { name: "Upload files" })).not.toBeInTheDocument();
 });
 
 it("shows kind-specific actions and loads full note text for preview", async () => {
