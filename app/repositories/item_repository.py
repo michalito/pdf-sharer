@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Generic, Optional, TypeVar
 
 from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import joinedload
 
 from app import db
 from app.domain.item import Item, ItemKind, ItemState
@@ -50,9 +51,14 @@ class ItemRepository:
         kind: Optional[ItemKind] = None,
         state: Optional[ItemState] = None,
         protected: Optional[bool] = None,
+        space_id: Optional[int] = None,
+        unspaced: Optional[bool] = None,
     ) -> list[Item]:
-        query = Item.query.order_by(Item.created_at.desc())
-        query = self._apply_filters(query, q=q, kind=kind, state=state, protected=protected)
+        query = Item.query.options(joinedload(Item.space)).order_by(Item.created_at.desc())
+        query = self._apply_filters(
+            query, q=q, kind=kind, state=state, protected=protected,
+            space_id=space_id, unspaced=unspaced,
+        )
 
         return query.all()
 
@@ -62,14 +68,19 @@ class ItemRepository:
         kind: Optional[ItemKind] = None,
         state: Optional[ItemState] = None,
         protected: Optional[bool] = None,
+        space_id: Optional[int] = None,
+        unspaced: Optional[bool] = None,
         page: int = 1,
         per_page: int = 50,
     ) -> PaginatedResult[Item]:
         page = max(1, page)
         per_page = min(max(1, per_page), self.MAX_PER_PAGE)
 
-        query = Item.query.order_by(Item.created_at.desc())
-        query = self._apply_filters(query, q=q, kind=kind, state=state, protected=protected)
+        query = Item.query.options(joinedload(Item.space)).order_by(Item.created_at.desc())
+        query = self._apply_filters(
+            query, q=q, kind=kind, state=state, protected=protected,
+            space_id=space_id, unspaced=unspaced,
+        )
 
         total = query.count()
         pages = (total + per_page - 1) // per_page if total > 0 else 1
@@ -115,6 +126,7 @@ class ItemRepository:
         size_bytes: int,
         meta_json: Optional[str] = None,
         password_hash: Optional[str] = None,
+        space_id: Optional[int] = None,
     ) -> Item:
         item = Item(
             stored_name=stored_name,
@@ -125,6 +137,7 @@ class ItemRepository:
             size_bytes=size_bytes,
             meta_json=meta_json,
             password_hash=password_hash,
+            space_id=space_id,
         )
         db.session.add(item)
         db.session.commit()
@@ -132,6 +145,22 @@ class ItemRepository:
 
     def update_state(self, item: Item, state: ItemState) -> Item:
         item.state = state.value
+        db.session.commit()
+        return item
+
+    def update_item_fields(
+        self,
+        item: Item,
+        *,
+        new_state: Optional[ItemState] = None,
+        new_space_id: Optional[int] = None,
+        update_space: bool = False,
+    ) -> Item:
+        """Apply state and/or space changes in a single commit."""
+        if new_state is not None:
+            item.state = new_state.value
+        if update_space:
+            item.space_id = new_space_id
         db.session.commit()
         return item
 
@@ -144,6 +173,11 @@ class ItemRepository:
             db.session.delete(item)
         db.session.commit()
 
+    def update_space(self, item: Item, space_id: Optional[int]) -> Item:
+        item.space_id = space_id
+        db.session.commit()
+        return item
+
     def _apply_filters(
         self,
         query,
@@ -152,6 +186,8 @@ class ItemRepository:
         kind: Optional[ItemKind],
         state: Optional[ItemState],
         protected: Optional[bool],
+        space_id: Optional[int] = None,
+        unspaced: Optional[bool] = None,
     ):
         if kind is not None:
             query = query.filter(Item.kind == kind.value)
@@ -163,6 +199,11 @@ class ItemRepository:
             query = query.filter(Item.password_hash.is_not(None))
         elif protected is False:
             query = query.filter(Item.password_hash.is_(None))
+
+        if space_id is not None:
+            query = query.filter(Item.space_id == space_id)
+        elif unspaced is True:
+            query = query.filter(Item.space_id.is_(None))
 
         search = q.strip().lower() if q else ""
         if search:

@@ -21,19 +21,25 @@ import {
 } from "lucide-react";
 import ConfirmDialog from "./components/ConfirmDialog";
 import HowItWorksPanel from "./components/HowItWorksPanel";
+import SpaceBar, { SpaceFilter } from "./components/SpaceBar";
 import UploadQueue, { UploadTask } from "./components/UploadQueue";
 import {
   createLink,
   createNote,
+  createSpace,
   deleteItem,
   deleteReadyToDelete,
+  deleteSpace,
   fetchVersion,
   getItem,
   ItemDto,
   ItemKind,
   ItemState,
   listItems,
-  updateItemState,
+  listSpaces,
+  renameSpace,
+  SpaceDto,
+  updateItem,
   unlockItem,
   uploadFiles,
   uploadFolder,
@@ -77,13 +83,6 @@ function inferFolderName(files: File[]): string {
   return rel.split("/")[0] || "folder";
 }
 
-function kindLabel(kind: ItemKind): string {
-  if (kind === "folder") return "Folder archive";
-  if (kind === "file") return "Single file";
-  if (kind === "link") return "External link";
-  return "Shared note";
-}
-
 function kindPreview(item: ItemDto): string | null {
   if (item.isPasswordProtected && !item.isPasswordUnlocked && (item.kind === "link" || item.kind === "note")) {
     return "Protected content - unlock required";
@@ -123,8 +122,10 @@ export default function App() {
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [stateFilter, setStateFilter] = useState<StateFilter>("active");
   const [accessFilter, setAccessFilter] = useState<AccessFilter>("all");
+  const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>("all");
   const [page, setPage] = useState(1);
   const perPage = 50;
+  const [deleteSpaceTarget, setDeleteSpaceTarget] = useState<SpaceDto | null>(null);
 
   const [isDragging, setIsDragging] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
@@ -149,6 +150,9 @@ export default function App() {
   const [uploadDialogFiles, setUploadDialogFiles] = useState<File[]>([]);
   const [uploadPassword, setUploadPassword] = useState("");
   const [uploadPasswordConfirm, setUploadPasswordConfirm] = useState("");
+  const [uploadSpaceId, setUploadSpaceId] = useState<number | undefined>(undefined);
+  const [linkSpaceId, setLinkSpaceId] = useState<number | undefined>(undefined);
+  const [noteSpaceId, setNoteSpaceId] = useState<number | undefined>(undefined);
   const [unlockTarget, setUnlockTarget] = useState<{ item: ItemDto; action: "download" | "link" | "note" } | null>(
     null,
   );
@@ -159,9 +163,9 @@ export default function App() {
     () =>
       [
         "items",
-        { q: debouncedSearch, kind: kindFilter, state: stateFilter, access: accessFilter, page, perPage },
+        { q: debouncedSearch, kind: kindFilter, state: stateFilter, access: accessFilter, space: spaceFilter, page, perPage },
       ] as const,
-    [debouncedSearch, kindFilter, stateFilter, accessFilter, page, perPage],
+    [debouncedSearch, kindFilter, stateFilter, accessFilter, spaceFilter, page, perPage],
   );
 
   const versionQuery = useQuery({
@@ -169,6 +173,13 @@ export default function App() {
     queryFn: fetchVersion,
     staleTime: Infinity,
   });
+
+  const spacesQuery = useQuery({
+    queryKey: ["spaces"],
+    queryFn: listSpaces,
+  });
+
+  const spaces = spacesQuery.data ?? [];
 
   const itemsQuery = useQuery({
     queryKey,
@@ -178,21 +189,38 @@ export default function App() {
         kind: kindFilter === "all" ? undefined : kindFilter,
         state: stateFilter === "all" ? undefined : stateFilter,
         protected: accessFilter === "all" ? undefined : accessFilter === "protected",
+        space: spaceFilter === "all" ? undefined : spaceFilter === "none" ? "none" : String(spaceFilter),
         page,
         perPage,
       }),
   });
 
-  const updateStateMutation = useMutation({
-    mutationFn: async (vars: { id: number; state: ItemState }) => updateItemState(vars.id, vars.state),
+  const updateItemMutation = useMutation({
+    mutationFn: async (vars: { id: number; state?: ItemState; spaceId?: number | null }) =>
+      updateItem(vars.id, { state: vars.state, spaceId: vars.spaceId }),
     onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey: ["items"] });
 
       const prev = queryClient.getQueryData<Awaited<ReturnType<typeof listItems>>>(queryKey);
       if (!prev) return { prev };
 
-      const nextItems = prev.items.map((it) => (it.id === vars.id ? { ...it, state: vars.state } : it));
-      const filteredItems = stateFilter === "all" ? nextItems : nextItems.filter((it) => it.state === stateFilter);
+      const nextItems = prev.items.map((it) => {
+        if (it.id !== vars.id) return it;
+        const updated = { ...it };
+        if (vars.state !== undefined) updated.state = vars.state;
+        if (vars.spaceId !== undefined) updated.spaceId = vars.spaceId;
+        return updated;
+      });
+
+      const filteredItems = nextItems.filter((it) => {
+        if (stateFilter !== "all" && it.state !== stateFilter) return false;
+        if (spaceFilter === "none" && it.spaceId != null) return false;
+        if (typeof spaceFilter === "number" && it.spaceId !== spaceFilter) return false;
+        if (kindFilter !== "all" && it.kind !== kindFilter) return false;
+        if (accessFilter === "protected" && !it.isPasswordProtected) return false;
+        if (accessFilter === "unprotected" && it.isPasswordProtected) return false;
+        return true;
+      });
 
       queryClient.setQueryData(queryKey, {
         ...prev,
@@ -203,10 +231,11 @@ export default function App() {
     },
     onError: (e, _vars, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(queryKey, ctx.prev);
-      toast.error(e instanceof Error ? e.message : "Failed to update status");
+      toast.error(e instanceof Error ? e.message : "Failed to update item");
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
+      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
     },
   });
 
@@ -220,7 +249,7 @@ export default function App() {
   });
 
   const bulkDeleteMutation = useMutation({
-    mutationFn: async (vars: { q?: string; kind?: ItemKind; protected?: boolean }) => deleteReadyToDelete(vars),
+    mutationFn: async (vars: { q?: string; kind?: ItemKind; protected?: boolean; space?: string }) => deleteReadyToDelete(vars),
     onSuccess: async (res) => {
       setPage(1);
       await queryClient.invalidateQueries({ queryKey: ["items"] });
@@ -230,21 +259,55 @@ export default function App() {
   });
 
   const createLinkMutation = useMutation({
-    mutationFn: async (vars: { url: string; name?: string; password?: string }) => createLink(vars),
+    mutationFn: async (vars: { url: string; name?: string; password?: string; spaceId?: number }) => createLink(vars),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
+      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
       toast.success("Link saved");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to save link"),
   });
 
   const createNoteMutation = useMutation({
-    mutationFn: async (vars: { text: string; title?: string; password?: string }) => createNote(vars),
+    mutationFn: async (vars: { text: string; title?: string; password?: string; spaceId?: number }) => createNote(vars),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
+      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
       toast.success("Note saved");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to save note"),
+  });
+
+  const createSpaceMutation = useMutation({
+    mutationFn: async (name: string) => createSpace(name),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      toast.success("Space created");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to create space"),
+  });
+
+  const renameSpaceMutation = useMutation({
+    mutationFn: async (vars: { id: number; name: string }) => renameSpace(vars.id, vars.name),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      toast.success("Space renamed");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to rename space"),
+  });
+
+  const deleteSpaceMutation = useMutation({
+    mutationFn: async (id: number) => deleteSpace(id),
+    onSuccess: async (res) => {
+      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      await queryClient.invalidateQueries({ queryKey: ["items"] });
+      toast.success(
+        res.unassigned > 0
+          ? `Space deleted, ${res.unassigned} item(s) moved to uncollected`
+          : "Space deleted",
+      );
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to delete space"),
   });
 
   async function runUpload<T>(task: UploadTask, fn: (onProgress: (pct: number) => void) => Promise<T>): Promise<T> {
@@ -287,29 +350,32 @@ export default function App() {
     setUploadDialogFiles(files);
     setUploadPassword("");
     setUploadPasswordConfirm("");
+    setUploadSpaceId(activeSpaceId);
     setUploadDialogOpen(true);
   }
 
-  async function handleUploadFiles(files: File[], password?: string) {
+  const activeSpaceId = typeof spaceFilter === "number" ? spaceFilter : undefined;
+
+  async function handleUploadFiles(files: File[], password?: string, spaceId?: number) {
     if (files.length === 0) return;
     const label = files.length === 1 ? `Uploading ${files[0].name}` : `Uploading ${files.length} files`;
     const task: UploadTask = { id: uuid(), label, progress: 0, status: "uploading" };
 
     try {
-      const created = await runUpload(task, (onProgress) => uploadFiles(files, { onProgress, password }));
+      const created = await runUpload(task, (onProgress) => uploadFiles(files, { onProgress, password, spaceId }));
       toast.success(created.length === 1 ? "Uploaded" : `Uploaded ${created.length} files`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Upload failed");
     }
   }
 
-  async function handleUploadFolder(files: File[], password?: string) {
+  async function handleUploadFolder(files: File[], password?: string, spaceId?: number) {
     if (files.length === 0) return;
     const folderName = inferFolderName(files);
     const task: UploadTask = { id: uuid(), label: `Uploading folder “${folderName}”`, progress: 0, status: "uploading" };
 
     try {
-      await runUpload(task, (onProgress) => uploadFolder(files, { onProgress, password }));
+      await runUpload(task, (onProgress) => uploadFolder(files, { onProgress, password, spaceId }));
       toast.success(`Uploaded folder “${folderName}”`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Folder upload failed");
@@ -327,11 +393,12 @@ export default function App() {
 
     setUploadDialogOpen(false);
     if (uploadDialogKind === "files") {
-      await handleUploadFiles(uploadDialogFiles, validation.password);
+      await handleUploadFiles(uploadDialogFiles, validation.password, uploadSpaceId);
     } else {
-      await handleUploadFolder(uploadDialogFiles, validation.password);
+      await handleUploadFolder(uploadDialogFiles, validation.password, uploadSpaceId);
     }
     setUploadDialogFiles([]);
+    await queryClient.invalidateQueries({ queryKey: ["spaces"] });
   }
 
   async function handleCreateLink() {
@@ -349,12 +416,14 @@ export default function App() {
         url,
         name: linkName.trim() || undefined,
         password: validation.password,
+        spaceId: linkSpaceId,
       });
       setLinkDialogOpen(false);
       setLinkUrl("");
       setLinkName("");
       setLinkPassword("");
       setLinkPasswordConfirm("");
+      setLinkSpaceId(undefined);
     } catch {
       // Error toast is handled by mutation onError.
     }
@@ -375,12 +444,14 @@ export default function App() {
         text,
         title: noteTitle.trim() || undefined,
         password: validation.password,
+        spaceId: noteSpaceId,
       });
       setNoteDialogOpen(false);
       setNoteTitle("");
       setNoteText("");
       setNotePassword("");
       setNotePasswordConfirm("");
+      setNoteSpaceId(undefined);
     } catch {
       // Error toast is handled by mutation onError.
     }
@@ -506,12 +577,8 @@ export default function App() {
   const rowActionDangerClass = `${rowActionBaseClass} border-rose-600/45 bg-transparent text-rose-700 hover:bg-rose-600/10 focus-visible:outline-rose-600 dark:text-rose-200`;
   const dialogFieldClass =
     "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
-  const metaTagClass =
-    "inline-flex h-6 w-[8.5rem] items-center rounded-md border border-[var(--app-border)] bg-transparent px-2 text-[11px] font-medium tracking-[0.01em] text-[var(--app-muted)]";
   const stateSelectClass =
-    "relative inline-flex h-8 w-[11.5rem] items-center gap-2 rounded-lg pl-2 pr-8 text-xs font-medium shadow-sm";
-  const metricTagClass =
-    "inline-flex h-6 items-center gap-1.5 rounded-sm border border-[var(--app-border)]/45 bg-[var(--app-panel)]/25 px-2.5 text-[10px] leading-none";
+    "relative inline-flex h-8 items-center gap-2 rounded-lg pl-2 pr-8 text-xs font-medium shadow-sm lg:w-[11.5rem]";
   const summaryMetrics = [
     { label: "Total", value: pagination?.total ?? 0 },
     { label: "Active", value: visibleCounts.active },
@@ -559,7 +626,7 @@ export default function App() {
 
                 <button
                   type="button"
-                  onClick={() => setLinkDialogOpen(true)}
+                  onClick={() => { setLinkSpaceId(activeSpaceId); setLinkDialogOpen(true); }}
                   className={`inline-flex items-center gap-2 ${controlButtonClass}`}
                 >
                   <Link2 className="h-4 w-4" />
@@ -568,7 +635,7 @@ export default function App() {
 
                 <button
                   type="button"
-                  onClick={() => setNoteDialogOpen(true)}
+                  onClick={() => { setNoteSpaceId(activeSpaceId); setNoteDialogOpen(true); }}
                   className={`inline-flex items-center gap-2 ${controlButtonClass}`}
                 >
                   <StickyNote className="h-4 w-4" />
@@ -587,7 +654,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid gap-2 md:grid-cols-[1fr_170px_180px_170px]">
+            <div className="grid gap-2 lg:grid-cols-[1fr_170px_180px_170px]">
               <label className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
                 <input
@@ -656,11 +723,27 @@ export default function App() {
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
               </label>
             </div>
+
+            <SpaceBar
+              spaces={spaces}
+              activeFilter={spaceFilter}
+              onFilterChange={(f) => {
+                setSpaceFilter(f);
+                setPage(1);
+              }}
+              onCreateSpace={(name) => createSpaceMutation.mutate(name)}
+              onRenameSpace={(id, name) => renameSpaceMutation.mutate({ id, name })}
+              onDeleteSpace={(id) => {
+                const s = spaces.find((sp) => sp.id === id);
+                if (s) setDeleteSpaceTarget(s);
+              }}
+              isCreating={createSpaceMutation.isPending}
+            />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 space-y-5 px-4 pt-6">
+      <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 px-4 pt-6">
         {showDropzone ? (
           <section
             onDragOver={onDragOver}
@@ -698,7 +781,7 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setLinkDialogOpen(true)}
+                  onClick={() => { setLinkSpaceId(activeSpaceId); setLinkDialogOpen(true); }}
                   className={`inline-flex items-center gap-2 ${controlButtonClass}`}
                 >
                   <Link2 className="h-4 w-4" />
@@ -706,7 +789,7 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setNoteDialogOpen(true)}
+                  onClick={() => { setNoteSpaceId(activeSpaceId); setNoteDialogOpen(true); }}
                   className={`inline-flex items-center gap-2 ${controlButtonClass}`}
                 >
                   <StickyNote className="h-4 w-4" />
@@ -727,12 +810,14 @@ export default function App() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              {summaryMetrics.map((metric) => (
-                <span key={metric.label} className={metricTagClass}>
-                  <span className="text-[var(--app-muted)]/85">{metric.label}</span>
-                  <span className="text-[11px] font-medium tabular-nums text-[var(--app-text)]/90">{metric.value}</span>
-                </span>
-              ))}
+              <span className="text-[var(--app-muted)]">
+                {summaryMetrics.map((m, i) => (
+                  <span key={m.label}>
+                    {i > 0 && <span className="mx-1.5 opacity-40">&middot;</span>}
+                    {m.label}<span className="ml-1 tabular-nums font-medium text-[var(--app-text)]/75">{m.value}</span>
+                  </span>
+                ))}
+              </span>
               {stateFilter === "ready_to_delete" && (pagination?.total ?? 0) > 0 ? (
                 <button
                   type="button"
@@ -772,11 +857,11 @@ export default function App() {
                 return (
                   <div
                     key={item.id}
-                    className="item-row group flex flex-col gap-4 px-4 py-4 hover:bg-[var(--app-hover)] md:flex-row md:items-center md:justify-between"
+                    className="item-row group flex flex-col gap-3 px-4 py-4 hover:bg-[var(--app-hover)] lg:flex-row lg:items-center lg:justify-between lg:gap-4"
                   >
                     <div className="min-w-0">
                       <div className="flex items-start gap-3">
-                        <div className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--accent-cool)]">
+                        <div className="relative mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--accent-cool)]">
                           {item.kind === "folder" ? (
                             <FolderArchive className="h-4 w-4" />
                           ) : item.kind === "link" ? (
@@ -786,6 +871,12 @@ export default function App() {
                           ) : (
                             <FileIcon className="h-4 w-4" />
                           )}
+                          {item.isPasswordProtected ? (
+                            <Lock
+                              className={`absolute -right-1 -bottom-1 h-3 w-3 ${item.isPasswordUnlocked ? "text-[var(--app-muted)]" : "text-[var(--danger)]"}`}
+                              aria-label={item.isPasswordUnlocked ? "Unlocked" : "Protected"}
+                            />
+                          ) : null}
                         </div>
 
                         <div className="min-w-0">
@@ -793,44 +884,68 @@ export default function App() {
                             {item.name}
                           </div>
                           {preview ? <div className="mt-0.5 truncate text-xs text-[var(--app-muted)]">{preview}</div> : null}
-                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--app-muted)] md:flex-nowrap">
-                            <span className={metaTagClass}>{kindLabel(item.kind)}</span>
-                            {item.isPasswordProtected ? (
-                              <span className={metaTagClass}>
-                                <Lock className="mr-1 h-3 w-3" />
-                                {item.isPasswordUnlocked ? "Unlocked" : "Protected"}
-                              </span>
-                            ) : null}
+                          <div className="mt-2.5 flex flex-col gap-1 text-xs text-[var(--app-muted)] lg:flex-row lg:items-center lg:gap-4">
+                            <div className="flex items-center gap-2 lg:contents">
+                              <div className={`flex-1 basis-0 min-w-0 lg:flex-none ${stateSelectClass} ${stateChipClass[item.state]}`}>
+                                <span className={`h-2 w-2 shrink-0 rounded-[2px] ${stateDotClass[item.state]}`} aria-hidden />
+                                <select
+                                  value={item.state}
+                                  disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
+                                  onChange={(e) =>
+                                    updateItemMutation.mutate({ id: item.id, state: e.target.value as ItemState })
+                                  }
+                                  className="h-full w-full appearance-none bg-transparent pr-1 text-xs font-semibold outline-none disabled:cursor-not-allowed disabled:opacity-70"
+                                  aria-label="Set status"
+                                  title="Set status"
+                                >
+                                  {itemStateOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 opacity-70" />
+                              </div>
 
-                            <div className={`${stateSelectClass} ${stateChipClass[item.state]}`}>
-                              <span className={`h-2 w-2 shrink-0 rounded-[2px] ${stateDotClass[item.state]}`} aria-hidden />
-                              <select
-                                value={item.state}
-                                disabled={updateStateMutation.isPending && updateStateMutation.variables?.id === item.id}
-                                onChange={(e) =>
-                                  updateStateMutation.mutate({ id: item.id, state: e.target.value as ItemState })
-                                }
-                                className="h-full w-full appearance-none bg-transparent pr-1 text-xs font-semibold outline-none disabled:cursor-not-allowed disabled:opacity-70"
-                                aria-label="Set status"
-                                title="Set status"
-                              >
-                                {itemStateOptions.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                              <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 opacity-70" />
+                              {spaces.length > 0 ? (
+                                <div className="relative flex-1 basis-0 min-w-0 lg:flex-none inline-flex h-8 items-center rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] pl-2 pr-8 shadow-sm transition-colors hover:bg-[var(--app-hover)]">
+                                  <select
+                                    value={item.spaceId ?? ""}
+                                    disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      updateItemMutation.mutate({
+                                        id: item.id,
+                                        spaceId: val === "" ? null : Number(val),
+                                      });
+                                    }}
+                                    className="h-full w-full appearance-none bg-transparent text-[11px] text-[var(--app-muted)] outline-none disabled:cursor-not-allowed disabled:opacity-70"
+                                    aria-label="Set space"
+                                    title="Set space"
+                                  >
+                                    <option value="">—</option>
+                                    {spaces.map((s) => (
+                                      <option key={s.id} value={s.id}>
+                                        {s.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 opacity-70" />
+                                </div>
+                              ) : null}
                             </div>
 
-                            <span className="font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
-                            <span>{formatDateTime(item.createdAt)}</span>
+                            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                              <span className="font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
+                              <span className="opacity-40">&middot;</span>
+                              <span>{formatDateTime(item.createdAt)}</span>
+                            </span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-2 lg:w-auto">
                       {isBinary ? (
                         <button
                           type="button"
@@ -841,7 +956,7 @@ export default function App() {
                             }
                             void performItemAction(item, "download");
                           }}
-                          className={rowActionPrimaryClass}
+                          className={`${rowActionPrimaryClass} flex-1 justify-center lg:flex-initial`}
                         >
                           <Download className="h-3.5 w-3.5" />
                           Download
@@ -856,7 +971,7 @@ export default function App() {
                             }
                             void performItemAction(item, "link");
                           }}
-                          className={rowActionPrimaryClass}
+                          className={`${rowActionPrimaryClass} flex-1 justify-center lg:flex-initial`}
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
                           Open link
@@ -872,7 +987,7 @@ export default function App() {
                             }
                             void performItemAction(item, "note");
                           }}
-                          className={rowActionPrimaryClass}
+                          className={`${rowActionPrimaryClass} flex-1 justify-center lg:flex-initial`}
                         >
                           <StickyNote className="h-3.5 w-3.5" />
                           {isLoadingThisNote ? "Opening..." : isNotePreviewLoading ? "Please wait..." : "View note"}
@@ -882,20 +997,22 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => void copyLink(item.id)}
-                        className={rowActionNeutralClass}
+                        className="pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-muted)] transition-colors hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                        aria-label="Copy link"
+                        title="Copy link"
                       >
                         <Copy className="h-3.5 w-3.5" />
-                        Copy link
                       </button>
 
                       {item.state === "ready_to_delete" ? (
                         <button
                           type="button"
                           onClick={() => setDeleteTarget(item)}
-                          className={rowActionDangerClass}
+                          className="pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-600/45 text-rose-700 transition-colors hover:bg-rose-600/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 dark:text-rose-200"
+                          aria-label="Delete"
+                          title="Delete"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          Delete
                         </button>
                       ) : null}
                     </div>
@@ -1002,6 +1119,7 @@ export default function App() {
               q: debouncedSearch || undefined,
               kind: kindFilter === "all" ? undefined : kindFilter,
               protected: accessFilter === "all" ? undefined : accessFilter === "protected",
+              space: spaceFilter === "all" ? undefined : spaceFilter === "none" ? "none" : String(spaceFilter),
             })
             .finally(() => setBulkDeleteOpen(false));
         }}
@@ -1023,12 +1141,32 @@ export default function App() {
           setUploadDialogFiles([]);
           setUploadPassword("");
           setUploadPasswordConfirm("");
+          setUploadSpaceId(undefined);
         }}
         onConfirm={() => {
           void handleConfirmUploadDialog();
         }}
       >
-        <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+        {spaces.length > 0 ? (
+          <label className="relative mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+            Space (optional)
+            <select
+              value={uploadSpaceId ?? ""}
+              onChange={(e) => setUploadSpaceId(e.target.value ? Number(e.target.value) : undefined)}
+              className={`${dialogFieldClass} appearance-none`}
+            >
+              <option value="">—</option>
+              {spaces.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 bottom-2.5 h-4 w-4 text-[var(--app-muted)]" />
+          </label>
+        ) : null}
+
+        <label className={`${spaces.length > 0 ? "mt-3" : "mt-4"} block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]`}>
           Password (optional)
           <input
             type="password"
@@ -1098,6 +1236,7 @@ export default function App() {
           setLinkDialogOpen(false);
           setLinkPassword("");
           setLinkPasswordConfirm("");
+          setLinkSpaceId(undefined);
         }}
         onConfirm={() => {
           void handleCreateLink();
@@ -1123,6 +1262,25 @@ export default function App() {
             className={dialogFieldClass}
           />
         </label>
+
+        {spaces.length > 0 ? (
+          <label className="relative mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+            Space (optional)
+            <select
+              value={linkSpaceId ?? ""}
+              onChange={(e) => setLinkSpaceId(e.target.value ? Number(e.target.value) : undefined)}
+              className={`${dialogFieldClass} appearance-none`}
+            >
+              <option value="">—</option>
+              {spaces.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 bottom-2.5 h-4 w-4 text-[var(--app-muted)]" />
+          </label>
+        ) : null}
 
         <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
           Password (optional)
@@ -1162,6 +1320,7 @@ export default function App() {
           setNoteDialogOpen(false);
           setNotePassword("");
           setNotePasswordConfirm("");
+          setNoteSpaceId(undefined);
         }}
         onConfirm={() => {
           void handleCreateNote();
@@ -1194,6 +1353,25 @@ export default function App() {
             className={`${dialogFieldClass} resize-y`}
           />
         </label>
+
+        {spaces.length > 0 ? (
+          <label className="relative mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+            Space (optional)
+            <select
+              value={noteSpaceId ?? ""}
+              onChange={(e) => setNoteSpaceId(e.target.value ? Number(e.target.value) : undefined)}
+              className={`${dialogFieldClass} appearance-none`}
+            >
+              <option value="">—</option>
+              {spaces.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 bottom-2.5 h-4 w-4 text-[var(--app-muted)]" />
+          </label>
+        ) : null}
 
         <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
           Password (optional)
@@ -1237,6 +1415,28 @@ export default function App() {
           {notePreviewItem?.noteText || "(empty)"}
         </div>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={Boolean(deleteSpaceTarget)}
+        title="Delete space?"
+        description={
+          deleteSpaceTarget
+            ? `Delete "${deleteSpaceTarget.name}"? Items in this space won't be deleted — they'll become uncollected.`
+            : undefined
+        }
+        confirmLabel={deleteSpaceMutation.isPending ? "Deleting..." : "Delete space"}
+        cancelLabel="Cancel"
+        confirmVariant="danger"
+        confirmDisabled={deleteSpaceMutation.isPending}
+        onCancel={() => setDeleteSpaceTarget(null)}
+        onConfirm={() => {
+          if (!deleteSpaceTarget || deleteSpaceMutation.isPending) return;
+          void deleteSpaceMutation.mutateAsync(deleteSpaceTarget.id).then(() => {
+            if (spaceFilter === deleteSpaceTarget.id) setSpaceFilter("all");
+            setDeleteSpaceTarget(null);
+          });
+        }}
+      />
 
       <UploadQueue uploads={uploads} onDismiss={dismissUpload} />
       <HowItWorksPanel open={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
