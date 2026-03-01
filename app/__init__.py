@@ -47,13 +47,20 @@ def _setup_request_handlers(app: Flask) -> None:
     def setup_services():
         """Create services for the request context."""
         from app.repositories.item_repository import ItemRepository
+        from app.repositories.space_repository import SpaceRepository
         from app.services.item_service import ItemService
+        from app.services.space_service import SpaceService
 
         # Allow test overrides
         if app.config.get("ITEM_SERVICE_OVERRIDE"):
             g.item_service = app.config["ITEM_SERVICE_OVERRIDE"]
         else:
             g.item_service = ItemService(ItemRepository())
+
+        if app.config.get("SPACE_SERVICE_OVERRIDE"):
+            g.space_service = app.config["SPACE_SERVICE_OVERRIDE"]
+        else:
+            g.space_service = SpaceService(SpaceRepository())
 
     @app.after_request
     def add_request_id_header(response):
@@ -94,6 +101,7 @@ def create_app(config: Optional[Config] = None) -> Flask:
 
     # Import models for migrations
     from app.domain import item  # noqa: F401
+    from app.domain import space  # noqa: F401
 
     # Register blueprints
     from app.api import api

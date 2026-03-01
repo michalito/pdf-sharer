@@ -289,6 +289,17 @@ def test_create_link_and_note_validation(client: FlaskClient):
     assert "Missing 'text'" in missing_text.get_json()["error"]
 
 
+def test_json_routes_reject_non_object_body(client: FlaskClient):
+    for path in ["/api/items/link", "/api/items/note"]:
+        res = client.post(path, json=[1, 2])
+        assert res.status_code == 400, f"{path} accepted a JSON array"
+        assert "JSON object" in res.get_json()["error"]
+
+    res = client.post("/api/items/link", json="just a string")
+    assert res.status_code == 400
+    assert "JSON object" in res.get_json()["error"]
+
+
 def test_search_matches_note_body_text(client: FlaskClient):
     note = client.post(
         "/api/items/note",

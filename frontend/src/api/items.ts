@@ -15,6 +15,15 @@ export type ItemDto = {
   noteExcerpt: string | null;
   isPasswordProtected: boolean;
   isPasswordUnlocked: boolean;
+  spaceId: number | null;
+  spaceName: string | null;
+};
+
+export type SpaceDto = {
+  id: number;
+  name: string;
+  createdAt: string;
+  itemCount: number;
 };
 
 export type PaginationDto = {
@@ -65,6 +74,7 @@ export async function listItems(params: {
   kind?: ItemKind;
   state?: ItemState;
   protected?: boolean;
+  space?: string;
   page?: number;
   perPage?: number;
 }): Promise<ListItemsResponse> {
@@ -73,6 +83,7 @@ export async function listItems(params: {
     kind: params.kind,
     state: params.state,
     protected: params.protected === undefined ? undefined : params.protected ? "true" : "false",
+    space: params.space,
     page: params.page ?? 1,
     per_page: params.perPage ?? 50,
   });
@@ -114,17 +125,18 @@ function xhrForm<T>(url: string, formData: FormData, onProgress?: (pct: number) 
 
 export async function uploadFiles(
   files: File[],
-  opts?: { onProgress?: (pct: number) => void; password?: string },
+  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number },
 ): Promise<ItemDto[]> {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
   if (opts?.password) formData.append("password", opts.password);
+  if (opts?.spaceId != null) formData.append("space_id", String(opts.spaceId));
   return xhrForm<ItemDto[]>("/api/items/files", formData, opts?.onProgress);
 }
 
 export async function uploadFolder(
   files: File[],
-  opts?: { onProgress?: (pct: number) => void; password?: string },
+  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number },
 ): Promise<ItemDto> {
   const formData = new FormData();
   for (const file of files) {
@@ -133,10 +145,16 @@ export async function uploadFolder(
     formData.append("paths", relPath);
   }
   if (opts?.password) formData.append("password", opts.password);
+  if (opts?.spaceId != null) formData.append("space_id", String(opts.spaceId));
   return xhrForm<ItemDto>("/api/items/folder", formData, opts?.onProgress);
 }
 
-export async function createLink(params: { url: string; name?: string; password?: string }): Promise<ItemDto> {
+export async function createLink(params: {
+  url: string;
+  name?: string;
+  password?: string;
+  spaceId?: number;
+}): Promise<ItemDto> {
   return apiJson<ItemDto>("/api/items/link", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -144,7 +162,12 @@ export async function createLink(params: { url: string; name?: string; password?
   });
 }
 
-export async function createNote(params: { text: string; title?: string; password?: string }): Promise<ItemDto> {
+export async function createNote(params: {
+  text: string;
+  title?: string;
+  password?: string;
+  spaceId?: number;
+}): Promise<ItemDto> {
   return apiJson<ItemDto>("/api/items/note", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -168,11 +191,12 @@ export async function deleteItem(id: number): Promise<void> {
   if (!res.ok) throw await parseApiError(res);
 }
 
-export async function deleteReadyToDelete(params?: { q?: string; kind?: ItemKind; protected?: boolean }): Promise<{ deleted: number }> {
+export async function deleteReadyToDelete(params?: { q?: string; kind?: ItemKind; protected?: boolean; space?: string }): Promise<{ deleted: number }> {
   const query = buildQuery({
     q: params?.q,
     kind: params?.kind,
     protected: params?.protected === undefined ? undefined : params.protected ? "true" : "false",
+    space: params?.space,
   });
   return apiJson<{ deleted: number }>(`/api/items/ready-to-delete${query}`, { method: "DELETE" });
 }
@@ -182,10 +206,39 @@ export async function fetchVersion(): Promise<string> {
   return data.version ?? "dev";
 }
 
-export async function updateItemState(id: number, state: ItemState): Promise<ItemDto> {
+export async function updateItem(
+  id: number,
+  fields: { state?: ItemState; spaceId?: number | null },
+): Promise<ItemDto> {
   return apiJson<ItemDto>(`/api/items/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ state }),
+    body: JSON.stringify(fields),
   });
+}
+
+// Spaces API
+
+export async function listSpaces(): Promise<SpaceDto[]> {
+  return apiJson<SpaceDto[]>("/api/spaces");
+}
+
+export async function createSpace(name: string): Promise<SpaceDto> {
+  return apiJson<SpaceDto>("/api/spaces", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function renameSpace(id: number, name: string): Promise<SpaceDto> {
+  return apiJson<SpaceDto>(`/api/spaces/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteSpace(id: number): Promise<{ unassigned: number }> {
+  return apiJson<{ unassigned: number }>(`/api/spaces/${id}`, { method: "DELETE" });
 }

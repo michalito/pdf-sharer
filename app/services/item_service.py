@@ -47,6 +47,8 @@ class ItemService:
         kind: Optional[ItemKind] = None,
         state: Optional[ItemState] = None,
         protected: Optional[bool] = None,
+        space_id: Optional[int] = None,
+        unspaced: Optional[bool] = None,
         page: int = 1,
         per_page: int = 50,
     ) -> PaginatedResult[Item]:
@@ -55,6 +57,8 @@ class ItemService:
             kind=kind,
             state=state,
             protected=protected,
+            space_id=space_id,
+            unspaced=unspaced,
             page=page,
             per_page=per_page,
         )
@@ -79,6 +83,7 @@ class ItemService:
         self,
         files: list[FileStorage],
         password: Optional[str] = None,
+        space_id: Optional[int] = None,
     ) -> list[Item]:
         if not files:
             raise ValidationError("No files provided")
@@ -87,7 +92,9 @@ class ItemService:
         created: list[Item] = []
         for file in files:
             created.append(
-                self._upload_single_file(file, normalized_password=normalized_password)
+                self._upload_single_file(
+                    file, normalized_password=normalized_password, space_id=space_id,
+                )
             )
         return created
 
@@ -96,6 +103,7 @@ class ItemService:
         file: FileStorage,
         *,
         normalized_password: Optional[str] = None,
+        space_id: Optional[int] = None,
     ) -> Item:
         if not file or not file.filename:
             raise ValidationError("File is missing a filename")
@@ -133,6 +141,7 @@ class ItemService:
                 mime_type=mime_type,
                 size_bytes=size_bytes,
                 password_hash=password_hash,
+                space_id=space_id,
             )
             return item
         except SQLAlchemyError as e:
@@ -145,6 +154,7 @@ class ItemService:
         files: list[FileStorage],
         paths: list[str],
         password: Optional[str] = None,
+        space_id: Optional[int] = None,
     ) -> Item:
         if not files:
             raise ValidationError("No files provided")
@@ -202,6 +212,7 @@ class ItemService:
                 size_bytes=size_bytes,
                 meta_json=meta_json,
                 password_hash=password_hash,
+                space_id=space_id,
             )
             return item
         except SQLAlchemyError as e:
@@ -215,6 +226,7 @@ class ItemService:
         url: str,
         name: Optional[str] = None,
         password: Optional[str] = None,
+        space_id: Optional[int] = None,
     ) -> Item:
         normalized_url = self._normalize_link_url(url)
         normalized_password = self.normalize_item_password(password)
@@ -237,6 +249,7 @@ class ItemService:
                 size_bytes=len(normalized_url.encode("utf-8")),
                 meta_json=meta_json,
                 password_hash=password_hash,
+                space_id=space_id,
             )
         except SQLAlchemyError as e:
             logger.error("Database error creating link item: %s", e, exc_info=True)
@@ -248,6 +261,7 @@ class ItemService:
         text: str,
         title: Optional[str] = None,
         password: Optional[str] = None,
+        space_id: Optional[int] = None,
     ) -> Item:
         normalized_text = self._normalize_note_text(text)
         normalized_password = self.normalize_item_password(password)
@@ -270,6 +284,7 @@ class ItemService:
                 size_bytes=len(normalized_text.encode("utf-8")),
                 meta_json=meta_json,
                 password_hash=password_hash,
+                space_id=space_id,
             )
         except SQLAlchemyError as e:
             logger.error("Database error creating note item: %s", e, exc_info=True)
@@ -318,12 +333,16 @@ class ItemService:
         q: Optional[str] = None,
         kind: Optional[ItemKind] = None,
         protected: Optional[bool] = None,
+        space_id: Optional[int] = None,
+        unspaced: Optional[bool] = None,
     ) -> int:
         items = self.repository.find_all(
             q=q,
             kind=kind,
             state=ItemState.READY_TO_DELETE,
             protected=protected,
+            space_id=space_id,
+            unspaced=unspaced,
         )
         if not items:
             return 0
@@ -355,6 +374,27 @@ class ItemService:
 
         return len(items)
 
+    def update_item(
+        self,
+        item_id: int,
+        *,
+        new_state: Optional[ItemState] = None,
+        new_space_id: Optional[int] = None,
+        update_space: bool = False,
+    ) -> Item:
+        """Apply state and/or space changes atomically.
+
+        Caller must validate that new_space_id refers to an existing space.
+        """
+        item = self.repository.get_by_id_or_raise(item_id)
+        try:
+            return self.repository.update_item_fields(
+                item, new_state=new_state, new_space_id=new_space_id, update_space=update_space,
+            )
+        except SQLAlchemyError as e:
+            logger.error("Failed to update item %s: %s", item_id, e, exc_info=True)
+            raise FileOperationError("Failed to update item")
+
     def update_state(self, item_id: int, state: ItemState) -> Item:
         item = self.repository.get_by_id_or_raise(item_id)
         try:
@@ -363,6 +403,15 @@ class ItemService:
             logger.error("Failed to update item state %s: %s", item_id, e, exc_info=True)
             raise FileOperationError("Failed to update item state")
         return updated
+
+    def set_item_space(self, item_id: int, space_id: Optional[int]) -> Item:
+        """Assign or remove an item's space. Caller must validate space_id exists."""
+        item = self.repository.get_by_id_or_raise(item_id)
+        try:
+            return self.repository.update_space(item, space_id)
+        except SQLAlchemyError as e:
+            logger.error("Failed to update item space %s: %s", item_id, e, exc_info=True)
+            raise FileOperationError("Failed to update item space")
 
     def get_download_name(self, item: Item) -> str:
         if not self._item_has_stored_file(item):

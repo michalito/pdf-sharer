@@ -7,7 +7,7 @@ from typing import Optional
 
 from flask import Response, current_app, g, jsonify, request, send_file
 
-from app.api import api
+from app.api import api, get_json_body
 from app.api.item_presenter import present_item_for_api
 from app.constants import (
     DEFAULT_NOTE_EXCERPT_LENGTH,
@@ -48,6 +48,55 @@ def _get_json_password_field(data: dict) -> Optional[str]:
     if not isinstance(raw_password, str):
         raise ValidationError("Field 'password' must be a string")
     return raw_password
+
+
+def _parse_optional_int_form_field(field: str) -> Optional[int]:
+    raw = request.form.get(field)
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        parsed = int(raw)
+    except ValueError:
+        raise ValidationError(f"Field '{field}' must be an integer")
+    if parsed <= 0:
+        raise ValidationError(f"Field '{field}' must be a positive integer")
+    return parsed
+
+
+def _parse_optional_int_json_field(data: dict, field: str) -> Optional[int]:
+    raw = data.get(field)
+    if raw is None:
+        return None
+    if isinstance(raw, bool) or isinstance(raw, float):
+        raise ValidationError(f"Field '{field}' must be an integer or null")
+    try:
+        parsed = int(raw)
+    except (TypeError, ValueError):
+        raise ValidationError(f"Field '{field}' must be an integer or null")
+    if parsed <= 0:
+        raise ValidationError(f"Field '{field}' must be a positive integer")
+    return parsed
+
+
+def _validate_space_id(space_id: Optional[int]) -> None:
+    """Validate that a space_id refers to an existing space. No-op if None."""
+    if space_id is not None:
+        g.space_service.get_space(space_id)
+
+
+def _parse_space_query_param(raw: Optional[str]) -> tuple[Optional[int], Optional[bool]]:
+    """Parse ``space`` query parameter into ``(space_id, unspaced)``."""
+    if raw is None:
+        return None, None
+    if raw.lower() == "none":
+        return None, True
+    try:
+        space_id = int(raw)
+    except ValueError:
+        raise ValidationError("Invalid 'space' value. Use an integer ID or 'none'.")
+    if space_id <= 0:
+        raise ValidationError("Invalid 'space' value. Use a positive integer ID.")
+    return space_id, None
 
 
 def _parse_bool_query_param(raw: Optional[str], *, field: str) -> Optional[bool]:
@@ -118,6 +167,8 @@ def list_items() -> Response:
             raise ValidationError(str(e))
     protected = _parse_bool_query_param(request.args.get("protected"), field="protected")
 
+    space_id, unspaced = _parse_space_query_param(request.args.get("space"))
+
     try:
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 50))
@@ -130,6 +181,8 @@ def list_items() -> Response:
         kind=kind,
         state=state,
         protected=protected,
+        space_id=space_id,
+        unspaced=unspaced,
         page=page,
         per_page=per_page,
     )
@@ -158,7 +211,9 @@ def upload_files() -> tuple[Response, int]:
         raise ValidationError("No files provided")
 
     password = request.form.get("password")
-    items = service.upload_files(files, password=password)
+    space_id = _parse_optional_int_form_field("space_id")
+    _validate_space_id(space_id)
+    items = service.upload_files(files, password=password, space_id=space_id)
     for item in items:
         _remember_item_unlock_if_protected(service, item)
     return jsonify([_present_item(service, item) for item in items]), 201
@@ -171,8 +226,10 @@ def upload_folder() -> tuple[Response, int]:
     files = request.files.getlist("files")
     paths = request.form.getlist("paths")
     password = request.form.get("password")
+    space_id = _parse_optional_int_form_field("space_id")
+    _validate_space_id(space_id)
 
-    item = service.upload_folder(files, paths, password=password)
+    item = service.upload_folder(files, paths, password=password, space_id=space_id)
     _remember_item_unlock_if_protected(service, item)
     return jsonify(_present_item(service, item)), 201
 
@@ -181,7 +238,7 @@ def upload_folder() -> tuple[Response, int]:
 def create_link() -> tuple[Response, int]:
     service = _get_service()
 
-    data = request.get_json(silent=True) or {}
+    data = get_json_body()
     url_raw = data.get("url")
     if not isinstance(url_raw, str):
         raise ValidationError("Missing 'url' field in request body")
@@ -190,7 +247,9 @@ def create_link() -> tuple[Response, int]:
     name = str(name_raw) if name_raw is not None else None
     password = _get_json_password_field(data)
 
-    item = service.create_link(url=url_raw, name=name, password=password)
+    space_id = _parse_optional_int_json_field(data, "spaceId")
+    _validate_space_id(space_id)
+    item = service.create_link(url=url_raw, name=name, password=password, space_id=space_id)
     _remember_item_unlock_if_protected(service, item)
     return jsonify(_present_item(service, item)), 201
 
@@ -199,7 +258,7 @@ def create_link() -> tuple[Response, int]:
 def create_note() -> tuple[Response, int]:
     service = _get_service()
 
-    data = request.get_json(silent=True) or {}
+    data = get_json_body()
     text_raw = data.get("text")
     if not isinstance(text_raw, str):
         raise ValidationError("Missing 'text' field in request body")
@@ -208,7 +267,9 @@ def create_note() -> tuple[Response, int]:
     title = str(title_raw) if title_raw is not None else None
     password = _get_json_password_field(data)
 
-    item = service.create_note(text=text_raw, title=title, password=password)
+    space_id = _parse_optional_int_json_field(data, "spaceId")
+    _validate_space_id(space_id)
+    item = service.create_note(text=text_raw, title=title, password=password, space_id=space_id)
     _remember_item_unlock_if_protected(service, item)
     return jsonify(_present_item(service, item)), 201
 
@@ -246,7 +307,7 @@ def unlock_item(item_id: int) -> tuple[str, int]:
     if not service.item_requires_password(item) or is_item_unlocked(item.id):
         return "", 204
 
-    data = request.get_json(silent=True) or {}
+    data = get_json_body()
     password_raw = data.get("password")
     if not isinstance(password_raw, str):
         raise ValidationError("Missing 'password' field in request body")
@@ -278,8 +339,11 @@ def delete_ready_to_delete() -> Response:
         except ValueError as e:
             raise ValidationError(str(e))
     protected = _parse_bool_query_param(request.args.get("protected"), field="protected")
+    space_id, unspaced = _parse_space_query_param(request.args.get("space"))
 
-    deleted = service.delete_ready_to_delete(q=q, kind=kind, protected=protected)
+    deleted = service.delete_ready_to_delete(
+        q=q, kind=kind, protected=protected, space_id=space_id, unspaced=unspaced,
+    )
     return jsonify({"deleted": deleted})
 
 
@@ -287,15 +351,30 @@ def delete_ready_to_delete() -> Response:
 def update_item(item_id: int) -> Response:
     service = _get_service()
 
-    data = request.get_json(silent=True) or {}
+    data = get_json_body()
     state_raw = data.get("state")
-    if not state_raw:
-        raise ValidationError("Missing 'state' field in request body")
+    has_space_id = "spaceId" in data
 
-    try:
-        state = ItemState.from_string(str(state_raw))
-    except ValueError as e:
-        raise ValidationError(str(e))
+    if state_raw is None and not has_space_id:
+        raise ValidationError("Provide 'state' and/or 'spaceId' field in request body")
 
-    item = service.update_state(item_id, state)
+    # Phase 1: Validate all inputs before any writes
+    new_state = None
+    if state_raw is not None:
+        try:
+            new_state = ItemState.from_string(str(state_raw))
+        except ValueError as e:
+            raise ValidationError(str(e))
+
+    update_space = False
+    new_space_id = None
+    if has_space_id:
+        update_space = True
+        new_space_id = _parse_optional_int_json_field(data, "spaceId")
+        _validate_space_id(new_space_id)
+
+    # Phase 2: Apply changes atomically
+    item = service.update_item(
+        item_id, new_state=new_state, new_space_id=new_space_id, update_space=update_space,
+    )
     return jsonify(_present_item(service, item))
