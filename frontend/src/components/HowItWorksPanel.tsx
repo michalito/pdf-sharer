@@ -1,14 +1,113 @@
-import { useEffect, useId, useState } from "react";
-import { AlertCircle, Check, ChevronDown, Link2, Search, SlidersHorizontal, Upload, X } from "lucide-react";
+import { useEffect, useId } from "react";
+import type { LucideIcon } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Check,
+  ExternalLink,
+  LayoutGrid,
+  Lightbulb,
+  Lock,
+  Moon,
+  Search,
+  ShieldAlert,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 
-type InfoSectionId = "storage" | "privacy";
+type FeatureCard = {
+  icon: LucideIcon;
+  title: string;
+  desc: string;
+  iconBg: string;
+  iconColor: string;
+};
+
+const features: FeatureCard[] = [
+  {
+    icon: Upload,
+    title: "Upload & Create",
+    desc: "Files, folders, links, and notes. Drag and drop or pick manually.",
+    iconBg: "bg-[var(--accent-soft)]",
+    iconColor: "text-[var(--accent-strong)]",
+  },
+  {
+    icon: ExternalLink,
+    title: "Share Instantly",
+    desc: "Every item gets a share link. Files download, links redirect, notes render.",
+    iconBg: "bg-[var(--accent-cool-soft)]",
+    iconColor: "text-[var(--accent-cool)]",
+  },
+  {
+    icon: Lock,
+    title: "Password Protect",
+    desc: "Optional per-item passwords. Session-based unlock keeps things flowing.",
+    iconBg: "bg-[var(--accent-soft)]",
+    iconColor: "text-[var(--accent-strong)]",
+  },
+  {
+    icon: LayoutGrid,
+    title: "Spaces",
+    desc: "Organize items into named collections. Create, rename, and filter by space.",
+    iconBg: "bg-[var(--accent-cool-soft)]",
+    iconColor: "text-[var(--accent-cool)]",
+  },
+  {
+    icon: ArrowRightLeft,
+    title: "Lifecycle",
+    desc: "Track status: Active, Done, Archived, Ready to delete. Two-step safe delete.",
+    iconBg: "bg-[var(--app-hover)]",
+    iconColor: "text-[var(--app-text)]",
+  },
+  {
+    icon: Search,
+    title: "Search & Filter",
+    desc: "Search by name and unprotected note text. Filter by kind, status, access, or space.",
+    iconBg: "bg-[var(--app-hover)]",
+    iconColor: "text-[var(--app-text)]",
+  },
+  {
+    icon: Trash2,
+    title: "Bulk Delete",
+    desc: "Delete all ready-to-delete items at once from the filter view.",
+    iconBg: "bg-rose-600/10",
+    iconColor: "text-[var(--danger)]",
+  },
+  {
+    icon: Moon,
+    title: "Dark & Light",
+    desc: "Auto-detects your system theme. Toggle manually anytime, choice is remembered.",
+    iconBg: "bg-[var(--accent-soft)]",
+    iconColor: "text-[var(--accent-strong)]",
+  },
+];
+
+const steps = [
+  {
+    title: "Create",
+    desc: "Upload files or folders, save a link or note. Set a password if needed.",
+  },
+  {
+    title: "Share",
+    desc: "Copy the share link and hand it off. Recipients open it directly.",
+  },
+  {
+    title: "Manage",
+    desc: "Track lifecycle states. Filter, search, and clean up when done.",
+  },
+];
+
+const tips = [
+  "When the list is empty, drop files into the upload dropzone to start instantly.",
+  "Long-press or right-click a space chip to rename or delete it.",
+  "Filters only change your view \u2014 shared links keep working regardless.",
+];
 
 export default function HowItWorksPanel(props: {
   open: boolean;
   onClose: () => void;
 }) {
   const { open, onClose } = props;
-  const [openInfoSection, setOpenInfoSection] = useState<InfoSectionId | null>("privacy");
   const titleId = useId();
   const descriptionId = useId();
 
@@ -40,164 +139,139 @@ export default function HowItWorksPanel(props: {
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="dialog-pop absolute right-0 top-0 h-full w-full max-w-md border-l border-[var(--app-border)]/55 bg-[var(--app-panel-strong)] p-5 shadow-2xl"
+        className="dialog-pop absolute right-0 top-0 h-full w-full max-w-md border-l border-[var(--app-border)]/55 bg-[var(--app-panel-strong)] shadow-2xl"
       >
         <div className="flex h-full flex-col">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--app-muted)]">Guide</div>
-              <h2 id={titleId} className="font-display text-xl font-semibold">
-                How saíta Works
-              </h2>
+          {/* ── Header ── */}
+          <div className="border-b border-[var(--app-border)]/55 p-5 pb-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] p-0.5">
+                  <img src="/logo.png" alt="sa\u00edta logo" className="h-full w-full object-contain" />
+                </div>
+                <div>
+                  <h2 id={titleId} className="font-display text-xl font-semibold">
+                    sa\u00edta
+                  </h2>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--app-muted)]">
+                    Internal exchange, zero login
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)]"
+                aria-label="Close help panel"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)]"
-              aria-label="Close help panel"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <p id={descriptionId} className="mt-3 text-sm leading-relaxed text-[var(--app-muted)]">
+              Share files, folders, links, and notes with your team. No accounts needed &mdash; upload, get a link, hand
+              it off.
+            </p>
           </div>
 
-          <p id={descriptionId} className="mt-3 text-sm text-[var(--app-muted)]">
-            saíta is built for quick internal handoff without accounts. Upload once, share the link, and
-            manage lifecycle status from the list.
-          </p>
+          {/* ── Scrollable body ── */}
+          <div className="flex-1 space-y-5 overflow-y-auto p-5">
+            {/* Section 1: Features */}
+            <section>
+              <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
+                What you can do
+              </div>
+              <div className="stagger-list mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                {features.map((f) => (
+                  <div
+                    key={f.title}
+                    className="rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-3"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div
+                        className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md ${f.iconBg} ${f.iconColor}`}
+                      >
+                        <f.icon className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-semibold leading-tight">{f.title}</div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-[var(--app-muted)]">{f.desc}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
 
-          <div className="mt-5 space-y-4 overflow-y-auto pr-1">
-            <section className="rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-3">
-              <div className="text-[11px] font-mono uppercase tracking-[0.1em] text-[var(--app-muted)]">How it works</div>
-              <ol className="mt-2 space-y-2.5">
-                <li className="grid grid-cols-[20px_1fr] gap-2.5">
-                  <div className="mt-0.5 grid h-5 w-5 place-items-center rounded-sm bg-[var(--accent-soft)] text-[var(--accent-strong)]">
-                    <Upload className="h-3 w-3" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold">Upload files, links, or notes</div>
-                    <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-muted)]">
-                      Drag files in or choose files/folders manually. Save links and short notes from the top action
-                      buttons. You can optionally set a per-item password during creation.
-                    </p>
-                  </div>
-                </li>
-
-                <li className="grid grid-cols-[20px_1fr] gap-2.5">
-                  <div className="mt-0.5 grid h-5 w-5 place-items-center rounded-sm bg-[var(--accent-cool-soft)] text-[var(--accent-cool)]">
-                    <Link2 className="h-3 w-3" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold">Share links or open content directly</div>
-                    <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-muted)]">
-                      Use <strong>Copy link</strong> for handoff. Files/folders download, saved links redirect, and
-                      notes render in the browser. Protected items ask for the password before opening.
-                    </p>
-                  </div>
-                </li>
-
-                <li className="grid grid-cols-[20px_1fr] gap-2.5">
-                  <div className="mt-0.5 grid h-5 w-5 place-items-center rounded-sm bg-[var(--app-hover)] text-[var(--app-text)]">
-                    <SlidersHorizontal className="h-3 w-3" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold">Set lifecycle status</div>
-                    <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-muted)]">
-                      Track progress as Active, Done, Archived, or Ready to delete. Bulk delete works from the ready
-                      filter.
-                    </p>
-                  </div>
-                </li>
-
-                <li className="grid grid-cols-[20px_1fr] gap-2.5">
-                  <div className="mt-0.5 grid h-5 w-5 place-items-center rounded-sm bg-[var(--app-hover)] text-[var(--app-text)]">
-                    <Search className="h-3 w-3" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold">Filter the list view</div>
-                    <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-muted)]">
-                      Search and filters only change what you see. Existing shared links keep working unless deleted.
-                    </p>
-                  </div>
-                </li>
+            {/* Section 2: How it works */}
+            <section className="rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
+              <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
+                How it works
+              </div>
+              <ol className="mt-3 space-y-3">
+                {steps.map((step, i) => (
+                  <li key={step.title} className="flex items-start gap-3">
+                    <div className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
+                      {i + 1}
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold">{step.title}</div>
+                      <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-muted)]">{step.desc}</p>
+                    </div>
+                  </li>
+                ))}
               </ol>
             </section>
 
-            <section className="rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-3">
-              <div className="text-[11px] font-mono uppercase tracking-[0.1em] text-[var(--app-muted)]">
-                Technical & privacy
-              </div>
-              <div className="mt-2 space-y-2">
-                <div className="rounded-md border border-[var(--app-border)]/45 bg-[var(--app-panel)]/10">
-                  <button
-                    type="button"
-                    onClick={() => setOpenInfoSection((prev) => (prev === "storage" ? null : "storage"))}
-                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
-                    aria-expanded={openInfoSection === "storage"}
-                  >
-                    <div className="text-sm font-semibold">Technical storage details</div>
-                    <ChevronDown
-                      className={`h-4 w-4 text-[var(--app-muted)] transition-transform ${
-                        openInfoSection === "storage" ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-                  {openInfoSection === "storage" ? (
-                    <div className="border-t border-[var(--app-border)]/45 px-3 py-2">
-                      <p className="text-xs leading-relaxed text-[var(--app-muted)]">
-                        Uploaded files are stored on this server filesystem in{" "}
-                        <code className="rounded-sm bg-black/10 px-1 py-0.5 text-[11px] dark:bg-white/10">
-                          UPLOAD_FOLDER
-                        </code>{" "}
-                        (default:{" "}
-                        <code className="rounded-sm bg-black/10 px-1 py-0.5 text-[11px] dark:bg-white/10">
-                          ./uploads
-                        </code>
-                        ). Metadata is stored in the app database (default:{" "}
-                        <code className="rounded-sm bg-black/10 px-1 py-0.5 text-[11px] dark:bg-white/10">
-                          ./instance/saita.db
-                        </code>
-                        ). Folder uploads are saved as zip files. Links and notes are saved as metadata records.
-                      </p>
-                    </div>
-                  ) : null}
+            {/* Section 3: Privacy & access */}
+            <section className="rounded-lg border border-rose-600/20 border-l-[3px] border-l-rose-600/45 bg-rose-600/5 p-4">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-rose-700 dark:text-rose-300" aria-hidden="true" />
+                <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-rose-800 dark:text-rose-200">
+                  Privacy & access
                 </div>
+              </div>
+              <ul className="mt-3 space-y-2.5">
+                <li className="flex items-start gap-2.5 text-xs leading-relaxed text-rose-900/85 dark:text-rose-100/85">
+                  <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600/50" />
+                  No user accounts or ACLs. Anyone with a valid share link can access unprotected items.
+                </li>
+                <li className="flex items-start gap-2.5 text-xs leading-relaxed text-rose-900/85 dark:text-rose-100/85">
+                  <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600/50" />
+                  Password-protected items require entry before opening and stay unlocked for the browser session.
+                </li>
+                <li className="flex items-start gap-2.5 text-xs leading-relaxed text-rose-900/85 dark:text-rose-100/85">
+                  <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600/50" />
+                  Admins or operators with server storage access can read files and metadata. Items persist until
+                  explicitly deleted.
+                </li>
+              </ul>
+            </section>
 
-                <div className="rounded-md border border-rose-600/25 bg-rose-600/5">
-                  <button
-                    type="button"
-                    onClick={() => setOpenInfoSection((prev) => (prev === "privacy" ? null : "privacy"))}
-                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
-                    aria-expanded={openInfoSection === "privacy"}
-                  >
-                    <div className="flex items-center gap-1.5 text-sm font-semibold text-rose-800 dark:text-rose-100">
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      Privacy and access
-                    </div>
-                    <ChevronDown
-                      className={`h-4 w-4 text-rose-700/80 transition-transform dark:text-rose-200 ${
-                        openInfoSection === "privacy" ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-                  {openInfoSection === "privacy" ? (
-                    <div className="border-t border-rose-600/25 px-3 py-2">
-                      <p className="text-xs leading-relaxed text-rose-900/90 dark:text-rose-100/90">
-                        This app has no user accounts or ACLs. Anyone with a valid{" "}
-                        <code className="rounded-sm bg-rose-600/20 px-1 py-0.5 text-[11px]">/d/&lt;id&gt;</code> link
-                        can access unprotected items. If a password is set, that item requires password entry before
-                        opening and stays unlocked for the current browser session. Admins or operators with server
-                        storage/backups access may still read files and metadata. Items remain available until
-                        explicitly deleted.
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
+            {/* Section 4: Tips */}
+            <section className="rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="h-3.5 w-3.5 text-[var(--accent-cool)]" aria-hidden="true" />
+                <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--app-muted)]">Tips</div>
               </div>
+              <ul className="mt-2.5 space-y-2">
+                {tips.map((tip) => (
+                  <li
+                    key={tip}
+                    className="flex items-start gap-2.5 text-xs leading-relaxed text-[var(--app-muted)]"
+                  >
+                    <span className="mt-[5px] h-1 w-1 shrink-0 rounded-full bg-[var(--accent-cool)]/40" />
+                    {tip}
+                  </li>
+                ))}
+              </ul>
             </section>
           </div>
 
-          <div className="mt-4 flex items-center justify-between border-t border-[var(--app-border)]/55 pt-3">
-            <div className="text-xs text-[var(--app-muted)]">Need a quick reset? Use the top filters anytime.</div>
+          {/* ── Footer ── */}
+          <div className="flex items-center justify-between border-t border-[var(--app-border)]/55 px-5 py-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
+              sa\u00edta &middot; internal use
+            </div>
             <button
               type="button"
               onClick={onClose}
