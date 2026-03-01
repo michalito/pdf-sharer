@@ -1,7 +1,7 @@
 """Add expires_at column to items table.
 
-Revision ID: 0006_add_item_expires_at
-Revises: 0005_add_item_pinned
+Revision ID: 0007_add_item_expires_at
+Revises: 0006_add_item_updated_at
 Create Date: 2026-03-01
 """
 
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "0006_add_item_expires_at"
-down_revision = "0005_add_item_pinned"
+revision = "0007_add_item_expires_at"
+down_revision = "0006_add_item_updated_at"
 branch_labels = None
 depends_on = None
 

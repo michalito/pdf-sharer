@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from app.constants import ALLOWED_TTL_PRESETS
 from app.domain.item import Item, ItemKind, ItemState
-from app.exceptions import FileOperationError, NotFoundError, ValidationError
+from app.exceptions import FileOperationError, ValidationError
 from app.repositories.item_repository import ItemRepository, PaginatedResult, SortField, SortOrder, StorageStats
 from app.utils.zip_utils import dedupe_zip_path, sanitize_zip_path
 
@@ -357,9 +357,7 @@ class ItemService:
         return self._meta_string(item, "text", label="note text")
 
     def delete_item(self, item_id: int) -> None:
-        item = self.repository.get_by_id(item_id)
-        if item is None:
-            raise NotFoundError(f"Item with ID {item_id} not found")
+        item = self.repository.get_by_id_or_raise(item_id)
 
         if item.state != ItemState.READY_TO_DELETE.value:
             raise ValidationError("Item must be marked 'ready_to_delete' before deletion")

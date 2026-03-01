@@ -973,22 +973,30 @@ export default function App() {
                   >
                     <div className="min-w-0">
                       <div className="flex items-start gap-3">
-                        <div className={`relative mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md border bg-[var(--app-panel)] text-[var(--accent-cool)] ${item.isPinned ? "border-[var(--accent)]/40" : "border-[var(--app-border)]"}`}>
-                          {item.kind === "folder" ? (
-                            <FolderArchive className="h-4 w-4" />
-                          ) : item.kind === "link" ? (
-                            <Link2 className="h-4 w-4" />
-                          ) : item.kind === "note" ? (
-                            <MessageSquareText className="h-4 w-4" />
-                          ) : (
-                            <FileIcon className="h-4 w-4" />
+                        <div className="mt-0.5 flex shrink-0 flex-col items-center gap-1.5">
+                          <div className={`relative grid h-10 w-10 place-items-center rounded-md border bg-[var(--app-panel)] text-[var(--accent-cool)] ${item.isPinned ? "border-[var(--accent)]/40" : "border-[var(--app-border)]"}`}>
+                            {item.kind === "folder" ? (
+                              <FolderArchive className="h-4 w-4" />
+                            ) : item.kind === "link" ? (
+                              <Link2 className="h-4 w-4" />
+                            ) : item.kind === "note" ? (
+                              <MessageSquareText className="h-4 w-4" />
+                            ) : (
+                              <FileIcon className="h-4 w-4" />
+                            )}
+                            {item.isPasswordProtected ? (
+                              <Lock
+                                className={`absolute -right-1 -bottom-1 h-3 w-3 ${item.isPasswordUnlocked ? "text-[var(--app-muted)]" : "text-[var(--danger)]"}`}
+                                aria-label={item.isPasswordUnlocked ? "Unlocked" : "Protected"}
+                              />
+                            ) : null}
+                          </div>
+                          {item.expiresAt && (
+                            <span className="inline-flex items-center gap-0.5 whitespace-nowrap text-[10px] font-medium text-amber-600 dark:text-amber-400" title={`Expires ${new Date(item.expiresAt).toLocaleString()}`}>
+                              <Clock className="h-2.5 w-2.5" />
+                              {formatTimeRemaining(item.expiresAt)}
+                            </span>
                           )}
-                          {item.isPasswordProtected ? (
-                            <Lock
-                              className={`absolute -right-1 -bottom-1 h-3 w-3 ${item.isPasswordUnlocked ? "text-[var(--app-muted)]" : "text-[var(--danger)]"}`}
-                              aria-label={item.isPasswordUnlocked ? "Unlocked" : "Protected"}
-                            />
-                          ) : null}
                         </div>
 
                         <div className="min-w-0">
@@ -1069,15 +1077,6 @@ export default function App() {
                               <span className="font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
                               <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
                               <span className="font-mono text-[11px]">{formatDateTime(item.createdAt)}</span>
-                              {item.expiresAt && (
-                                <>
-                                  <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
-                                  <span className="inline-flex items-center gap-1 font-mono text-[11px] text-amber-600 dark:text-amber-400">
-                                    <Clock className="h-3 w-3" />
-                                    {formatTimeRemaining(item.expiresAt)}
-                                  </span>
-                                </>
-                              )}
                             </span>
                           </div>
                         </div>
@@ -1088,15 +1087,6 @@ export default function App() {
                       <span className="w-[5rem] text-right font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
                       <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
                       <span className="w-[10rem] font-mono text-[11px]">{formatDateTime(item.createdAt)}</span>
-                      {item.expiresAt && (
-                        <>
-                          <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
-                          <span className="inline-flex items-center gap-1 font-mono text-[11px] text-amber-600 dark:text-amber-400">
-                            <Clock className="h-3 w-3" />
-                            {formatTimeRemaining(item.expiresAt)}
-                          </span>
-                        </>
-                      )}
                     </div>
 
                     <div className="flex items-center gap-2 lg:min-w-[14rem] lg:justify-end">

@@ -145,7 +145,10 @@ class ItemRepository:
 
     def get_by_state(self, state: ItemState) -> list[Item]:
         return (
-            Item.query.filter(Item.state == state.value)
+            Item.query.filter(
+                Item.state == state.value,
+                self._active_items_filter(),
+            )
             .order_by(Item.is_pinned.desc(), Item.created_at.desc())
             .all()
         )
@@ -229,12 +232,15 @@ class ItemRepository:
 
     def get_storage_stats(self, *, top_n: int = 10) -> StorageStats:
         """Compute aggregate storage statistics in minimal DB round-trips."""
+        active_items = self._active_items_filter()
+
         kind_rows = (
             db.session.query(
                 Item.kind,
                 func.count(Item.id),
                 func.coalesce(func.sum(Item.size_bytes), 0),
             )
+            .filter(active_items)
             .group_by(Item.kind)
             .all()
         )
@@ -254,6 +260,7 @@ class ItemRepository:
                 Item.state,
                 func.count(Item.id),
             )
+            .filter(active_items)
             .group_by(Item.state)
             .all()
         )
@@ -261,7 +268,10 @@ class ItemRepository:
 
         largest_items = (
             Item.query.options(joinedload(Item.space))
-            .filter(Item.kind.in_([ItemKind.FILE.value, ItemKind.FOLDER.value]))
+            .filter(
+                active_items,
+                Item.kind.in_([ItemKind.FILE.value, ItemKind.FOLDER.value]),
+            )
             .order_by(Item.size_bytes.desc())
             .limit(top_n)
             .all()
@@ -288,10 +298,11 @@ class ItemRepository:
         )
 
     def _exclude_expired(self, query):
+        return query.filter(self._active_items_filter())
+
+    def _active_items_filter(self):
         now = datetime.now(timezone.utc)
-        return query.filter(
-            or_(Item.expires_at.is_(None), Item.expires_at > now)
-        )
+        return or_(Item.expires_at.is_(None), Item.expires_at > now)
 
     def _apply_filters(
         self,

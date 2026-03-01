@@ -828,6 +828,20 @@ def test_expired_item_returns_404(app: Flask, client: FlaskClient):
     assert res.status_code == 404
 
 
+def test_delete_expired_item_returns_404(app: Flask, client: FlaskClient):
+    """DELETE /api/items/<id> returns 404 for expired items."""
+    res = client.post("/api/items/note", json={"text": "will expire", "ttl": "1h"})
+    item_id = res.get_json()["id"]
+
+    with app.app_context():
+        item = db.session.get(Item, item_id)
+        item.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.session.commit()
+
+    res = client.delete(f"/api/items/{item_id}")
+    assert res.status_code == 404
+
+
 def test_expired_item_share_link_returns_404(app: Flask, client: FlaskClient):
     """GET /d/<id> returns 404 for expired items."""
     res = client.post(
