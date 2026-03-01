@@ -4,10 +4,10 @@ import {
   ArrowRightLeft,
   Check,
   ExternalLink,
+  HardDrive,
   LayoutGrid,
   Lightbulb,
   Lock,
-  Moon,
   Search,
   ShieldAlert,
   Trash2,
@@ -55,14 +55,14 @@ const features: FeatureCard[] = [
   {
     icon: ArrowRightLeft,
     title: "Lifecycle",
-    desc: "Track status: Active, Done, Archived, Ready to delete. Two-step safe delete.",
+    desc: "Track status, pin key items, and use two-step safe delete.",
     iconBg: "bg-[var(--app-hover)]",
     iconColor: "text-[var(--app-text)]",
   },
   {
     icon: Search,
     title: "Search & Filter",
-    desc: "Search by name and unprotected note text. Filter by kind, status, access, or space.",
+    desc: "Search names and unprotected note text. Filter by kind/status/space and sort by created, modified, name, or size.",
     iconBg: "bg-[var(--app-hover)]",
     iconColor: "text-[var(--app-text)]",
   },
@@ -74,9 +74,9 @@ const features: FeatureCard[] = [
     iconColor: "text-[var(--danger)]",
   },
   {
-    icon: Moon,
-    title: "Dark & Light",
-    desc: "Auto-detects your system theme. Toggle manually anytime, choice is remembered.",
+    icon: HardDrive,
+    title: "Storage Overview",
+    desc: "Open Storage for disk usage, item breakdown by kind/status, and largest items.",
     iconBg: "bg-[var(--accent-soft)]",
     iconColor: "text-[var(--accent-strong)]",
   },
@@ -93,12 +93,13 @@ const steps = [
   },
   {
     title: "Manage",
-    desc: "Track lifecycle states. Filter, search, and clean up when done.",
+    desc: "Track status, pin important items, sort and filter views, then clean up.",
   },
 ];
 
 const tips = [
-  "When the list is empty, drop files into the upload dropzone to start instantly.",
+  "Drop files or folders anywhere in the app to start upload flow instantly.",
+  "If a dialog is already open when you drop files, the upload is queued and opens after that dialog closes.",
   "Long-press or right-click a space chip to rename or delete it.",
   "Filters only change your view \u2014 shared links keep working regardless.",
 ];
@@ -234,6 +235,10 @@ export default function HowItWorksPanel(props: {
                 <li className="flex items-start gap-2.5 text-xs leading-relaxed text-rose-900/85 dark:text-rose-100/85">
                   <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600/50" />
                   No user accounts or ACLs. Anyone with a valid share link can access unprotected items.
+                </li>
+                <li className="flex items-start gap-2.5 text-xs leading-relaxed text-rose-900/85 dark:text-rose-100/85">
+                  <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600/50" />
+                  This app is designed for a trusted internal network. Share links are convenience URLs, not signed secret tokens.
                 </li>
                 <li className="flex items-start gap-2.5 text-xs leading-relaxed text-rose-900/85 dark:text-rose-100/85">
                   <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600/50" />
