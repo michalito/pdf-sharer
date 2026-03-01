@@ -989,6 +989,23 @@ export default function App() {
                     </div>
 
                     <div className="flex items-center gap-2 lg:min-w-[14rem] lg:justify-end">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateItemMutation.mutate({ id: item.id, pinned: !item.isPinned })
+                        }
+                        disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
+                        className={`pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 ${
+                          item.isPinned
+                            ? "border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]"
+                            : "border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-muted)] opacity-0 hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] group-hover:opacity-100 focus-visible:opacity-100 max-lg:opacity-100"
+                        }`}
+                        aria-label={item.isPinned ? "Unpin" : "Pin to top"}
+                        title={item.isPinned ? "Unpin" : "Pin to top"}
+                      >
+                        <Pin className={`h-3.5 w-3.5${item.isPinned ? " fill-current" : ""}`} />
+                      </button>
+
                       {isBinary ? (
                         <button
                           type="button"
@@ -1036,23 +1053,6 @@ export default function App() {
                           {isLoadingThisNote ? "Opening..." : isNotePreviewLoading ? "Please wait..." : "View note"}
                         </button>
                       ) : null}
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateItemMutation.mutate({ id: item.id, pinned: !item.isPinned })
-                        }
-                        disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
-                        className={`pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 ${
-                          item.isPinned
-                            ? "border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]"
-                            : "border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-muted)] opacity-0 hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] group-hover:opacity-100 focus-visible:opacity-100 max-lg:opacity-100"
-                        }`}
-                        aria-label={item.isPinned ? "Unpin" : "Pin to top"}
-                        title={item.isPinned ? "Unpin" : "Pin to top"}
-                      >
-                        <Pin className={`h-3.5 w-3.5${item.isPinned ? " fill-current" : ""}`} />
-                      </button>
 
                       <button
                         type="button"

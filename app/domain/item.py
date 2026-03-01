@@ -77,7 +77,7 @@ class Item(db.Model):
         index=True,
     )
     meta_json: Optional[str] = db.Column(db.Text, nullable=True)
-    is_pinned: bool = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    is_pinned: bool = db.Column(db.Boolean, nullable=False, default=False)
     space_id: Optional[int] = db.Column(
         db.Integer, db.ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True, index=True
     )
