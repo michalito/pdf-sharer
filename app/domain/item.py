@@ -77,6 +77,7 @@ class Item(db.Model):
         index=True,
     )
     meta_json: Optional[str] = db.Column(db.Text, nullable=True)
+    is_pinned: bool = db.Column(db.Boolean, nullable=False, default=False, index=True)
     space_id: Optional[int] = db.Column(
         db.Integer, db.ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -119,6 +120,7 @@ class Item(db.Model):
             "noteText": note_text if isinstance(note_text, str) else None,
             "noteExcerpt": note_excerpt,
             "isPasswordProtected": self.is_password_protected,
+            "isPinned": self.is_pinned,
             "spaceId": self.space_id,
             "spaceName": self.space.name if self.space is not None else None,
         }

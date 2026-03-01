@@ -13,6 +13,7 @@ import {
   Lock,
   Link2,
   Moon,
+  Pin,
   Plus,
   Search,
   MessageSquareText,
@@ -221,8 +222,8 @@ export default function App() {
   });
 
   const updateItemMutation = useMutation({
-    mutationFn: async (vars: { id: number; state?: ItemState; spaceId?: number | null }) =>
-      updateItem(vars.id, { state: vars.state, spaceId: vars.spaceId }),
+    mutationFn: async (vars: { id: number; state?: ItemState; spaceId?: number | null; pinned?: boolean }) =>
+      updateItem(vars.id, { state: vars.state, spaceId: vars.spaceId, pinned: vars.pinned }),
     onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey: ["items"] });
 
@@ -233,6 +234,7 @@ export default function App() {
         if (it.id !== vars.id) return it;
         const updated = { ...it };
         if (vars.state !== undefined) updated.state = vars.state;
+        if (vars.pinned !== undefined) updated.isPinned = vars.pinned;
         if (vars.spaceId !== undefined) {
           updated.spaceId = vars.spaceId;
           updated.spaceName =
@@ -247,6 +249,12 @@ export default function App() {
         if (typeof spaceFilter === "number" && it.spaceId !== spaceFilter) return false;
         if (kindFilter !== "all" && it.kind !== kindFilter) return false;
         return true;
+      });
+
+      // Re-sort: pinned first, then by creation date (matches backend order)
+      filteredItems.sort((a, b) => {
+        if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+        return b.createdAt.localeCompare(a.createdAt);
       });
 
       queryClient.setQueryData(queryKey, {
@@ -872,7 +880,7 @@ export default function App() {
                   >
                     <div className="min-w-0">
                       <div className="flex items-start gap-3">
-                        <div className="relative mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--accent-cool)]">
+                        <div className={`relative mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md border bg-[var(--app-panel)] text-[var(--accent-cool)] ${item.isPinned ? "border-[var(--accent)]/40" : "border-[var(--app-border)]"}`}>
                           {item.kind === "folder" ? (
                             <FolderArchive className="h-4 w-4" />
                           ) : item.kind === "link" ? (
@@ -1028,6 +1036,23 @@ export default function App() {
                           {isLoadingThisNote ? "Opening..." : isNotePreviewLoading ? "Please wait..." : "View note"}
                         </button>
                       ) : null}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateItemMutation.mutate({ id: item.id, pinned: !item.isPinned })
+                        }
+                        disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
+                        className={`pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 ${
+                          item.isPinned
+                            ? "border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]"
+                            : "border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-muted)] opacity-0 hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] group-hover:opacity-100 focus-visible:opacity-100 max-lg:opacity-100"
+                        }`}
+                        aria-label={item.isPinned ? "Unpin" : "Pin to top"}
+                        title={item.isPinned ? "Unpin" : "Pin to top"}
+                      >
+                        <Pin className={`h-3.5 w-3.5${item.isPinned ? " fill-current" : ""}`} />
+                      </button>
 
                       <button
                         type="button"

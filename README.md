@@ -60,7 +60,7 @@ Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh pr
 | `POST` | `/api/items/link` | Save a URL (JSON: `{"url":"https://...","name?":"optional label","password?":"optional password"}`) |
 | `POST` | `/api/items/note` | Save a note (JSON: `{"text":"...","title?":"optional title","password?":"optional password"}`) |
 | `GET` | `/api/items/<id>` | Fetch item metadata (adds `isPasswordProtected` + `isPasswordUnlocked`; hides `linkUrl`/`noteText`/`noteExcerpt` while locked) |
-| `PATCH` | `/api/items/<id>` | Update item state (JSON: `{"state":"done"}`) |
+| `PATCH` | `/api/items/<id>` | Update item (JSON: `{"state?":"done","spaceId?":1,"pinned?":true}`; at least one field required) |
 | `GET` | `/api/items/<id>/download` | Download a file/folder item |
 | `POST` | `/api/items/<id>/unlock` | Unlock a protected item for current browser session (JSON: `{"password":"..."}`) |
 | `DELETE` | `/api/items/<id>` | Delete an item (requires state `ready_to_delete`) |

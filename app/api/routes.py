@@ -354,9 +354,10 @@ def update_item(item_id: int) -> Response:
     data = get_json_body()
     state_raw = data.get("state")
     has_space_id = "spaceId" in data
+    has_pinned = "pinned" in data
 
-    if state_raw is None and not has_space_id:
-        raise ValidationError("Provide 'state' and/or 'spaceId' field in request body")
+    if state_raw is None and not has_space_id and not has_pinned:
+        raise ValidationError("Provide 'state', 'spaceId', and/or 'pinned' field in request body")
 
     # Phase 1: Validate all inputs before any writes
     new_state = None
@@ -373,8 +374,16 @@ def update_item(item_id: int) -> Response:
         new_space_id = _parse_optional_int_json_field(data, "spaceId")
         _validate_space_id(new_space_id)
 
+    pinned = None
+    if has_pinned:
+        pinned_raw = data["pinned"]
+        if not isinstance(pinned_raw, bool):
+            raise ValidationError("Field 'pinned' must be a boolean")
+        pinned = pinned_raw
+
     # Phase 2: Apply changes atomically
     item = service.update_item(
-        item_id, new_state=new_state, new_space_id=new_space_id, update_space=update_space,
+        item_id, new_state=new_state, new_space_id=new_space_id,
+        update_space=update_space, pinned=pinned,
     )
     return jsonify(_present_item(service, item))

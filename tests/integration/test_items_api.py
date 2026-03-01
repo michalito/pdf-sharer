@@ -621,3 +621,101 @@ def test_bulk_delete_ready_to_delete_can_filter_by_protected(app: Flask, client:
     payload = remaining.get_json()
     assert payload["pagination"]["total"] == 1
     assert payload["items"][0]["id"] == unprotected_id
+
+
+# ── Pinned items ──────────────────────────────────────────────
+
+
+def test_pin_item(app: Flask, client: FlaskClient):
+    """PATCH with pinned=true pins the item."""
+    upload = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"x"), "pinme.txt")]},
+        content_type="multipart/form-data",
+    )
+    item_id = upload.get_json()[0]["id"]
+
+    res = client.patch(f"/api/items/{item_id}", json={"pinned": True})
+    assert res.status_code == 200
+    assert res.get_json()["isPinned"] is True
+
+    # Unpin
+    res = client.patch(f"/api/items/{item_id}", json={"pinned": False})
+    assert res.status_code == 200
+    assert res.get_json()["isPinned"] is False
+
+
+def test_pin_invalid_type_rejected(app: Flask, client: FlaskClient):
+    """PATCH with non-boolean pinned value returns 400."""
+    upload = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"x"), "f.txt")]},
+        content_type="multipart/form-data",
+    )
+    item_id = upload.get_json()[0]["id"]
+
+    res = client.patch(f"/api/items/{item_id}", json={"pinned": "yes"})
+    assert res.status_code == 400
+
+
+def test_pinned_items_sort_first(app: Flask, client: FlaskClient):
+    """Pinned items appear before unpinned items regardless of creation order."""
+    # Create two items — older first, newer second
+    r1 = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"a"), "older.txt")]},
+        content_type="multipart/form-data",
+    )
+    older_id = r1.get_json()[0]["id"]
+
+    r2 = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"b"), "newer.txt")]},
+        content_type="multipart/form-data",
+    )
+    newer_id = r2.get_json()[0]["id"]
+
+    # Without pinning, newer comes first (created_at DESC)
+    listing = client.get("/api/items").get_json()
+    assert listing["items"][0]["id"] == newer_id
+    assert listing["items"][1]["id"] == older_id
+
+    # Pin the older item
+    client.patch(f"/api/items/{older_id}", json={"pinned": True})
+
+    listing = client.get("/api/items").get_json()
+    assert listing["items"][0]["id"] == older_id
+    assert listing["items"][0]["isPinned"] is True
+    assert listing["items"][1]["id"] == newer_id
+
+
+def test_pin_combined_with_state_update(app: Flask, client: FlaskClient):
+    """PATCH can update pinned and state simultaneously."""
+    upload = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"x"), "combo.txt")]},
+        content_type="multipart/form-data",
+    )
+    item_id = upload.get_json()[0]["id"]
+
+    res = client.patch(f"/api/items/{item_id}", json={"pinned": True, "state": "done"})
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["isPinned"] is True
+    assert data["state"] == "done"
+
+
+def test_new_items_are_not_pinned(app: Flask, client: FlaskClient):
+    """Newly created items default to isPinned=false."""
+    upload = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"x"), "default.txt")]},
+        content_type="multipart/form-data",
+    )
+    assert upload.get_json()[0]["isPinned"] is False
+
+    link = client.post("/api/items/link", json={"url": "https://example.com"})
+    assert link.get_json()["isPinned"] is False
+
+    note = client.post("/api/items/note", json={"text": "hello world"})
+    assert note.get_json()["isPinned"] is False

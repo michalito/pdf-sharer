@@ -15,6 +15,7 @@ export type ItemDto = {
   noteExcerpt: string | null;
   isPasswordProtected: boolean;
   isPasswordUnlocked: boolean;
+  isPinned: boolean;
   spaceId: number | null;
   spaceName: string | null;
 };
@@ -208,7 +209,7 @@ export async function fetchVersion(): Promise<string> {
 
 export async function updateItem(
   id: number,
-  fields: { state?: ItemState; spaceId?: number | null },
+  fields: { state?: ItemState; spaceId?: number | null; pinned?: boolean },
 ): Promise<ItemDto> {
   return apiJson<ItemDto>(`/api/items/${id}`, {
     method: "PATCH",
