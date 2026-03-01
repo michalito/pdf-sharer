@@ -1,8 +1,19 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import toast from "react-hot-toast";
 import App from "../App";
 import * as api from "../api/items";
+
+vi.mock("react-hot-toast", () => {
+  const fn = vi.fn();
+  return {
+    default: Object.assign(fn, {
+      success: vi.fn(),
+      error: vi.fn(),
+    }),
+  };
+});
 
 vi.mock("../api/items", async () => {
   const actual = await vi.importActual<typeof import("../api/items")>("../api/items");
@@ -49,6 +60,26 @@ function makePagination(total: number) {
     hasNext: false,
     hasPrev: false,
   };
+}
+
+function makeFailingDirectoryDrop(rootName: string): DataTransferItem {
+  const dirEntry = {
+    isFile: false,
+    isDirectory: true,
+    name: rootName,
+    fullPath: `/${rootName}`,
+    createReader() {
+      return {
+        readEntries(_success: (entries: unknown[]) => void, error?: (e: Error) => void) {
+          error?.(new Error("read failed"));
+        },
+      };
+    },
+  };
+  return {
+    getAsFile: () => null,
+    webkitGetAsEntry: () => dirEntry,
+  } as unknown as DataTransferItem;
 }
 
 beforeEach(() => {
@@ -214,6 +245,161 @@ it("opens and closes the New dropdown", async () => {
   expect(within(newMenu).getByRole("button", { name: "Upload files" })).toBeInTheDocument();
   await user.click(document.body);
   expect(within(newMenu).queryByRole("button", { name: "Upload files" })).not.toBeInTheDocument();
+});
+
+it("queues dropped files if a dialog opens before drop extraction resolves", async () => {
+  renderApp();
+
+  await screen.findByText("Shared items");
+  const file = new File(["queued"], "queued.txt", { type: "text/plain" });
+  const dragData = {
+    dataTransfer: {
+      types: ["Files"],
+      files: [file],
+      items: [],
+    },
+  };
+
+  fireEvent.dragEnter(window, dragData);
+  fireEvent.dragOver(window, dragData);
+  fireEvent.drop(window, dragData);
+
+  const newMenu = screen.getByTestId("new-menu");
+  fireEvent.click(within(newMenu).getByRole("button", { name: "New" }));
+  fireEvent.click(within(newMenu).getByRole("button", { name: "Save link" }));
+
+  const linkDialog = await screen.findByRole("dialog", { name: "Save external link" });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(vi.mocked(toast)).toHaveBeenCalledWith("Upload queued until current dialog closes");
+  expect(screen.queryByRole("dialog", { name: "Upload files" })).not.toBeInTheDocument();
+
+  fireEvent.click(within(linkDialog).getByRole("button", { name: "Cancel" }));
+
+  expect(await screen.findByRole("dialog", { name: "Upload files" })).toBeInTheDocument();
+});
+
+it("shows a drop error toast when folder extraction fails", async () => {
+  renderApp();
+  await screen.findByText("Shared items");
+
+  const dragData = {
+    dataTransfer: {
+      types: ["Files"],
+      files: [],
+      items: [makeFailingDirectoryDrop("broken-folder")],
+    },
+  };
+
+  fireEvent.dragEnter(window, dragData);
+  fireEvent.dragOver(window, dragData);
+  fireEvent.drop(window, dragData);
+
+  await waitFor(() => {
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+      "Could not process dropped items. Try again, or use Choose files / Choose folder.",
+    );
+  });
+});
+
+it("starts queued upload after closing a currently open upload dialog", async () => {
+  const user = userEvent.setup();
+  renderApp();
+  await screen.findByText("Shared items");
+
+  const newMenu = screen.getByTestId("new-menu");
+  await user.click(within(newMenu).getByRole("button", { name: "New" }));
+  await user.click(within(newMenu).getByRole("button", { name: "Upload files" }));
+  const pickerInput = document.querySelector('input[type="file"]:not([webkitdirectory])') as HTMLInputElement | null;
+  if (!pickerInput) throw new Error("files input not found");
+  const first = new File(["first"], "first.txt", { type: "text/plain" });
+  fireEvent.change(pickerInput, { target: { files: [first] } });
+
+  const firstDialog = await screen.findByRole("dialog", { name: "Upload files" });
+  const queued = new File(["queued"], "queued.txt", { type: "text/plain" });
+  const dragData = {
+    dataTransfer: {
+      types: ["Files"],
+      files: [queued],
+      items: [],
+    },
+  };
+  fireEvent.dragEnter(window, dragData);
+  fireEvent.dragOver(window, dragData);
+  fireEvent.drop(window, dragData);
+  await waitFor(() => {
+    expect(vi.mocked(toast)).toHaveBeenCalledWith("Upload queued until current dialog closes");
+  });
+
+  await user.click(within(firstDialog).getByRole("button", { name: "Cancel" }));
+
+  const queuedDialog = await screen.findByRole("dialog", { name: "Upload files" });
+  await user.click(within(queuedDialog).getByRole("button", { name: "Start upload" }));
+
+  await waitFor(() => {
+    expect(api.uploadFiles).toHaveBeenCalled();
+  });
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: "Upload files" })).not.toBeInTheDocument();
+  });
+});
+
+it("keeps queued dialog files intact while previous upload request is still in flight", async () => {
+  const user = userEvent.setup();
+  let resolveFirstUpload: (() => void) | null = null;
+  vi.mocked(api.uploadFiles)
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirstUpload = () => resolve([]);
+        }),
+    )
+    .mockResolvedValue([]);
+
+  renderApp();
+  await screen.findByText("Shared items");
+
+  const newMenu = screen.getByTestId("new-menu");
+  await user.click(within(newMenu).getByRole("button", { name: "New" }));
+  await user.click(within(newMenu).getByRole("button", { name: "Upload files" }));
+  const pickerInput = document.querySelector('input[type="file"]:not([webkitdirectory])') as HTMLInputElement | null;
+  if (!pickerInput) throw new Error("files input not found");
+  fireEvent.change(pickerInput, { target: { files: [new File(["first"], "first.txt", { type: "text/plain" })] } });
+
+  const firstDialog = await screen.findByRole("dialog", { name: "Upload files" });
+
+  const dragData = {
+    dataTransfer: {
+      types: ["Files"],
+      files: [new File(["queued"], "queued.txt", { type: "text/plain" })],
+      items: [],
+    },
+  };
+  fireEvent.dragEnter(window, dragData);
+  fireEvent.dragOver(window, dragData);
+  fireEvent.drop(window, dragData);
+  await waitFor(() => {
+    expect(vi.mocked(toast)).toHaveBeenCalledWith("Upload queued until current dialog closes");
+  });
+
+  await user.click(within(firstDialog).getByRole("button", { name: "Start upload" }));
+  await waitFor(() => {
+    expect(api.uploadFiles).toHaveBeenCalledTimes(1);
+  });
+
+  const queuedDialog = await screen.findByRole("dialog", { name: "Upload files" });
+  expect(within(queuedDialog).getByText(/Selected 1 file\(s\)/)).toBeInTheDocument();
+
+  resolveFirstUpload?.();
+  await waitFor(() => {
+    expect(within(queuedDialog).getByText(/Selected 1 file\(s\)/)).toBeInTheDocument();
+  });
+
+  await user.click(within(queuedDialog).getByRole("button", { name: "Start upload" }));
+  await waitFor(() => {
+    expect(api.uploadFiles).toHaveBeenCalledTimes(2);
+  });
 });
 
 it("shows kind-specific actions and loads full note text for preview", async () => {

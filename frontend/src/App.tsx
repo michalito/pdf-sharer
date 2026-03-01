@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
@@ -29,12 +29,14 @@ import {
   Upload,
 } from "lucide-react";
 import ConfirmDialog from "./components/ConfirmDialog";
+import DropOverlay from "./components/DropOverlay";
 import HowItWorksPanel from "./components/HowItWorksPanel";
 import StorageDashboard from "./components/StorageDashboard";
 import Select from "./components/Select";
 import SpaceBar, { SpaceFilter } from "./components/SpaceBar";
 import SpacePicker from "./components/SpacePicker";
 import UploadQueue, { UploadTask } from "./components/UploadQueue";
+import { useFullPageDrop } from "./lib/useFullPageDrop";
 import {
   createLink,
   createNote,
@@ -130,6 +132,57 @@ function validateOptionalPassword(passwordRaw: string, confirmRaw: string): Pass
   return { ok: true, password };
 }
 
+type UploadDialogKind = "files" | "folder";
+
+type UploadDialogState = {
+  open: boolean;
+  kind: UploadDialogKind;
+  files: File[];
+  password: string;
+  passwordConfirm: string;
+  spaceId: number | undefined;
+};
+
+type UploadDialogAction =
+  | { type: "open"; kind: UploadDialogKind; files: File[]; spaceId: number | undefined }
+  | { type: "close" }
+  | { type: "set_password"; value: string }
+  | { type: "set_password_confirm"; value: string }
+  | { type: "set_space_id"; value: number | undefined };
+
+const initialUploadDialogState: UploadDialogState = {
+  open: false,
+  kind: "files",
+  files: [],
+  password: "",
+  passwordConfirm: "",
+  spaceId: undefined,
+};
+
+function uploadDialogReducer(state: UploadDialogState, action: UploadDialogAction): UploadDialogState {
+  switch (action.type) {
+    case "open":
+      return {
+        open: true,
+        kind: action.kind,
+        files: action.files,
+        password: "",
+        passwordConfirm: "",
+        spaceId: action.spaceId,
+      };
+    case "close":
+      return initialUploadDialogState;
+    case "set_password":
+      return { ...state, password: action.value };
+    case "set_password_confirm":
+      return { ...state, passwordConfirm: action.value };
+    case "set_space_id":
+      return { ...state, spaceId: action.value };
+    default:
+      return state;
+  }
+}
+
 export default function App() {
   const queryClient = useQueryClient();
   const theme = useTheme();
@@ -154,7 +207,6 @@ export default function App() {
 
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const newMenuRef = useRef<HTMLDivElement | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isStorageOpen, setIsStorageOpen] = useState(false);
   const [uploads, setUploads] = useState<UploadTask[]>([]);
@@ -173,12 +225,7 @@ export default function App() {
   const [noteText, setNoteText] = useState("");
   const [notePassword, setNotePassword] = useState("");
   const [notePasswordConfirm, setNotePasswordConfirm] = useState("");
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [uploadDialogKind, setUploadDialogKind] = useState<"files" | "folder">("files");
-  const [uploadDialogFiles, setUploadDialogFiles] = useState<File[]>([]);
-  const [uploadPassword, setUploadPassword] = useState("");
-  const [uploadPasswordConfirm, setUploadPasswordConfirm] = useState("");
-  const [uploadSpaceId, setUploadSpaceId] = useState<number | undefined>(undefined);
+  const [uploadDialog, dispatchUploadDialog] = useReducer(uploadDialogReducer, initialUploadDialogState);
   const [linkSpaceId, setLinkSpaceId] = useState<number | undefined>(undefined);
   const [noteSpaceId, setNoteSpaceId] = useState<number | undefined>(undefined);
   const [unlockTarget, setUnlockTarget] = useState<{ item: ItemDto; action: "download" | "link" | "note" } | null>(
@@ -186,6 +233,39 @@ export default function App() {
   );
   const [unlockPassword, setUnlockPassword] = useState("");
   const [isUnlocking, setIsUnlocking] = useState(false);
+  const [queuedDrops, setQueuedDrops] = useState<Array<{ files: File[]; kind: "files" | "folder" }>>([]);
+
+  const anyDialogOpen =
+    Boolean(deleteTarget) ||
+    bulkDeleteOpen ||
+    uploadDialog.open ||
+    linkDialogOpen ||
+    noteDialogOpen ||
+    Boolean(notePreviewItem) ||
+    Boolean(unlockTarget) ||
+    Boolean(deleteSpaceTarget) ||
+    isGuideOpen;
+
+  const { isOverWindow } = useFullPageDrop({
+    onDrop: ({ files, kind }) => {
+      openUploadDialog(kind, files);
+    },
+    onDropWhileDisabled: ({ files, kind }) => {
+      setQueuedDrops((prev) => [...prev, { files, kind }]);
+      toast(files.length === 1 ? "Upload queued until current dialog closes" : `${files.length} files queued until current dialog closes`);
+    },
+    onDropError: () => {
+      toast.error("Could not process dropped items. Try again, or use Choose files / Choose folder.");
+    },
+    disabled: anyDialogOpen,
+  });
+
+  useEffect(() => {
+    if (anyDialogOpen || queuedDrops.length === 0) return;
+    const [next, ...rest] = queuedDrops;
+    setQueuedDrops(rest);
+    openUploadDialog(next.kind, next.files);
+  }, [anyDialogOpen, queuedDrops]);
 
   useEffect(() => {
     if (!newMenuOpen) return;
@@ -413,12 +493,7 @@ export default function App() {
 
   function openUploadDialog(kind: "files" | "folder", files: File[]) {
     if (files.length === 0) return;
-    setUploadDialogKind(kind);
-    setUploadDialogFiles(files);
-    setUploadPassword("");
-    setUploadPasswordConfirm("");
-    setUploadSpaceId(activeSpaceId);
-    setUploadDialogOpen(true);
+    dispatchUploadDialog({ type: "open", kind, files, spaceId: activeSpaceId });
   }
 
   const activeSpaceId = typeof spaceFilter === "number" ? spaceFilter : undefined;
@@ -450,21 +525,25 @@ export default function App() {
   }
 
   async function handleConfirmUploadDialog() {
-    if (uploadDialogFiles.length === 0) return;
+    if (uploadDialog.files.length === 0) return;
 
-    const validation = validateOptionalPassword(uploadPassword, uploadPasswordConfirm);
+    const validation = validateOptionalPassword(uploadDialog.password, uploadDialog.passwordConfirm);
     if (!validation.ok) {
       toast.error(validation.message);
       return;
     }
 
-    setUploadDialogOpen(false);
-    if (uploadDialogKind === "files") {
-      await handleUploadFiles(uploadDialogFiles, validation.password, uploadSpaceId);
+    const files = uploadDialog.files;
+    const kind = uploadDialog.kind;
+    const spaceId = uploadDialog.spaceId;
+
+    dispatchUploadDialog({ type: "close" });
+
+    if (kind === "files") {
+      await handleUploadFiles(files, validation.password, spaceId);
     } else {
-      await handleUploadFolder(uploadDialogFiles, validation.password, uploadSpaceId);
+      await handleUploadFolder(files, validation.password, spaceId);
     }
-    setUploadDialogFiles([]);
     await queryClient.invalidateQueries({ queryKey: ["spaces"] });
   }
 
@@ -596,30 +675,6 @@ export default function App() {
       notePreviewFetchInFlightRef.current = false;
       setNotePreviewLoadingItemId(null);
     }
-  }
-
-  function onDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    setIsDragging(true);
-  }
-
-  function onDragLeave() {
-    setIsDragging(false);
-  }
-
-  function onDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setIsDragging(false);
-
-    const items = Array.from(e.dataTransfer.items ?? []);
-    const hasDirectory = items.some((it) => {
-      const entry = (it as unknown as { webkitGetAsEntry?: () => { isDirectory: boolean } | null }).webkitGetAsEntry?.();
-      return Boolean(entry?.isDirectory);
-    });
-    if (hasDirectory) toast("Folder dropped - use Upload Folder instead");
-
-    const files = Array.from(e.dataTransfer.files ?? []);
-    openUploadDialog("files", files);
   }
 
   const items = itemsQuery.data?.items ?? [];
@@ -847,12 +902,7 @@ export default function App() {
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 px-4 pt-6">
         {showDropzone ? (
           <section
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-            className={`surface-panel reveal reveal-d2 rounded-xl border-2 border-dashed p-6 transition-colors ${
-              isDragging ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--app-border-strong)]"
-            }`}
+            className="surface-panel reveal reveal-d2 rounded-xl border-2 border-dashed border-[var(--app-border-strong)] p-6"
           >
             <div className="flex flex-col items-center gap-3 text-center">
               <div className="grid h-14 w-14 place-items-center rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--accent-strong)]">
@@ -1297,22 +1347,18 @@ export default function App() {
       />
 
       <ConfirmDialog
-        open={uploadDialogOpen}
-        title={uploadDialogKind === "files" ? "Upload files" : "Upload folder"}
+        open={uploadDialog.open}
+        title={uploadDialog.kind === "files" ? "Upload files" : "Upload folder"}
         description={
-          uploadDialogKind === "files"
-            ? `Selected ${uploadDialogFiles.length} file(s). Optional password protects all uploaded files.`
-            : `Selected ${uploadDialogFiles.length} file(s) from a folder. Optional password protects the folder archive.`
+          uploadDialog.kind === "files"
+            ? `Selected ${uploadDialog.files.length} file(s). Optional password protects all uploaded files.`
+            : `Selected ${uploadDialog.files.length} file(s) from a folder. Optional password protects the folder archive.`
         }
         confirmLabel="Start upload"
         cancelLabel="Cancel"
         formMode
         onCancel={() => {
-          setUploadDialogOpen(false);
-          setUploadDialogFiles([]);
-          setUploadPassword("");
-          setUploadPasswordConfirm("");
-          setUploadSpaceId(undefined);
+          dispatchUploadDialog({ type: "close" });
         }}
         onConfirm={() => {
           void handleConfirmUploadDialog();
@@ -1322,8 +1368,8 @@ export default function App() {
           <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
             Space (optional)
             <Select
-              value={uploadSpaceId != null ? String(uploadSpaceId) : ""}
-              onChange={(v) => setUploadSpaceId(v ? Number(v) : undefined)}
+              value={uploadDialog.spaceId != null ? String(uploadDialog.spaceId) : ""}
+              onChange={(v) => dispatchUploadDialog({ type: "set_space_id", value: v ? Number(v) : undefined })}
               options={spaces.map((s) => ({ value: String(s.id), label: s.name }))}
               placeholder="—"
               className={`${dialogFieldClass} mt-1`}
@@ -1336,8 +1382,8 @@ export default function App() {
           Password (optional)
           <input
             type="password"
-            value={uploadPassword}
-            onChange={(e) => setUploadPassword(e.target.value)}
+            value={uploadDialog.password}
+            onChange={(e) => dispatchUploadDialog({ type: "set_password", value: e.target.value })}
             placeholder="8-128 characters"
             className={dialogFieldClass}
             autoFocus
@@ -1349,8 +1395,8 @@ export default function App() {
           Confirm password
           <input
             type="password"
-            value={uploadPasswordConfirm}
-            onChange={(e) => setUploadPasswordConfirm(e.target.value)}
+            value={uploadDialog.passwordConfirm}
+            onChange={(e) => dispatchUploadDialog({ type: "set_password_confirm", value: e.target.value })}
             placeholder="Repeat password"
             className={dialogFieldClass}
             autoComplete="new-password"
@@ -1598,6 +1644,7 @@ export default function App() {
         }}
       />
 
+      <DropOverlay visible={isOverWindow} />
       <UploadQueue uploads={uploads} onDismiss={dismissUpload} />
       <StorageDashboard open={isStorageOpen} onClose={() => setIsStorageOpen(false)} />
       <HowItWorksPanel open={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
