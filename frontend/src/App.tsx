@@ -1096,7 +1096,9 @@ export default function App() {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => {
           if (!deleteTarget || deleteMutation.isPending) return;
-          void deleteMutation.mutateAsync(deleteTarget.id).finally(() => setDeleteTarget(null));
+          deleteMutation.mutate(deleteTarget.id, {
+            onSettled: () => setDeleteTarget(null),
+          });
         }}
       />
 
@@ -1431,9 +1433,13 @@ export default function App() {
         onCancel={() => setDeleteSpaceTarget(null)}
         onConfirm={() => {
           if (!deleteSpaceTarget || deleteSpaceMutation.isPending) return;
-          void deleteSpaceMutation.mutateAsync(deleteSpaceTarget.id).then(() => {
-            if (spaceFilter === deleteSpaceTarget.id) setSpaceFilter("all");
-            setDeleteSpaceTarget(null);
+          const target = deleteSpaceTarget;
+          deleteSpaceMutation.mutate(target.id, {
+            onSuccess: () => {
+              if (spaceFilter === target.id) setSpaceFilter("all");
+              setDeleteSpaceTarget(null);
+            },
+            onError: () => setDeleteSpaceTarget(null),
           });
         }}
       />
