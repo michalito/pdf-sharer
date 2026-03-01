@@ -9,7 +9,12 @@ export default defineConfig(({ command }) => {
     base: command === "build" ? "/static/" : "/",
     server: {
       proxy: {
-        "/api": { target: proxyTarget, changeOrigin: true },
+        "/api": {
+          target: proxyTarget,
+          changeOrigin: true,
+          timeout: 0,
+          proxyTimeout: 0,
+        },
         "/d": { target: proxyTarget, changeOrigin: true },
         "/static": { target: proxyTarget, changeOrigin: true },
       },
