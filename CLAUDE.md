@@ -99,7 +99,7 @@ Key patterns:
 
 Single-page app — **no client-side router**. `App.tsx` is the sole root component.
 
-- **Server state**: TanStack Query (`useQuery`/`useMutation`). Query key for items: `["items", { q, kind, state, page, perPage }]`.
+- **Server state**: TanStack Query (`useQuery`/`useMutation`). Query key for items: `["items", { q, kind, state, space, sort, order, page, perPage }]`.
 - **Uploads**: Use raw `XMLHttpRequest` (via `xhrForm()` in `api/items.ts`) for progress tracking. JSON endpoints use `fetch` via `apiJson()`.
 - **Styling**: Tailwind CSS, dark/light theme via `useTheme` hook (localStorage-persisted).
 - **No global state store** — all local UI state is `useState` in `App.tsx`.
@@ -107,14 +107,14 @@ Single-page app — **no client-side router**. `App.tsx` is the sole root compon
 ## Current API Contract
 
 - `GET /api/health` (returns `{"ok": true, "version": "<app-version>"}`)
-- `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `page`, `per_page`
+- `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `sort` (`name|size|created|modified`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
 - `POST /api/items/files` (multipart field `files`, repeatable; optional `password`)
 - `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`; optional `password`)
 - `POST /api/items/link` (JSON: `{"url":"https://...","name?":"optional label","password?":"optional password"}`)
 - `POST /api/items/note` (JSON: `{"text":"...","title?":"optional title","password?":"optional password"}`)
 - `GET /api/items/<id>`
 - `POST /api/items/<id>/unlock` (JSON: `{"password":"..."}`)
-- `PATCH /api/items/<id>` with JSON `{"state?":"active|done|archived|ready_to_delete","spaceId?":1,"pinned?":true}` (at least one field required)
+- `PATCH /api/items/<id>` with JSON `{"state?":"active|done|archived|ready_to_delete","spaceId?":1,"pinned?":true}` (at least one field required; bumps `updatedAt`)
 - `GET /api/items/<id>/download`
 - `DELETE /api/items/<id>` only when item state is `ready_to_delete`
 - `DELETE /api/items/ready-to-delete` (optional `q`, `kind`, `protected`)
