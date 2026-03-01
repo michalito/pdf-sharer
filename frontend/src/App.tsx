@@ -591,9 +591,9 @@ export default function App() {
     "flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)]";
   const rowActionBaseClass =
     "pressable inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
-  const rowActionPrimaryClass = `${rowActionBaseClass} border-transparent bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)] focus-visible:outline-[var(--accent)]`;
+  const rowActionPrimaryClass = `${rowActionBaseClass} row-action-primary text-[var(--accent)] focus-visible:outline-[var(--accent)]`;
   const rowActionNeutralClass = `${rowActionBaseClass} border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text)] hover:bg-[var(--app-hover)] focus-visible:outline-[var(--accent)]`;
-  const rowActionDangerClass = `${rowActionBaseClass} border-rose-600/45 bg-transparent text-rose-700 hover:bg-rose-600/10 focus-visible:outline-rose-600 dark:text-rose-200`;
+  const rowActionDangerClass = `${rowActionBaseClass} row-action-danger text-rose-700 focus-visible:outline-rose-600 dark:text-rose-200`;
   const dialogFieldClass =
     "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
   const stateSelectClass =
@@ -938,10 +938,9 @@ export default function App() {
                               ) : null}
                             </div>
 
-                            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                              <span className="font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
-                              <span className="opacity-40">&middot;</span>
-                              <span>{formatDateTime(item.createdAt)}</span>
+                            <span className="inline-flex items-center gap-3 whitespace-nowrap">
+                              <span className="font-mono text-[11px] lg:inline-block lg:w-[5rem] lg:text-right">{formatBytes(item.sizeBytes)}</span>
+                              <span className="font-mono text-[11px] lg:inline-block lg:w-[10rem]">{formatDateTime(item.createdAt)}</span>
                             </span>
                           </div>
                         </div>
@@ -1011,7 +1010,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => setDeleteTarget(item)}
-                          className="pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-600/45 text-rose-700 transition-colors hover:bg-rose-600/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 dark:text-rose-200"
+                          className="row-action-danger pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border text-rose-700 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 dark:text-rose-200"
                           aria-label="Delete"
                           title="Delete"
                         >
