@@ -99,6 +99,25 @@ def _parse_space_query_param(raw: Optional[str]) -> tuple[Optional[int], Optiona
     return space_id, None
 
 
+_VALID_SORT_FIELDS = {"name", "size", "created", "modified"}
+_VALID_SORT_ORDERS = {"asc", "desc"}
+
+
+def _parse_sort_params() -> tuple[str, str]:
+    """Parse and validate sort and order query params."""
+    sort = (request.args.get("sort") or "created").lower()
+    order = (request.args.get("order") or "desc").lower()
+
+    if sort not in _VALID_SORT_FIELDS:
+        raise ValidationError(
+            f"Invalid 'sort' value. Valid values: {', '.join(sorted(_VALID_SORT_FIELDS))}"
+        )
+    if order not in _VALID_SORT_ORDERS:
+        raise ValidationError("Invalid 'order' value. Use 'asc' or 'desc'.")
+
+    return sort, order
+
+
 def _parse_bool_query_param(raw: Optional[str], *, field: str) -> Optional[bool]:
     if raw is None or raw == "":
         return None
@@ -168,6 +187,7 @@ def list_items() -> Response:
     protected = _parse_bool_query_param(request.args.get("protected"), field="protected")
 
     space_id, unspaced = _parse_space_query_param(request.args.get("space"))
+    sort, order = _parse_sort_params()
 
     try:
         page = int(request.args.get("page", 1))
@@ -185,6 +205,8 @@ def list_items() -> Response:
         unspaced=unspaced,
         page=page,
         per_page=per_page,
+        sort=sort,
+        order=order,
     )
     return jsonify(
         {

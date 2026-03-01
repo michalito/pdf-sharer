@@ -20,7 +20,7 @@ from werkzeug.utils import secure_filename
 
 from app.domain.item import Item, ItemKind, ItemState
 from app.exceptions import FileOperationError, NotFoundError, ValidationError
-from app.repositories.item_repository import ItemRepository, PaginatedResult
+from app.repositories.item_repository import ItemRepository, PaginatedResult, SortField, SortOrder
 from app.utils.zip_utils import dedupe_zip_path, sanitize_zip_path
 
 
@@ -51,6 +51,8 @@ class ItemService:
         unspaced: Optional[bool] = None,
         page: int = 1,
         per_page: int = 50,
+        sort: SortField = "created",
+        order: SortOrder = "desc",
     ) -> PaginatedResult[Item]:
         return self.repository.get_all(
             q=q,
@@ -61,6 +63,8 @@ class ItemService:
             unspaced=unspaced,
             page=page,
             per_page=per_page,
+            sort=sort,
+            order=order,
         )
 
     def get_item(self, item_id: int) -> Item:

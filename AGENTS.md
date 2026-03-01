@@ -70,14 +70,14 @@ npm --prefix frontend run build
 ## API Surface (Current)
 
 - `GET /api/health` (returns `ok` + `version`)
-- `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `page`, `per_page`
+- `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `sort` (`name|size|created|modified`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
 - `POST /api/items/files`
 - `POST /api/items/folder`
 - `POST /api/items/link`
 - `POST /api/items/note`
 - `GET /api/items/<id>`
 - `POST /api/items/<id>/unlock`
-- `PATCH /api/items/<id>` with body `{"state":"active|done|archived|ready_to_delete"}`
+- `PATCH /api/items/<id>` with body `{"state?":"...", "spaceId?":1, "pinned?":true}` (bumps `updatedAt`)
 - `GET /api/items/<id>/download`
 - `DELETE /api/items/<id>` (requires `ready_to_delete`)
 - `DELETE /api/items/ready-to-delete` (optional `q`, `kind`, `protected`)

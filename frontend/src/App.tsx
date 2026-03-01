@@ -20,6 +20,11 @@ import {
   Sun,
   Layers,
   Trash2,
+  ArrowUpDown,
+  ArrowUpNarrowWide,
+  ArrowDownWideNarrow,
+  CircleDot,
+  Shapes,
   Upload,
 } from "lucide-react";
 import ConfirmDialog from "./components/ConfirmDialog";
@@ -45,6 +50,8 @@ import {
   renameSpace,
   SpaceDto,
   updateItem,
+  SortField,
+  SortOrder,
   unlockItem,
   uploadFiles,
   uploadFolder,
@@ -55,6 +62,13 @@ import { useTheme } from "./lib/useTheme";
 
 type KindFilter = "all" | ItemKind;
 type StateFilter = "all" | ItemState;
+
+const sortFieldOptions: Array<{ value: SortField; label: string }> = [
+  { value: "created", label: "Date created" },
+  { value: "modified", label: "Date modified" },
+  { value: "name", label: "Name" },
+  { value: "size", label: "Size" },
+];
 
 const itemStateOptions: Array<{ value: ItemState; label: string }> = [
   { value: "active", label: "Active" },
@@ -126,6 +140,8 @@ export default function App() {
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [stateFilter, setStateFilter] = useState<StateFilter>("active");
   const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>("all");
+  const [sortField, setSortField] = useState<SortField>("created");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [spacePickerState, setSpacePickerState] = useState<{
     itemId: number;
     rect: DOMRect;
@@ -190,9 +206,9 @@ export default function App() {
     () =>
       [
         "items",
-        { q: debouncedSearch, kind: kindFilter, state: stateFilter, space: spaceFilter, page, perPage },
+        { q: debouncedSearch, kind: kindFilter, state: stateFilter, space: spaceFilter, sort: sortField, order: sortOrder, page, perPage },
       ] as const,
-    [debouncedSearch, kindFilter, stateFilter, spaceFilter, page, perPage],
+    [debouncedSearch, kindFilter, stateFilter, spaceFilter, sortField, sortOrder, page, perPage],
   );
 
   const versionQuery = useQuery({
@@ -218,6 +234,8 @@ export default function App() {
         space: spaceFilter === "all" ? undefined : spaceFilter === "none" ? "none" : String(spaceFilter),
         page,
         perPage,
+        sort: sortField,
+        order: sortOrder,
       }),
   });
 
@@ -251,10 +269,20 @@ export default function App() {
         return true;
       });
 
-      // Re-sort: pinned first, then by creation date (matches backend order)
+      // Re-sort: pinned first, then by active sort field
       filteredItems.sort((a, b) => {
         if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
-        return b.createdAt.localeCompare(a.createdAt);
+        let cmp = 0;
+        if (sortField === "name") {
+          cmp = a.name.localeCompare(b.name);
+        } else if (sortField === "size") {
+          cmp = a.sizeBytes - b.sizeBytes;
+        } else if (sortField === "modified") {
+          cmp = a.updatedAt.localeCompare(b.updatedAt);
+        } else {
+          cmp = a.createdAt.localeCompare(b.createdAt);
+        }
+        return sortOrder === "asc" ? cmp : -cmp;
       });
 
       queryClient.setQueryData(queryKey, {
@@ -693,7 +721,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid items-center gap-2 lg:grid-cols-[1fr_170px_180px]">
+            <div className="grid items-center gap-2 lg:grid-cols-[1fr_170px_180px_150px_36px]">
               <label className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
                 <input
@@ -722,6 +750,13 @@ export default function App() {
                 ]}
                 className={`w-full ${filterSelectClass}`}
                 aria-label="Filter by kind"
+                renderTrigger={(label) => (
+                  <>
+                    <Shapes className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
+                    <span className="block truncate pl-5">{label}</span>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
+                  </>
+                )}
               />
 
               <Select
@@ -739,7 +774,51 @@ export default function App() {
                 ]}
                 className={`w-full ${filterSelectClass}`}
                 aria-label="Filter by status"
+                renderTrigger={(label) => (
+                  <>
+                    <CircleDot className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
+                    <span className="block truncate pl-5">{label}</span>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
+                  </>
+                )}
               />
+
+              <Select<SortField>
+                value={sortField}
+                onChange={(v) => {
+                  if (v) {
+                    setSortField(v as SortField);
+                    setPage(1);
+                  }
+                }}
+                options={sortFieldOptions}
+                className={`w-full ${filterSelectClass}`}
+                aria-label="Sort by"
+                renderTrigger={(label) => (
+                  <>
+                    <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
+                    <span className="block truncate pl-5">{label}</span>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
+                  </>
+                )}
+              />
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+                  setPage(1);
+                }}
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent bg-[var(--app-hover)] text-[var(--app-text)] outline-none transition-colors hover:bg-[var(--app-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]`}
+                aria-label={sortOrder === "asc" ? "Sort ascending (click to switch to descending)" : "Sort descending (click to switch to ascending)"}
+                title={sortOrder === "asc" ? "Ascending" : "Descending"}
+              >
+                {sortOrder === "asc" ? (
+                  <ArrowUpNarrowWide className="h-4 w-4" />
+                ) : (
+                  <ArrowDownWideNarrow className="h-4 w-4" />
+                )}
+              </button>
 
             </div>
 

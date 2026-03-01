@@ -76,6 +76,12 @@ class Item(db.Model):
         default=lambda: datetime.now(timezone.utc),
         index=True,
     )
+    updated_at: datetime = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
     meta_json: Optional[str] = db.Column(db.Text, nullable=True)
     is_pinned: bool = db.Column(db.Boolean, nullable=False, default=False)
     space_id: Optional[int] = db.Column(
@@ -116,6 +122,7 @@ class Item(db.Model):
             "mimeType": self.mime_type,
             "sizeBytes": self.size_bytes,
             "createdAt": self.created_at.isoformat(),
+            "updatedAt": self.updated_at.isoformat(),
             "linkUrl": link_url if isinstance(link_url, str) else None,
             "noteText": note_text if isinstance(note_text, str) else None,
             "noteExcerpt": note_excerpt,

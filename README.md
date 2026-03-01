@@ -54,13 +54,13 @@ Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh pr
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/health` | Health check (`{"ok": true, "version": "<app-version>"}`) |
-| `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&protected=true\|false&page=1&per_page=50`; `q` matches names and unprotected note body text; note items include `noteExcerpt`, not full `noteText`) |
+| `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&protected=true\|false&sort=name\|size\|created\|modified&order=asc\|desc&page=1&per_page=50`; `q` matches names and unprotected note body text; note items include `noteExcerpt`, not full `noteText`; default sort: `created` desc) |
 | `POST` | `/api/items/files` | Upload files (multipart/form-data, field: `files`, repeatable; optional `password`) |
 | `POST` | `/api/items/folder` | Upload a folder (multipart: `files` + `paths` repeatable; optional `password`) |
 | `POST` | `/api/items/link` | Save a URL (JSON: `{"url":"https://...","name?":"optional label","password?":"optional password"}`) |
 | `POST` | `/api/items/note` | Save a note (JSON: `{"text":"...","title?":"optional title","password?":"optional password"}`) |
 | `GET` | `/api/items/<id>` | Fetch item metadata (adds `isPasswordProtected` + `isPasswordUnlocked`; hides `linkUrl`/`noteText`/`noteExcerpt` while locked) |
-| `PATCH` | `/api/items/<id>` | Update item (JSON: `{"state?":"done","spaceId?":1,"pinned?":true}`; at least one field required) |
+| `PATCH` | `/api/items/<id>` | Update item (JSON: `{"state?":"done","spaceId?":1,"pinned?":true}`; at least one field required; bumps `updatedAt`) |
 | `GET` | `/api/items/<id>/download` | Download a file/folder item |
 | `POST` | `/api/items/<id>/unlock` | Unlock a protected item for current browser session (JSON: `{"password":"..."}`) |
 | `DELETE` | `/api/items/<id>` | Delete an item (requires state `ready_to_delete`) |
