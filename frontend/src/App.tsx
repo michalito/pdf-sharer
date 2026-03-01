@@ -17,12 +17,14 @@ import {
   Search,
   StickyNote,
   Sun,
+  Layers,
   Trash2,
   Upload,
 } from "lucide-react";
 import ConfirmDialog from "./components/ConfirmDialog";
 import HowItWorksPanel from "./components/HowItWorksPanel";
 import SpaceBar, { SpaceFilter } from "./components/SpaceBar";
+import SpacePicker from "./components/SpacePicker";
 import UploadQueue, { UploadTask } from "./components/UploadQueue";
 import {
   createLink,
@@ -122,6 +124,10 @@ export default function App() {
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [stateFilter, setStateFilter] = useState<StateFilter>("active");
   const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>("all");
+  const [spacePickerState, setSpacePickerState] = useState<{
+    itemId: number;
+    rect: DOMRect;
+  } | null>(null);
   const [page, setPage] = useState(1);
   const perPage = 50;
   const [deleteSpaceTarget, setDeleteSpaceTarget] = useState<SpaceDto | null>(null);
@@ -226,7 +232,11 @@ export default function App() {
         if (it.id !== vars.id) return it;
         const updated = { ...it };
         if (vars.state !== undefined) updated.state = vars.state;
-        if (vars.spaceId !== undefined) updated.spaceId = vars.spaceId;
+        if (vars.spaceId !== undefined) {
+          updated.spaceId = vars.spaceId;
+          updated.spaceName =
+            spaces.find((s) => s.id === vars.spaceId)?.name ?? null;
+        }
         return updated;
       });
 
@@ -911,30 +921,45 @@ export default function App() {
                               </div>
 
                               {spaces.length > 0 ? (
-                                <div className="relative flex-1 basis-0 min-w-0 lg:flex-none inline-flex h-8 items-center rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] pl-2 pr-8 shadow-sm transition-colors hover:bg-[var(--app-hover)]">
-                                  <select
-                                    value={item.spaceId ?? ""}
+                                item.spaceId ? (
+                                  <button
+                                    type="button"
                                     disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      updateItemMutation.mutate({
-                                        id: item.id,
-                                        spaceId: val === "" ? null : Number(val),
-                                      });
+                                    onClick={(e) => {
+                                      if (spacePickerState?.itemId === item.id) {
+                                        setSpacePickerState(null);
+                                      } else {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setSpacePickerState({ itemId: item.id, rect });
+                                      }
                                     }}
-                                    className="h-full w-full appearance-none bg-transparent text-[11px] text-[var(--app-muted)] outline-none disabled:cursor-not-allowed disabled:opacity-70"
-                                    aria-label="Set space"
-                                    title="Set space"
+                                    className="inline-flex max-w-[14rem] items-center gap-1.5 rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] px-1.5 py-1 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-70"
+                                    aria-label="Change space"
+                                    title={`Space: ${item.spaceName}`}
                                   >
-                                    <option value="">—</option>
-                                    {spaces.map((s) => (
-                                      <option key={s.id} value={s.id}>
-                                        {s.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 opacity-70" />
-                                </div>
+                                    <Layers className="h-3 w-3 shrink-0 text-[var(--accent-cool)]" />
+                                    <span className="max-w-[12rem] truncate">{item.spaceName}</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
+                                    onClick={(e) => {
+                                      if (spacePickerState?.itemId === item.id) {
+                                        setSpacePickerState(null);
+                                      } else {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setSpacePickerState({ itemId: item.id, rect });
+                                      }
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--app-muted)] opacity-0 transition-all hover:bg-[var(--app-hover)] group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] max-lg:opacity-100 disabled:cursor-not-allowed disabled:opacity-70"
+                                    aria-label="Add to space"
+                                    title="Add to space"
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                    <span>Add to space</span>
+                                  </button>
+                                )
                               ) : null}
                             </div>
 
@@ -1022,6 +1047,24 @@ export default function App() {
                 );
               })}
             </div>
+          )}
+
+          {spacePickerState && (
+            <SpacePicker
+              anchorRect={spacePickerState.rect}
+              spaces={spaces}
+              currentSpaceId={
+                items.find((i) => i.id === spacePickerState.itemId)?.spaceId ??
+                null
+              }
+              onSelect={(spaceId) => {
+                updateItemMutation.mutate({
+                  id: spacePickerState.itemId,
+                  spaceId,
+                });
+              }}
+              onClose={() => setSpacePickerState(null)}
+            />
           )}
 
           {pagination ? (
