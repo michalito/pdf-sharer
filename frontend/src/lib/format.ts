@@ -21,3 +21,25 @@ export function formatDateTime(iso: string): string {
   });
 }
 
+export function formatTimeRemaining(isoDate: string): string {
+  const diff = new Date(isoDate).getTime() - Date.now();
+  if (diff <= 0) return "Expired";
+
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+  if (hours >= 48) return `${Math.floor(hours / 24)}d left`;
+  if (hours >= 1) return `${hours}h left`;
+  if (minutes >= 1) return `${minutes}m left`;
+  return "< 1m left";
+}
+
+export const TTL_PRESETS = [
+  { value: "1h" as const, label: "1 hour" },
+  { value: "6h" as const, label: "6 hours" },
+  { value: "24h" as const, label: "24 hours" },
+  { value: "3d" as const, label: "3 days" },
+  { value: "7d" as const, label: "7 days" },
+  { value: "30d" as const, label: "30 days" },
+] as const;
+

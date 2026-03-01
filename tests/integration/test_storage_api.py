@@ -1,7 +1,11 @@
 import io
+from datetime import datetime, timedelta, timezone
 
 from flask import Flask
 from flask.testing import FlaskClient
+
+from app import db
+from app.domain.item import Item
 
 
 def test_storage_empty_db(client: FlaskClient):
@@ -86,6 +90,26 @@ def test_storage_largest_items_have_space_name(app: Flask, client: FlaskClient):
 
     assert len(data["largestItems"]) == 1
     assert data["largestItems"][0]["spaceName"] == "Test Space"
+
+
+def test_storage_excludes_expired_items(app: Flask, client: FlaskClient):
+    """Expired items are hidden from storage stats immediately."""
+    res = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"x" * 100), "temp.txt")], "ttl": "1h"},
+        content_type="multipart/form-data",
+    )
+    item_id = res.get_json()[0]["id"]
+
+    with app.app_context():
+        item = db.session.get(Item, item_id)
+        item.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.session.commit()
+
+    stats = client.get("/api/storage").get_json()
+    assert stats["items"]["totalCount"] == 0
+    assert stats["items"]["countByKind"]["file"] == 0
+    assert stats["largestItems"] == []
 
 
 def test_storage_count_by_state(client: FlaskClient):

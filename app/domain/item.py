@@ -84,6 +84,9 @@ class Item(db.Model):
     )
     meta_json: Optional[str] = db.Column(db.Text, nullable=True)
     is_pinned: bool = db.Column(db.Boolean, nullable=False, default=False)
+    expires_at: Optional[datetime] = db.Column(
+        db.DateTime(timezone=True), nullable=True, index=True,
+    )
     space_id: Optional[int] = db.Column(
         db.Integer, db.ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -96,6 +99,15 @@ class Item(db.Model):
     @property
     def kind_enum(self) -> ItemKind:
         return ItemKind(self.kind)
+
+    @property
+    def is_expired(self) -> bool:
+        if self.expires_at is None:
+            return False
+        expires = self.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) >= expires
 
     @property
     def is_password_protected(self) -> bool:
@@ -121,8 +133,9 @@ class Item(db.Model):
             "state": self.state,
             "mimeType": self.mime_type,
             "sizeBytes": self.size_bytes,
-            "createdAt": self.created_at.isoformat(),
-            "updatedAt": self.updated_at.isoformat(),
+            "createdAt": self._isoformat_utc(self.created_at),
+            "updatedAt": self._isoformat_utc(self.updated_at),
+            "expiresAt": self._isoformat_utc(self.expires_at) if self.expires_at else None,
             "linkUrl": link_url if isinstance(link_url, str) else None,
             "noteText": note_text if isinstance(note_text, str) else None,
             "noteExcerpt": note_excerpt,
@@ -131,6 +144,10 @@ class Item(db.Model):
             "spaceId": self.space_id,
             "spaceName": self.space.name if self.space is not None else None,
         }
+
+    def _isoformat_utc(self, value: datetime) -> str:
+        dt = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat()
 
     def _meta_dict(self) -> dict[str, Any]:
         if not self.meta_json:

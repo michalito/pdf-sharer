@@ -90,6 +90,7 @@ class ItemRepository:
         query = Item.query.options(joinedload(Item.space)).order_by(
             *self._build_order_by(sort, order),
         )
+        query = self._exclude_expired(query)
         query = self._apply_filters(
             query, q=q, kind=kind, state=state, protected=protected,
             space_id=space_id, unspaced=unspaced,
@@ -116,6 +117,7 @@ class ItemRepository:
         query = Item.query.options(joinedload(Item.space)).order_by(
             *self._build_order_by(sort, order),
         )
+        query = self._exclude_expired(query)
         query = self._apply_filters(
             query, q=q, kind=kind, state=state, protected=protected,
             space_id=space_id, unspaced=unspaced,
@@ -143,7 +145,10 @@ class ItemRepository:
 
     def get_by_state(self, state: ItemState) -> list[Item]:
         return (
-            Item.query.filter(Item.state == state.value)
+            Item.query.filter(
+                Item.state == state.value,
+                self._active_items_filter(),
+            )
             .order_by(Item.is_pinned.desc(), Item.created_at.desc())
             .all()
         )
@@ -151,6 +156,8 @@ class ItemRepository:
     def get_by_id_or_raise(self, item_id: int) -> Item:
         item = self.get_by_id(item_id)
         if item is None:
+            raise NotFoundError(f"Item with ID {item_id} not found")
+        if item.is_expired:
             raise NotFoundError(f"Item with ID {item_id} not found")
         return item
 
@@ -166,6 +173,7 @@ class ItemRepository:
         meta_json: Optional[str] = None,
         password_hash: Optional[str] = None,
         space_id: Optional[int] = None,
+        expires_at: Optional[datetime] = None,
     ) -> Item:
         item = Item(
             stored_name=stored_name,
@@ -177,6 +185,7 @@ class ItemRepository:
             meta_json=meta_json,
             password_hash=password_hash,
             space_id=space_id,
+            expires_at=expires_at,
         )
         db.session.add(item)
         db.session.commit()
@@ -223,12 +232,15 @@ class ItemRepository:
 
     def get_storage_stats(self, *, top_n: int = 10) -> StorageStats:
         """Compute aggregate storage statistics in minimal DB round-trips."""
+        active_items = self._active_items_filter()
+
         kind_rows = (
             db.session.query(
                 Item.kind,
                 func.count(Item.id),
                 func.coalesce(func.sum(Item.size_bytes), 0),
             )
+            .filter(active_items)
             .group_by(Item.kind)
             .all()
         )
@@ -248,6 +260,7 @@ class ItemRepository:
                 Item.state,
                 func.count(Item.id),
             )
+            .filter(active_items)
             .group_by(Item.state)
             .all()
         )
@@ -255,7 +268,10 @@ class ItemRepository:
 
         largest_items = (
             Item.query.options(joinedload(Item.space))
-            .filter(Item.kind.in_([ItemKind.FILE.value, ItemKind.FOLDER.value]))
+            .filter(
+                active_items,
+                Item.kind.in_([ItemKind.FILE.value, ItemKind.FOLDER.value]),
+            )
             .order_by(Item.size_bytes.desc())
             .limit(top_n)
             .all()
@@ -269,6 +285,24 @@ class ItemRepository:
             count_by_state=count_by_state,
             largest_items=largest_items,
         )
+
+    def find_expired(self, *, limit: int = 100) -> list[Item]:
+        now = datetime.now(timezone.utc)
+        return (
+            Item.query.filter(
+                Item.expires_at.is_not(None),
+                Item.expires_at <= now,
+            )
+            .limit(limit)
+            .all()
+        )
+
+    def _exclude_expired(self, query):
+        return query.filter(self._active_items_filter())
+
+    def _active_items_filter(self):
+        now = datetime.now(timezone.utc)
+        return or_(Item.expires_at.is_(None), Item.expires_at > now)
 
     def _apply_filters(
         self,

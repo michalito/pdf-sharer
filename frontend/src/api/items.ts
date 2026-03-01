@@ -5,6 +5,8 @@ export type ItemState = "active" | "done" | "archived" | "ready_to_delete";
 export type SortField = "name" | "size" | "created" | "modified";
 export type SortOrder = "asc" | "desc";
 
+export type TtlPreset = "1h" | "6h" | "24h" | "3d" | "7d" | "30d";
+
 export type ItemDto = {
   id: number;
   name: string;
@@ -14,6 +16,7 @@ export type ItemDto = {
   sizeBytes: number;
   createdAt: string;
   updatedAt: string;
+  expiresAt: string | null;
   linkUrl: string | null;
   noteText: string | null;
   noteExcerpt: string | null;
@@ -134,18 +137,19 @@ function xhrForm<T>(url: string, formData: FormData, onProgress?: (pct: number) 
 
 export async function uploadFiles(
   files: File[],
-  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number },
+  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number; ttl?: TtlPreset },
 ): Promise<ItemDto[]> {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
   if (opts?.password) formData.append("password", opts.password);
   if (opts?.spaceId != null) formData.append("space_id", String(opts.spaceId));
+  if (opts?.ttl) formData.append("ttl", opts.ttl);
   return xhrForm<ItemDto[]>("/api/items/files", formData, opts?.onProgress);
 }
 
 export async function uploadFolder(
   files: File[],
-  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number },
+  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number; ttl?: TtlPreset },
 ): Promise<ItemDto> {
   const formData = new FormData();
   for (const file of files) {
@@ -155,6 +159,7 @@ export async function uploadFolder(
   }
   if (opts?.password) formData.append("password", opts.password);
   if (opts?.spaceId != null) formData.append("space_id", String(opts.spaceId));
+  if (opts?.ttl) formData.append("ttl", opts.ttl);
   return xhrForm<ItemDto>("/api/items/folder", formData, opts?.onProgress);
 }
 
@@ -163,6 +168,7 @@ export async function createLink(params: {
   name?: string;
   password?: string;
   spaceId?: number;
+  ttl?: TtlPreset;
 }): Promise<ItemDto> {
   return apiJson<ItemDto>("/api/items/link", {
     method: "POST",
@@ -176,6 +182,7 @@ export async function createNote(params: {
   title?: string;
   password?: string;
   spaceId?: number;
+  ttl?: TtlPreset;
 }): Promise<ItemDto> {
   return apiJson<ItemDto>("/api/items/note", {
     method: "POST",
