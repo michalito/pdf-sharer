@@ -107,6 +107,7 @@ Single-page app — **no client-side router**. `App.tsx` is the sole root compon
 ## Current API Contract
 
 - `GET /api/health` (returns `{"ok": true, "version": "<app-version>"}`)
+- `GET /api/storage` (returns `{disk, items: {totalCount, totalSizeBytes, countByKind, sizeByKind, countByState}, largestItems}`)
 - `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `page`, `per_page`
 - `POST /api/items/files` (multipart field `files`, repeatable; optional `password`)
 - `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`; optional `password`)
