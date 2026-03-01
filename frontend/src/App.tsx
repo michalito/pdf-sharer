@@ -607,7 +607,7 @@ export default function App() {
   const dialogFieldClass =
     "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
   const stateSelectClass =
-    "relative inline-flex h-8 items-center gap-2 rounded-lg pl-2 pr-8 text-xs font-medium shadow-sm lg:w-[11.5rem]";
+    "relative inline-flex h-8 items-center gap-2 rounded-lg pl-2 pr-8 text-xs font-medium shadow-sm w-[10rem] lg:w-[11.5rem]";
   const summaryMetrics = [
     { label: "Total", value: pagination?.total ?? 0 },
     { label: "Active", value: visibleCounts.active },
@@ -870,7 +870,7 @@ export default function App() {
                 return (
                   <div
                     key={item.id}
-                    className="item-row group flex flex-col gap-3 px-4 py-4 hover:bg-[var(--app-hover)] lg:flex-row lg:items-center lg:justify-between lg:gap-4"
+                    className="item-row group flex flex-col gap-3 px-4 py-4 hover:bg-[var(--app-hover)] lg:grid lg:grid-cols-[1fr_auto_auto] lg:items-center lg:gap-4"
                   >
                     <div className="min-w-0">
                       <div className="flex items-start gap-3">
@@ -897,9 +897,9 @@ export default function App() {
                             {item.name}
                           </div>
                           {preview ? <div className="mt-0.5 truncate text-xs text-[var(--app-muted)]">{preview}</div> : null}
-                          <div className="mt-2.5 flex flex-col gap-1 text-xs text-[var(--app-muted)] lg:flex-row lg:items-center lg:gap-4">
-                            <div className="flex items-center gap-2 lg:contents">
-                              <div className={`flex-1 basis-0 min-w-0 lg:flex-none ${stateSelectClass} ${stateChipClass[item.state]}`}>
+                          <div className="mt-2.5 flex flex-col gap-1 text-xs text-[var(--app-muted)]">
+                            <div className="flex items-center gap-2">
+                              <div className={`${stateSelectClass} ${stateChipClass[item.state]}`}>
                                 <span className={`h-2 w-2 shrink-0 rounded-[2px] ${stateDotClass[item.state]}`} aria-hidden />
                                 <select
                                   value={item.state}
@@ -963,16 +963,23 @@ export default function App() {
                               ) : null}
                             </div>
 
-                            <span className="inline-flex items-center gap-3 whitespace-nowrap">
-                              <span className="font-mono text-[11px] lg:inline-block lg:w-[5rem] lg:text-right">{formatBytes(item.sizeBytes)}</span>
-                              <span className="font-mono text-[11px] lg:inline-block lg:w-[10rem]">{formatDateTime(item.createdAt)}</span>
+                            <span className="inline-flex items-center gap-2 whitespace-nowrap lg:hidden">
+                              <span className="font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
+                              <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
+                              <span className="font-mono text-[11px]">{formatDateTime(item.createdAt)}</span>
                             </span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 lg:w-auto">
+                    <div className="hidden items-center gap-2.5 whitespace-nowrap text-xs text-[var(--app-muted)] lg:flex">
+                      <span className="w-[5rem] text-right font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
+                      <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
+                      <span className="w-[10rem] font-mono text-[11px]">{formatDateTime(item.createdAt)}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 lg:min-w-[14rem] lg:justify-end">
                       {isBinary ? (
                         <button
                           type="button"
