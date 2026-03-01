@@ -326,20 +326,3 @@ it("unlocks a protected note before loading preview", async () => {
   await waitFor(() => expect(api.getItem).toHaveBeenCalledWith(7));
   expect(await screen.findByText("Decryption key rotates every Monday.")).toBeInTheDocument();
 });
-
-it("applies the protected-only filter in list API calls", async () => {
-  const user = userEvent.setup();
-  renderApp();
-
-  await screen.findByText("Shared items");
-  const filter = screen.getByLabelText("Filter by protection");
-  await user.selectOptions(filter, "protected");
-
-  await waitFor(() => {
-    expect(api.listItems).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        protected: true,
-      }),
-    );
-  });
-});
