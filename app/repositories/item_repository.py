@@ -90,6 +90,7 @@ class ItemRepository:
         query = Item.query.options(joinedload(Item.space)).order_by(
             *self._build_order_by(sort, order),
         )
+        query = self._exclude_expired(query)
         query = self._apply_filters(
             query, q=q, kind=kind, state=state, protected=protected,
             space_id=space_id, unspaced=unspaced,
@@ -116,6 +117,7 @@ class ItemRepository:
         query = Item.query.options(joinedload(Item.space)).order_by(
             *self._build_order_by(sort, order),
         )
+        query = self._exclude_expired(query)
         query = self._apply_filters(
             query, q=q, kind=kind, state=state, protected=protected,
             space_id=space_id, unspaced=unspaced,
@@ -152,6 +154,8 @@ class ItemRepository:
         item = self.get_by_id(item_id)
         if item is None:
             raise NotFoundError(f"Item with ID {item_id} not found")
+        if item.is_expired:
+            raise NotFoundError(f"Item with ID {item_id} not found")
         return item
 
     def create(
@@ -166,6 +170,7 @@ class ItemRepository:
         meta_json: Optional[str] = None,
         password_hash: Optional[str] = None,
         space_id: Optional[int] = None,
+        expires_at: Optional[datetime] = None,
     ) -> Item:
         item = Item(
             stored_name=stored_name,
@@ -177,6 +182,7 @@ class ItemRepository:
             meta_json=meta_json,
             password_hash=password_hash,
             space_id=space_id,
+            expires_at=expires_at,
         )
         db.session.add(item)
         db.session.commit()
@@ -268,6 +274,23 @@ class ItemRepository:
             size_by_kind=size_by_kind,
             count_by_state=count_by_state,
             largest_items=largest_items,
+        )
+
+    def find_expired(self, *, limit: int = 100) -> list[Item]:
+        now = datetime.now(timezone.utc)
+        return (
+            Item.query.filter(
+                Item.expires_at.is_not(None),
+                Item.expires_at <= now,
+            )
+            .limit(limit)
+            .all()
+        )
+
+    def _exclude_expired(self, query):
+        now = datetime.now(timezone.utc)
+        return query.filter(
+            or_(Item.expires_at.is_(None), Item.expires_at > now)
         )
 
     def _apply_filters(

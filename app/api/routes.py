@@ -279,7 +279,8 @@ def upload_files() -> tuple[Response, int]:
     password = request.form.get("password")
     space_id = _parse_optional_int_form_field("space_id")
     _validate_space_id(space_id)
-    items = service.upload_files(files, password=password, space_id=space_id)
+    ttl = request.form.get("ttl") or None
+    items = service.upload_files(files, password=password, space_id=space_id, ttl=ttl)
     for item in items:
         _remember_item_unlock_if_protected(service, item)
     return jsonify([_present_item(service, item) for item in items]), 201
@@ -294,8 +295,9 @@ def upload_folder() -> tuple[Response, int]:
     password = request.form.get("password")
     space_id = _parse_optional_int_form_field("space_id")
     _validate_space_id(space_id)
+    ttl = request.form.get("ttl") or None
 
-    item = service.upload_folder(files, paths, password=password, space_id=space_id)
+    item = service.upload_folder(files, paths, password=password, space_id=space_id, ttl=ttl)
     _remember_item_unlock_if_protected(service, item)
     return jsonify(_present_item(service, item)), 201
 
@@ -315,7 +317,8 @@ def create_link() -> tuple[Response, int]:
 
     space_id = _parse_optional_int_json_field(data, "spaceId")
     _validate_space_id(space_id)
-    item = service.create_link(url=url_raw, name=name, password=password, space_id=space_id)
+    ttl = data.get("ttl") or None
+    item = service.create_link(url=url_raw, name=name, password=password, space_id=space_id, ttl=ttl)
     _remember_item_unlock_if_protected(service, item)
     return jsonify(_present_item(service, item)), 201
 
@@ -335,7 +338,8 @@ def create_note() -> tuple[Response, int]:
 
     space_id = _parse_optional_int_json_field(data, "spaceId")
     _validate_space_id(space_id)
-    item = service.create_note(text=text_raw, title=title, password=password, space_id=space_id)
+    ttl = data.get("ttl") or None
+    item = service.create_note(text=text_raw, title=title, password=password, space_id=space_id, ttl=ttl)
     _remember_item_unlock_if_protected(service, item)
     return jsonify(_present_item(service, item)), 201
 

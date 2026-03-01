@@ -8,6 +8,7 @@ import mimetypes
 import shutil
 import uuid
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -20,6 +21,7 @@ from werkzeug.utils import secure_filename
 
 from dataclasses import dataclass
 
+from app.constants import ALLOWED_TTL_PRESETS
 from app.domain.item import Item, ItemKind, ItemState
 from app.exceptions import FileOperationError, NotFoundError, ValidationError
 from app.repositories.item_repository import ItemRepository, PaginatedResult, SortField, SortOrder, StorageStats
@@ -124,16 +126,19 @@ class ItemService:
         files: list[FileStorage],
         password: Optional[str] = None,
         space_id: Optional[int] = None,
+        ttl: Optional[str] = None,
     ) -> list[Item]:
         if not files:
             raise ValidationError("No files provided")
 
         normalized_password = self.normalize_item_password(password)
+        expires_at = self._resolve_expires_at(ttl)
         created: list[Item] = []
         for file in files:
             created.append(
                 self._upload_single_file(
-                    file, normalized_password=normalized_password, space_id=space_id,
+                    file, normalized_password=normalized_password,
+                    space_id=space_id, expires_at=expires_at,
                 )
             )
         return created
@@ -144,6 +149,7 @@ class ItemService:
         *,
         normalized_password: Optional[str] = None,
         space_id: Optional[int] = None,
+        expires_at: Optional[datetime] = None,
     ) -> Item:
         if not file or not file.filename:
             raise ValidationError("File is missing a filename")
@@ -182,6 +188,7 @@ class ItemService:
                 size_bytes=size_bytes,
                 password_hash=password_hash,
                 space_id=space_id,
+                expires_at=expires_at,
             )
             return item
         except SQLAlchemyError as e:
@@ -195,6 +202,7 @@ class ItemService:
         paths: list[str],
         password: Optional[str] = None,
         space_id: Optional[int] = None,
+        ttl: Optional[str] = None,
     ) -> Item:
         if not files:
             raise ValidationError("No files provided")
@@ -204,6 +212,7 @@ class ItemService:
             raise ValidationError("Files and paths counts do not match")
 
         normalized_password = self.normalize_item_password(password)
+        expires_at = self._resolve_expires_at(ttl)
         folder_name = self._infer_folder_name(paths)
         stored_name = f"{uuid.uuid4().hex}.zip"
 
@@ -253,6 +262,7 @@ class ItemService:
                 meta_json=meta_json,
                 password_hash=password_hash,
                 space_id=space_id,
+                expires_at=expires_at,
             )
             return item
         except SQLAlchemyError as e:
@@ -267,9 +277,11 @@ class ItemService:
         name: Optional[str] = None,
         password: Optional[str] = None,
         space_id: Optional[int] = None,
+        ttl: Optional[str] = None,
     ) -> Item:
         normalized_url = self._normalize_link_url(url)
         normalized_password = self.normalize_item_password(password)
+        expires_at = self._resolve_expires_at(ttl)
         display_name = self._normalize_display_name(name) or self._derive_link_display_name(normalized_url)
         stored_name = self._synthetic_stored_name("link")
         meta_json = json.dumps({"url": normalized_url}, separators=(",", ":"))
@@ -290,6 +302,7 @@ class ItemService:
                 meta_json=meta_json,
                 password_hash=password_hash,
                 space_id=space_id,
+                expires_at=expires_at,
             )
         except SQLAlchemyError as e:
             logger.error("Database error creating link item: %s", e, exc_info=True)
@@ -302,9 +315,11 @@ class ItemService:
         title: Optional[str] = None,
         password: Optional[str] = None,
         space_id: Optional[int] = None,
+        ttl: Optional[str] = None,
     ) -> Item:
         normalized_text = self._normalize_note_text(text)
         normalized_password = self.normalize_item_password(password)
+        expires_at = self._resolve_expires_at(ttl)
         display_name = self._normalize_note_title(title) or self._derive_note_title(normalized_text)
         stored_name = self._synthetic_stored_name("note")
         meta_json = json.dumps({"text": normalized_text}, separators=(",", ":"))
@@ -325,6 +340,7 @@ class ItemService:
                 meta_json=meta_json,
                 password_hash=password_hash,
                 space_id=space_id,
+                expires_at=expires_at,
             )
         except SQLAlchemyError as e:
             logger.error("Database error creating note item: %s", e, exc_info=True)
@@ -414,6 +430,38 @@ class ItemService:
 
         return len(items)
 
+    def delete_expired_items(self, *, limit: int = 100) -> int:
+        expired = self.repository.find_expired(limit=limit)
+        if not expired:
+            return 0
+
+        upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
+        stored_names = [item.stored_name for item in expired if self._item_has_stored_file(item)]
+
+        try:
+            self.repository.delete_many(expired)
+        except SQLAlchemyError as e:
+            logger.error("Failed to delete expired item records: %s", e, exc_info=True)
+            raise FileOperationError("Failed to delete expired item records")
+
+        failures = 0
+        for stored_name in stored_names:
+            try:
+                (upload_folder / stored_name).unlink(missing_ok=True)
+            except OSError as e:
+                failures += 1
+                logger.error(
+                    "Failed to delete expired file %s: %s",
+                    upload_folder / stored_name,
+                    e,
+                    exc_info=True,
+                )
+
+        if failures:
+            logger.warning("Expired cleanup completed with %s file deletion failure(s)", failures)
+
+        return len(expired)
+
     def update_item(
         self,
         item_id: int,
@@ -498,6 +546,14 @@ class ItemService:
             return False
 
         return check_password_hash(item.password_hash, normalized)
+
+    def _resolve_expires_at(self, ttl: Optional[str]) -> Optional[datetime]:
+        if ttl is None:
+            return None
+        if ttl not in ALLOWED_TTL_PRESETS:
+            valid = ", ".join(ALLOWED_TTL_PRESETS.keys())
+            raise ValidationError(f"Invalid TTL '{ttl}'. Valid values: {valid}")
+        return datetime.now(timezone.utc) + ALLOWED_TTL_PRESETS[ttl]
 
     def _infer_folder_name(self, paths: list[str]) -> str:
         first = sanitize_zip_path(paths[0])

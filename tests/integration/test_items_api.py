@@ -1,5 +1,6 @@
 import io
 import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask
@@ -719,3 +720,156 @@ def test_new_items_are_not_pinned(app: Flask, client: FlaskClient):
 
     note = client.post("/api/items/note", json={"text": "hello world"})
     assert note.get_json()["isPinned"] is False
+
+
+# --- TTL / Expiration Tests ---
+
+
+def _parse_expires_at(iso: str) -> datetime:
+    """Parse expiresAt ISO string, ensuring it is timezone-aware."""
+    dt = datetime.fromisoformat(iso)
+    assert dt.tzinfo is not None, "expiresAt must include timezone information"
+    return dt
+
+
+def test_upload_file_with_ttl(app: Flask, client: FlaskClient):
+    """Upload a file with TTL and verify expiresAt is returned."""
+    res = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"data"), "expiring.txt")], "ttl": "1h"},
+        content_type="multipart/form-data",
+    )
+    assert res.status_code == 201
+    data = res.get_json()[0]
+    assert data["expiresAt"] is not None
+    expires = _parse_expires_at(data["expiresAt"])
+    expected = datetime.now(timezone.utc) + timedelta(hours=1)
+    assert abs((expires - expected).total_seconds()) < 5
+
+
+def test_create_link_with_ttl(app: Flask, client: FlaskClient):
+    """Create a link with TTL and verify expiresAt."""
+    res = client.post("/api/items/link", json={"url": "https://example.com", "ttl": "24h"})
+    assert res.status_code == 201
+    data = res.get_json()
+    assert data["expiresAt"] is not None
+    expires = _parse_expires_at(data["expiresAt"])
+    expected = datetime.now(timezone.utc) + timedelta(hours=24)
+    assert abs((expires - expected).total_seconds()) < 5
+
+
+def test_create_note_with_ttl(app: Flask, client: FlaskClient):
+    """Create a note with TTL and verify expiresAt."""
+    res = client.post("/api/items/note", json={"text": "temp note", "ttl": "3d"})
+    assert res.status_code == 201
+    data = res.get_json()
+    assert data["expiresAt"] is not None
+    expires = _parse_expires_at(data["expiresAt"])
+    expected = datetime.now(timezone.utc) + timedelta(days=3)
+    assert abs((expires - expected).total_seconds()) < 5
+
+
+def test_no_ttl_means_no_expiration(app: Flask, client: FlaskClient):
+    """Items without TTL have null expiresAt."""
+    res = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"data"), "permanent.txt")]},
+        content_type="multipart/form-data",
+    )
+    assert res.get_json()[0]["expiresAt"] is None
+
+    res = client.post("/api/items/link", json={"url": "https://example.com"})
+    assert res.get_json()["expiresAt"] is None
+
+    res = client.post("/api/items/note", json={"text": "forever note"})
+    assert res.get_json()["expiresAt"] is None
+
+
+def test_invalid_ttl_rejected(app: Flask, client: FlaskClient):
+    """Invalid TTL preset returns 400."""
+    res = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"data"), "bad.txt")], "ttl": "2h"},
+        content_type="multipart/form-data",
+    )
+    assert res.status_code == 400
+
+    res = client.post("/api/items/link", json={"url": "https://example.com", "ttl": "forever"})
+    assert res.status_code == 400
+
+
+def test_expired_item_hidden_from_list(app: Flask, client: FlaskClient):
+    """Expired items do not appear in GET /api/items."""
+    res = client.post("/api/items/note", json={"text": "will expire", "ttl": "1h"})
+    item_id = res.get_json()["id"]
+
+    # Manually expire the item
+    with app.app_context():
+        item = db.session.get(Item, item_id)
+        item.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.session.commit()
+
+    listing = client.get("/api/items")
+    ids = [i["id"] for i in listing.get_json()["items"]]
+    assert item_id not in ids
+
+
+def test_expired_item_returns_404(app: Flask, client: FlaskClient):
+    """GET /api/items/<id> returns 404 for expired items."""
+    res = client.post("/api/items/note", json={"text": "will expire", "ttl": "1h"})
+    item_id = res.get_json()["id"]
+
+    with app.app_context():
+        item = db.session.get(Item, item_id)
+        item.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.session.commit()
+
+    res = client.get(f"/api/items/{item_id}")
+    assert res.status_code == 404
+
+
+def test_expired_item_share_link_returns_404(app: Flask, client: FlaskClient):
+    """GET /d/<id> returns 404 for expired items."""
+    res = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"data"), "temp.txt")], "ttl": "1h"},
+        content_type="multipart/form-data",
+    )
+    item_id = res.get_json()[0]["id"]
+
+    with app.app_context():
+        item = db.session.get(Item, item_id)
+        item.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.session.commit()
+
+    res = client.get(f"/d/{item_id}")
+    assert res.status_code == 404
+
+
+def test_delete_expired_items(app: Flask, client: FlaskClient):
+    """delete_expired_items removes items and files from disk."""
+    from app.repositories.item_repository import ItemRepository
+    from app.services.item_service import ItemService
+
+    res = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"data"), "expiring.txt")], "ttl": "1h"},
+        content_type="multipart/form-data",
+    )
+    item_id = res.get_json()[0]["id"]
+
+    with app.app_context():
+        item = db.session.get(Item, item_id)
+        stored_name = item.stored_name
+        item.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.session.commit()
+
+        upload_folder = Path(app.config["UPLOAD_FOLDER"])
+        assert (upload_folder / stored_name).exists()
+
+        service = ItemService(ItemRepository())
+        deleted = service.delete_expired_items()
+        assert deleted == 1
+
+        assert db.session.get(Item, item_id) is None
+        assert not (upload_folder / stored_name).exists()

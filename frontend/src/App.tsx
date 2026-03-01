@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
   HelpCircle,
+  Clock,
   Copy,
   ChevronDown,
   Download,
@@ -47,6 +48,7 @@ import {
   ItemDto,
   ItemKind,
   ItemState,
+  TtlPreset,
   listItems,
   listSpaces,
   renameSpace,
@@ -58,7 +60,7 @@ import {
   uploadFiles,
   uploadFolder,
 } from "./api/items";
-import { formatBytes, formatDateTime } from "./lib/format";
+import { formatBytes, formatDateTime, formatTimeRemaining, TTL_PRESETS } from "./lib/format";
 import { useDebouncedValue } from "./lib/useDebouncedValue";
 import { useTheme } from "./lib/useTheme";
 
@@ -181,6 +183,9 @@ export default function App() {
   const [uploadSpaceId, setUploadSpaceId] = useState<number | undefined>(undefined);
   const [linkSpaceId, setLinkSpaceId] = useState<number | undefined>(undefined);
   const [noteSpaceId, setNoteSpaceId] = useState<number | undefined>(undefined);
+  const [uploadTtl, setUploadTtl] = useState<TtlPreset | "">("");
+  const [linkTtl, setLinkTtl] = useState<TtlPreset | "">("");
+  const [noteTtl, setNoteTtl] = useState<TtlPreset | "">("");
   const [unlockTarget, setUnlockTarget] = useState<{ item: ItemDto; action: "download" | "link" | "note" } | null>(
     null,
   );
@@ -325,7 +330,7 @@ export default function App() {
   });
 
   const createLinkMutation = useMutation({
-    mutationFn: async (vars: { url: string; name?: string; password?: string; spaceId?: number }) => createLink(vars),
+    mutationFn: async (vars: { url: string; name?: string; password?: string; spaceId?: number; ttl?: TtlPreset }) => createLink(vars),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
@@ -335,7 +340,7 @@ export default function App() {
   });
 
   const createNoteMutation = useMutation({
-    mutationFn: async (vars: { text: string; title?: string; password?: string; spaceId?: number }) => createNote(vars),
+    mutationFn: async (vars: { text: string; title?: string; password?: string; spaceId?: number; ttl?: TtlPreset }) => createNote(vars),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
@@ -418,32 +423,33 @@ export default function App() {
     setUploadPassword("");
     setUploadPasswordConfirm("");
     setUploadSpaceId(activeSpaceId);
+    setUploadTtl("");
     setUploadDialogOpen(true);
   }
 
   const activeSpaceId = typeof spaceFilter === "number" ? spaceFilter : undefined;
 
-  async function handleUploadFiles(files: File[], password?: string, spaceId?: number) {
+  async function handleUploadFiles(files: File[], password?: string, spaceId?: number, ttl?: TtlPreset) {
     if (files.length === 0) return;
     const label = files.length === 1 ? `Uploading ${files[0].name}` : `Uploading ${files.length} files`;
     const task: UploadTask = { id: uuid(), label, progress: 0, status: "uploading" };
 
     try {
-      const created = await runUpload(task, (onProgress) => uploadFiles(files, { onProgress, password, spaceId }));
+      const created = await runUpload(task, (onProgress) => uploadFiles(files, { onProgress, password, spaceId, ttl }));
       toast.success(created.length === 1 ? "Uploaded" : `Uploaded ${created.length} files`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Upload failed");
     }
   }
 
-  async function handleUploadFolder(files: File[], password?: string, spaceId?: number) {
+  async function handleUploadFolder(files: File[], password?: string, spaceId?: number, ttl?: TtlPreset) {
     if (files.length === 0) return;
     const folderName = inferFolderName(files);
-    const task: UploadTask = { id: uuid(), label: `Uploading folder “${folderName}”`, progress: 0, status: "uploading" };
+    const task: UploadTask = { id: uuid(), label: `Uploading folder "${folderName}"`, progress: 0, status: "uploading" };
 
     try {
-      await runUpload(task, (onProgress) => uploadFolder(files, { onProgress, password, spaceId }));
-      toast.success(`Uploaded folder “${folderName}”`);
+      await runUpload(task, (onProgress) => uploadFolder(files, { onProgress, password, spaceId, ttl }));
+      toast.success(`Uploaded folder "${folderName}"`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Folder upload failed");
     }
@@ -459,10 +465,11 @@ export default function App() {
     }
 
     setUploadDialogOpen(false);
+    const ttl = uploadTtl || undefined;
     if (uploadDialogKind === "files") {
-      await handleUploadFiles(uploadDialogFiles, validation.password, uploadSpaceId);
+      await handleUploadFiles(uploadDialogFiles, validation.password, uploadSpaceId, ttl);
     } else {
-      await handleUploadFolder(uploadDialogFiles, validation.password, uploadSpaceId);
+      await handleUploadFolder(uploadDialogFiles, validation.password, uploadSpaceId, ttl);
     }
     setUploadDialogFiles([]);
     await queryClient.invalidateQueries({ queryKey: ["spaces"] });
@@ -484,6 +491,7 @@ export default function App() {
         name: linkName.trim() || undefined,
         password: validation.password,
         spaceId: linkSpaceId,
+        ttl: linkTtl || undefined,
       });
       setLinkDialogOpen(false);
       setLinkUrl("");
@@ -491,6 +499,7 @@ export default function App() {
       setLinkPassword("");
       setLinkPasswordConfirm("");
       setLinkSpaceId(undefined);
+      setLinkTtl("");
     } catch {
       // Error toast is handled by mutation onError.
     }
@@ -512,12 +521,14 @@ export default function App() {
         title: noteTitle.trim() || undefined,
         password: validation.password,
         spaceId: noteSpaceId,
+        ttl: noteTtl || undefined,
       });
       setNoteDialogOpen(false);
       setNoteTitle("");
       setNoteText("");
       setNotePassword("");
       setNotePasswordConfirm("");
+      setNoteTtl("");
       setNoteSpaceId(undefined);
     } catch {
       // Error toast is handled by mutation onError.
@@ -1058,6 +1069,15 @@ export default function App() {
                               <span className="font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
                               <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
                               <span className="font-mono text-[11px]">{formatDateTime(item.createdAt)}</span>
+                              {item.expiresAt && (
+                                <>
+                                  <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
+                                  <span className="inline-flex items-center gap-1 font-mono text-[11px] text-amber-600 dark:text-amber-400">
+                                    <Clock className="h-3 w-3" />
+                                    {formatTimeRemaining(item.expiresAt)}
+                                  </span>
+                                </>
+                              )}
                             </span>
                           </div>
                         </div>
@@ -1068,6 +1088,15 @@ export default function App() {
                       <span className="w-[5rem] text-right font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
                       <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
                       <span className="w-[10rem] font-mono text-[11px]">{formatDateTime(item.createdAt)}</span>
+                      {item.expiresAt && (
+                        <>
+                          <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
+                          <span className="inline-flex items-center gap-1 font-mono text-[11px] text-amber-600 dark:text-amber-400">
+                            <Clock className="h-3 w-3" />
+                            {formatTimeRemaining(item.expiresAt)}
+                          </span>
+                        </>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 lg:min-w-[14rem] lg:justify-end">
@@ -1313,6 +1342,7 @@ export default function App() {
           setUploadPassword("");
           setUploadPasswordConfirm("");
           setUploadSpaceId(undefined);
+          setUploadTtl("");
         }}
         onConfirm={() => {
           void handleConfirmUploadDialog();
@@ -1332,7 +1362,26 @@ export default function App() {
           </label>
         ) : null}
 
-        <label className={`${spaces.length > 0 ? "mt-3" : "mt-4"} block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]`}>
+        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Auto-delete after (optional)
+          <Select
+            value={uploadTtl}
+            onChange={(v) => setUploadTtl(v as TtlPreset | "")}
+            options={TTL_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
+            placeholder="Never"
+            className={`${dialogFieldClass} mt-1`}
+            aria-label="Auto-delete after"
+          />
+        </label>
+
+        {uploadTtl && (
+          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            This item will be <strong>permanently deleted</strong> after{" "}
+            {TTL_PRESETS.find((p) => p.value === uploadTtl)?.label}. This cannot be undone.
+          </div>
+        )}
+
+        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
           Password (optional)
           <input
             type="password"
@@ -1403,6 +1452,7 @@ export default function App() {
           setLinkPassword("");
           setLinkPasswordConfirm("");
           setLinkSpaceId(undefined);
+          setLinkTtl("");
         }}
         onConfirm={() => {
           void handleCreateLink();
@@ -1444,6 +1494,25 @@ export default function App() {
         ) : null}
 
         <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Auto-delete after (optional)
+          <Select
+            value={linkTtl}
+            onChange={(v) => setLinkTtl(v as TtlPreset | "")}
+            options={TTL_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
+            placeholder="Never"
+            className={`${dialogFieldClass} mt-1`}
+            aria-label="Auto-delete after"
+          />
+        </label>
+
+        {linkTtl && (
+          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            This item will be <strong>permanently deleted</strong> after{" "}
+            {TTL_PRESETS.find((p) => p.value === linkTtl)?.label}. This cannot be undone.
+          </div>
+        )}
+
+        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
           Password (optional)
           <input
             type="password"
@@ -1482,6 +1551,7 @@ export default function App() {
           setNotePassword("");
           setNotePasswordConfirm("");
           setNoteSpaceId(undefined);
+          setNoteTtl("");
         }}
         onConfirm={() => {
           void handleCreateNote();
@@ -1528,6 +1598,25 @@ export default function App() {
             />
           </label>
         ) : null}
+
+        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          Auto-delete after (optional)
+          <Select
+            value={noteTtl}
+            onChange={(v) => setNoteTtl(v as TtlPreset | "")}
+            options={TTL_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
+            placeholder="Never"
+            className={`${dialogFieldClass} mt-1`}
+            aria-label="Auto-delete after"
+          />
+        </label>
+
+        {noteTtl && (
+          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            This item will be <strong>permanently deleted</strong> after{" "}
+            {TTL_PRESETS.find((p) => p.value === noteTtl)?.label}. This cannot be undone.
+          </div>
+        )}
 
         <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
           Password (optional)

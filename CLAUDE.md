@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Last verified against code: 2026-02-27.
+Last verified against code: 2026-03-01.
 
 ## Project Snapshot
 
@@ -80,12 +80,12 @@ app/
   repositories/item_repository.py
   domain/item.py                # Item model, ItemKind, ItemState, to_dto()
   config.py                     # Config dataclass (from_env / for_development)
-  constants.py                  # Upload size, note excerpt bounds
+  constants.py                  # Upload size, note excerpt bounds, TTL presets
   exceptions.py                 # AppError hierarchy (NotFoundError, ValidationError, etc.)
   error_handlers.py             # register_error_handlers() — called on both blueprints
   logging_config.py             # JSON logging in prod, plain text in dev
   utils/zip_utils.py            # sanitize_zip_path(), dedupe_zip_path()
-  cli.py                        # flask prune-orphans command
+  cli.py                        # flask prune-orphans, flask expire-items commands
 ```
 
 Key patterns:
@@ -94,6 +94,7 @@ Key patterns:
 - **Serialization**: `Item.to_dto()` on the model handles all DTO conversion. Protected locked items hide `linkUrl`/`noteText`/`noteExcerpt` and expose `isPasswordProtected` + `isPasswordUnlocked`.
 - **meta_json column**: Links store `{"url": "..."}`, notes store `{"text": "..."}`, folders store `{"file_count": N, "top_level_dir": "..."}`.
 - **Session unlocks**: Per-item unlock state is tracked in signed Flask session cookies (`app/services/item_access.py`).
+- **Item expiration**: Optional `expires_at` column. Expired items are filtered from all queries and deleted by a throttled `before_request` hook (~60s interval).
 
 ### Frontend
 
@@ -109,10 +110,10 @@ Single-page app — **no client-side router**. `App.tsx` is the sole root compon
 - `GET /api/health` (returns `{"ok": true, "version": "<app-version>"}`)
 - `GET /api/storage` (returns `{disk, items: {totalCount, totalSizeBytes, countByKind, sizeByKind, countByState}, largestItems}`)
 - `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `sort` (`name|size|created|modified`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
-- `POST /api/items/files` (multipart field `files`, repeatable; optional `password`)
-- `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`; optional `password`)
-- `POST /api/items/link` (JSON: `{"url":"https://...","name?":"optional label","password?":"optional password"}`)
-- `POST /api/items/note` (JSON: `{"text":"...","title?":"optional title","password?":"optional password"}`)
+- `POST /api/items/files` (multipart field `files`, repeatable; optional `password`, `ttl`)
+- `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`; optional `password`, `ttl`)
+- `POST /api/items/link` (JSON: `{"url":"https://...","name?":"optional label","password?":"optional password","ttl?":"1h|6h|24h|3d|7d|30d"}`)
+- `POST /api/items/note` (JSON: `{"text":"...","title?":"optional title","password?":"optional password","ttl?":"1h|6h|24h|3d|7d|30d"}`)
 - `GET /api/items/<id>`
 - `POST /api/items/<id>/unlock` (JSON: `{"password":"..."}`)
 - `PATCH /api/items/<id>` with JSON `{"state?":"active|done|archived|ready_to_delete","spaceId?":1,"pinned?":true}` (at least one field required; bumps `updatedAt`)
@@ -135,6 +136,7 @@ Note payload behavior:
 - `entrypoint.sh` runs migrations on every container start (zero-touch schema updates).
 - Migration files use manual prefixes (`0001_`, `0002_`) instead of Alembic hex IDs.
 - Service validation limits: display name 255 chars, link URL 2048, note title 120, note text 4000.
+- **Item expiration (TTL)**: Items can optionally have an `expires_at` timestamp set at creation time from preset durations (`1h`, `6h`, `24h`, `3d`, `7d`, `30d`). Expired items are permanently deleted (DB row + disk file). Two-layer approach: (1) expired items are filtered from all queries immediately, (2) a throttled `before_request` hook deletes them from DB/disk every ~60s. CLI fallback: `flask expire-items` (with `--dry-run`, `--limit`). TTL is immutable after creation.
 
 ## Testing
 
