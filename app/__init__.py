@@ -76,6 +76,10 @@ def _setup_request_handlers(app: Flask) -> None:
             g.item_service.delete_expired_items(limit=50)
         except Exception:
             app.logger.exception("Expired item cleanup failed")
+            try:
+                db.session.rollback()
+            except Exception:
+                app.logger.exception("Expired item cleanup rollback failed")
 
     @app.after_request
     def add_request_id_header(response):

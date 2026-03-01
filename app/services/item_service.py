@@ -545,9 +545,12 @@ class ItemService:
 
         return check_password_hash(item.password_hash, normalized)
 
-    def _resolve_expires_at(self, ttl: Optional[str]) -> Optional[datetime]:
+    def _resolve_expires_at(self, ttl: object | None) -> Optional[datetime]:
         if ttl is None:
             return None
+        if not isinstance(ttl, str):
+            valid = ", ".join(ALLOWED_TTL_PRESETS.keys())
+            raise ValidationError(f"Invalid TTL '{ttl}'. Valid values: {valid}")
         if ttl not in ALLOWED_TTL_PRESETS:
             valid = ", ".join(ALLOWED_TTL_PRESETS.keys())
             raise ValidationError(f"Invalid TTL '{ttl}'. Valid values: {valid}")

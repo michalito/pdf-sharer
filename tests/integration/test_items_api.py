@@ -794,8 +794,47 @@ def test_invalid_ttl_rejected(app: Flask, client: FlaskClient):
     )
     assert res.status_code == 400
 
-    res = client.post("/api/items/link", json={"url": "https://example.com", "ttl": "forever"})
-    assert res.status_code == 400
+    for invalid_ttl in ("forever", False, 0, [], {}):
+        res = client.post("/api/items/link", json={"url": "https://example.com", "ttl": invalid_ttl})
+        assert res.status_code == 400
+
+
+def test_cleanup_expired_items_failure_does_not_poison_request_session(app: Flask, client: FlaskClient):
+    """Cleanup errors should roll back DB session so request processing can continue."""
+    from app.repositories.item_repository import ItemRepository
+    from app.services.item_service import ItemService
+
+    class FailingCleanupService(ItemService):
+        def delete_expired_items(self, *, limit: int = 100) -> int:
+            duplicate = "cleanup-duplicate.txt"
+            db.session.add(
+                Item(
+                    stored_name=duplicate,
+                    display_name="first",
+                    kind="file",
+                    state="active",
+                    mime_type="text/plain",
+                    size_bytes=1,
+                )
+            )
+            db.session.add(
+                Item(
+                    stored_name=duplicate,
+                    display_name="second",
+                    kind="file",
+                    state="active",
+                    mime_type="text/plain",
+                    size_bytes=1,
+                )
+            )
+            db.session.commit()
+            return 0
+
+    app.config["ITEM_SERVICE_OVERRIDE"] = FailingCleanupService(ItemRepository())
+
+    res = client.get("/api/items")
+    assert res.status_code == 200
+    assert res.get_json()["pagination"]["total"] == 0
 
 
 def test_expired_item_hidden_from_list(app: Flask, client: FlaskClient):
