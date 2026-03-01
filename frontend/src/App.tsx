@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
@@ -13,6 +13,7 @@ import {
   Lock,
   Link2,
   Moon,
+  Plus,
   Search,
   StickyNote,
   Sun,
@@ -127,6 +128,8 @@ export default function App() {
   const perPage = 50;
   const [deleteSpaceTarget, setDeleteSpaceTarget] = useState<SpaceDto | null>(null);
 
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const newMenuRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [uploads, setUploads] = useState<UploadTask[]>([]);
@@ -158,6 +161,24 @@ export default function App() {
   );
   const [unlockPassword, setUnlockPassword] = useState("");
   const [isUnlocking, setIsUnlocking] = useState(false);
+
+  useEffect(() => {
+    if (!newMenuOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) {
+        setNewMenuOpen(false);
+      }
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") setNewMenuOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [newMenuOpen]);
 
   const queryKey = useMemo(
     () =>
@@ -569,7 +590,10 @@ export default function App() {
   const controlClass =
     "h-10 rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 text-sm text-[var(--app-text)] shadow-sm outline-none transition-colors hover:bg-[var(--app-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
   const controlButtonClass = `${controlClass} pressable`;
-  const selectControlClass = `${controlClass} appearance-none pl-3.5 pr-9`;
+  const filterSelectClass =
+    "h-9 rounded-lg border border-transparent bg-[var(--app-hover)] appearance-none pl-3.5 pr-9 text-xs font-medium text-[var(--app-text)] outline-none transition-colors hover:bg-[var(--app-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
+  const newMenuItemClass =
+    "flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)]";
   const rowActionBaseClass =
     "pressable inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
   const rowActionPrimaryClass = `${rowActionBaseClass} border-transparent bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)] focus-visible:outline-[var(--accent)]`;
@@ -592,55 +616,55 @@ export default function App() {
       <header className="sticky top-0 z-30 border-b border-[var(--app-border)] bg-[var(--app-panel-strong)]/95 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 py-4 reveal reveal-d1">
           <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="grid h-11 w-11 overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] p-0.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="grid h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] p-0.5">
                   <img src="/logo.png" alt="saíta logo" className="h-full w-full object-contain" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="font-display text-[1.15rem] font-semibold">saíta</div>
-                  <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--app-muted)]">
+                  <div className="truncate font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--app-muted)]">
                     Internal exchange, zero login
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={openFilesPicker}
-                  className="pressable inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--accent)] px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--accent-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-                >
-                  <Upload className="h-4 w-4" />
-                  Upload files
-                </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="relative" ref={newMenuRef} data-testid="new-menu">
+                  <button
+                    type="button"
+                    onClick={() => setNewMenuOpen((prev) => !prev)}
+                    aria-haspopup="true"
+                    aria-expanded={newMenuOpen}
+                    className="pressable inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--accent)] px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--accent-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${newMenuOpen ? "rotate-180" : ""}`} />
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={openFolderPicker}
-                  className={`inline-flex items-center gap-2 ${controlButtonClass}`}
-                >
-                  <FolderUp className="h-4 w-4" />
-                  Upload folder
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setLinkSpaceId(activeSpaceId); setLinkDialogOpen(true); }}
-                  className={`inline-flex items-center gap-2 ${controlButtonClass}`}
-                >
-                  <Link2 className="h-4 w-4" />
-                  Save link
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setNoteSpaceId(activeSpaceId); setNoteDialogOpen(true); }}
-                  className={`inline-flex items-center gap-2 ${controlButtonClass}`}
-                >
-                  <StickyNote className="h-4 w-4" />
-                  Save note
-                </button>
+                  {newMenuOpen && (
+                    <div className="absolute right-0 top-full z-40 mt-1.5 w-48 overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] py-1 shadow-lg">
+                      <button type="button" onClick={() => { setNewMenuOpen(false); openFilesPicker(); }} className={newMenuItemClass}>
+                        <Upload className="h-4 w-4 text-[var(--app-muted)]" />
+                        Upload files
+                      </button>
+                      <button type="button" onClick={() => { setNewMenuOpen(false); openFolderPicker(); }} className={newMenuItemClass}>
+                        <FolderUp className="h-4 w-4 text-[var(--app-muted)]" />
+                        Upload folder
+                      </button>
+                      <div className="my-1 border-t border-[var(--app-border)]" />
+                      <button type="button" onClick={() => { setNewMenuOpen(false); setLinkSpaceId(activeSpaceId); setLinkDialogOpen(true); }} className={newMenuItemClass}>
+                        <Link2 className="h-4 w-4 text-[var(--app-muted)]" />
+                        Save link
+                      </button>
+                      <button type="button" onClick={() => { setNewMenuOpen(false); setNoteSpaceId(activeSpaceId); setNoteDialogOpen(true); }} className={newMenuItemClass}>
+                        <StickyNote className="h-4 w-4 text-[var(--app-muted)]" />
+                        Save note
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <button
                   type="button"
@@ -654,7 +678,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid gap-2 lg:grid-cols-[1fr_170px_180px_170px]">
+            <div className="grid items-center gap-2 lg:grid-cols-[1fr_170px_180px_170px]">
               <label className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
                 <input
@@ -675,7 +699,7 @@ export default function App() {
                     setKindFilter(e.target.value as KindFilter);
                     setPage(1);
                   }}
-                  className={`w-full ${selectControlClass}`}
+                  className={`w-full ${filterSelectClass}`}
                   aria-label="Filter by kind"
                 >
                   <option value="all">All items</option>
@@ -684,7 +708,7 @@ export default function App() {
                   <option value="link">Links only</option>
                   <option value="note">Notes only</option>
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
               </label>
 
               <label className="relative">
@@ -694,7 +718,7 @@ export default function App() {
                     setStateFilter(e.target.value as StateFilter);
                     setPage(1);
                   }}
-                  className={`w-full ${selectControlClass}`}
+                  className={`w-full ${filterSelectClass}`}
                   aria-label="Filter by status"
                 >
                   <option value="all">All statuses</option>
@@ -703,7 +727,7 @@ export default function App() {
                   <option value="archived">Archived</option>
                   <option value="ready_to_delete">Ready to delete</option>
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
               </label>
 
               <label className="relative">
@@ -713,14 +737,14 @@ export default function App() {
                     setAccessFilter(e.target.value as AccessFilter);
                     setPage(1);
                   }}
-                  className={`w-full ${selectControlClass}`}
+                  className={`w-full ${filterSelectClass}`}
                   aria-label="Filter by protection"
                 >
                   <option value="all">All access</option>
                   <option value="protected">Protected only</option>
                   <option value="unprotected">Unprotected only</option>
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
               </label>
             </div>
 
