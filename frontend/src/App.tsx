@@ -51,7 +51,6 @@ import { useTheme } from "./lib/useTheme";
 
 type KindFilter = "all" | ItemKind;
 type StateFilter = "all" | ItemState;
-type AccessFilter = "all" | "protected" | "unprotected";
 
 const itemStateOptions: Array<{ value: ItemState; label: string }> = [
   { value: "active", label: "Active" },
@@ -122,7 +121,6 @@ export default function App() {
   const debouncedSearch = useDebouncedValue(searchText.trim(), 250);
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [stateFilter, setStateFilter] = useState<StateFilter>("active");
-  const [accessFilter, setAccessFilter] = useState<AccessFilter>("all");
   const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>("all");
   const [page, setPage] = useState(1);
   const perPage = 50;
@@ -184,9 +182,9 @@ export default function App() {
     () =>
       [
         "items",
-        { q: debouncedSearch, kind: kindFilter, state: stateFilter, access: accessFilter, space: spaceFilter, page, perPage },
+        { q: debouncedSearch, kind: kindFilter, state: stateFilter, space: spaceFilter, page, perPage },
       ] as const,
-    [debouncedSearch, kindFilter, stateFilter, accessFilter, spaceFilter, page, perPage],
+    [debouncedSearch, kindFilter, stateFilter, spaceFilter, page, perPage],
   );
 
   const versionQuery = useQuery({
@@ -209,7 +207,6 @@ export default function App() {
         q: debouncedSearch || undefined,
         kind: kindFilter === "all" ? undefined : kindFilter,
         state: stateFilter === "all" ? undefined : stateFilter,
-        protected: accessFilter === "all" ? undefined : accessFilter === "protected",
         space: spaceFilter === "all" ? undefined : spaceFilter === "none" ? "none" : String(spaceFilter),
         page,
         perPage,
@@ -238,8 +235,6 @@ export default function App() {
         if (spaceFilter === "none" && it.spaceId != null) return false;
         if (typeof spaceFilter === "number" && it.spaceId !== spaceFilter) return false;
         if (kindFilter !== "all" && it.kind !== kindFilter) return false;
-        if (accessFilter === "protected" && !it.isPasswordProtected) return false;
-        if (accessFilter === "unprotected" && it.isPasswordProtected) return false;
         return true;
       });
 
@@ -270,7 +265,7 @@ export default function App() {
   });
 
   const bulkDeleteMutation = useMutation({
-    mutationFn: async (vars: { q?: string; kind?: ItemKind; protected?: boolean; space?: string }) => deleteReadyToDelete(vars),
+    mutationFn: async (vars: { q?: string; kind?: ItemKind; space?: string }) => deleteReadyToDelete(vars),
     onSuccess: async (res) => {
       setPage(1);
       await queryClient.invalidateQueries({ queryKey: ["items"] });
@@ -678,7 +673,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid items-center gap-2 lg:grid-cols-[1fr_170px_180px_170px]">
+            <div className="grid items-center gap-2 lg:grid-cols-[1fr_170px_180px]">
               <label className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-muted)]" />
                 <input
@@ -730,22 +725,6 @@ export default function App() {
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
               </label>
 
-              <label className="relative">
-                <select
-                  value={accessFilter}
-                  onChange={(e) => {
-                    setAccessFilter(e.target.value as AccessFilter);
-                    setPage(1);
-                  }}
-                  className={`w-full ${filterSelectClass}`}
-                  aria-label="Filter by protection"
-                >
-                  <option value="all">All access</option>
-                  <option value="protected">Protected only</option>
-                  <option value="unprotected">Unprotected only</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
-              </label>
             </div>
 
             <SpaceBar
@@ -1144,7 +1123,6 @@ export default function App() {
             .mutateAsync({
               q: debouncedSearch || undefined,
               kind: kindFilter === "all" ? undefined : kindFilter,
-              protected: accessFilter === "all" ? undefined : accessFilter === "protected",
               space: spaceFilter === "all" ? undefined : spaceFilter === "none" ? "none" : String(spaceFilter),
             })
             .finally(() => setBulkDeleteOpen(false));
