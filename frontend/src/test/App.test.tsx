@@ -210,7 +210,7 @@ it("submits the save-note dialog", async () => {
 
   const dialog = await screen.findByRole("dialog", { name: "Save note" });
   await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Retro");
-  await user.type(within(dialog).getByPlaceholderText("Write a short note..."), "Ship links and notes this week.");
+  await user.type(within(dialog).getByPlaceholderText("Write a note... (supports markdown)"), "Ship links and notes this week.");
   await user.type(within(dialog).getByPlaceholderText("8-128 characters"), "notespass");
   await user.type(within(dialog).getByPlaceholderText("Repeat password"), "notespass");
   await user.click(within(dialog).getByRole("button", { name: "Save note" }));

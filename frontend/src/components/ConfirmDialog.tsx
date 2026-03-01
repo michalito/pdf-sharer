@@ -9,6 +9,7 @@ export default function ConfirmDialog(props: {
   confirmVariant?: "danger" | "primary";
   confirmDisabled?: boolean;
   formMode?: boolean;
+  size?: "md" | "lg";
   onConfirm: () => void;
   onCancel: () => void;
   children?: ReactNode;
@@ -22,6 +23,7 @@ export default function ConfirmDialog(props: {
     confirmVariant = "primary",
     confirmDisabled = false,
     formMode = false,
+    size = "md",
     onConfirm,
     onCancel,
     children,
@@ -84,7 +86,7 @@ export default function ConfirmDialog(props: {
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
-        className="glass-panel dialog-pop relative w-full max-w-md rounded-xl p-5"
+        className={`glass-panel dialog-pop relative w-full rounded-xl p-5 ${size === "lg" ? "max-w-lg" : "max-w-md"}`}
       >
         {formMode ? (
           <form

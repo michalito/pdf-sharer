@@ -20,6 +20,7 @@ from app.domain.item import ItemKind
 from app.exceptions import AppError, ValidationError
 from app.services.item_access import is_item_unlocked, mark_item_unlocked
 from app.services.item_service import ItemService
+from app.utils.markdown import render_markdown
 from app.web import web
 
 
@@ -115,10 +116,11 @@ def _serve_public_item(service: ItemService, item) -> Response:
         return redirect(service.get_link_url(item), code=302)
 
     if item.kind == ItemKind.NOTE.value:
+        raw_text = service.get_note_text(item)
         return render_template(
             "note.html",
             note_title=item.display_name,
-            note_text=service.get_note_text(item),
+            note_html=render_markdown(raw_text),
             created_at=item.created_at,
             item_id=item.id,
         )
