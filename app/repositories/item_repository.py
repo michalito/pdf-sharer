@@ -54,7 +54,9 @@ class ItemRepository:
         space_id: Optional[int] = None,
         unspaced: Optional[bool] = None,
     ) -> list[Item]:
-        query = Item.query.options(joinedload(Item.space)).order_by(Item.created_at.desc())
+        query = Item.query.options(joinedload(Item.space)).order_by(
+            Item.is_pinned.desc(), Item.created_at.desc(),
+        )
         query = self._apply_filters(
             query, q=q, kind=kind, state=state, protected=protected,
             space_id=space_id, unspaced=unspaced,
@@ -76,7 +78,9 @@ class ItemRepository:
         page = max(1, page)
         per_page = min(max(1, per_page), self.MAX_PER_PAGE)
 
-        query = Item.query.options(joinedload(Item.space)).order_by(Item.created_at.desc())
+        query = Item.query.options(joinedload(Item.space)).order_by(
+            Item.is_pinned.desc(), Item.created_at.desc(),
+        )
         query = self._apply_filters(
             query, q=q, kind=kind, state=state, protected=protected,
             space_id=space_id, unspaced=unspaced,
@@ -105,7 +109,7 @@ class ItemRepository:
     def get_by_state(self, state: ItemState) -> list[Item]:
         return (
             Item.query.filter(Item.state == state.value)
-            .order_by(Item.created_at.desc())
+            .order_by(Item.is_pinned.desc(), Item.created_at.desc())
             .all()
         )
 
@@ -155,12 +159,15 @@ class ItemRepository:
         new_state: Optional[ItemState] = None,
         new_space_id: Optional[int] = None,
         update_space: bool = False,
+        pinned: Optional[bool] = None,
     ) -> Item:
-        """Apply state and/or space changes in a single commit."""
+        """Apply state, space, and/or pinned changes in a single commit."""
         if new_state is not None:
             item.state = new_state.value
         if update_space:
             item.space_id = new_space_id
+        if pinned is not None:
+            item.is_pinned = pinned
         db.session.commit()
         return item
 

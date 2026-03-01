@@ -381,15 +381,17 @@ class ItemService:
         new_state: Optional[ItemState] = None,
         new_space_id: Optional[int] = None,
         update_space: bool = False,
+        pinned: Optional[bool] = None,
     ) -> Item:
-        """Apply state and/or space changes atomically.
+        """Apply state, space, and/or pinned changes atomically.
 
         Caller must validate that new_space_id refers to an existing space.
         """
         item = self.repository.get_by_id_or_raise(item_id)
         try:
             return self.repository.update_item_fields(
-                item, new_state=new_state, new_space_id=new_space_id, update_space=update_space,
+                item, new_state=new_state, new_space_id=new_space_id,
+                update_space=update_space, pinned=pinned,
             )
         except SQLAlchemyError as e:
             logger.error("Failed to update item %s: %s", item_id, e, exc_info=True)

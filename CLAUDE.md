@@ -114,7 +114,7 @@ Single-page app — **no client-side router**. `App.tsx` is the sole root compon
 - `POST /api/items/note` (JSON: `{"text":"...","title?":"optional title","password?":"optional password"}`)
 - `GET /api/items/<id>`
 - `POST /api/items/<id>/unlock` (JSON: `{"password":"..."}`)
-- `PATCH /api/items/<id>` with JSON `{"state":"active|done|archived|ready_to_delete"}`
+- `PATCH /api/items/<id>` with JSON `{"state?":"active|done|archived|ready_to_delete","spaceId?":1,"pinned?":true}` (at least one field required)
 - `GET /api/items/<id>/download`
 - `DELETE /api/items/<id>` only when item state is `ready_to_delete`
 - `DELETE /api/items/ready-to-delete` (optional `q`, `kind`, `protected`)
