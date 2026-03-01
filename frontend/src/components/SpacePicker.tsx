@@ -28,7 +28,7 @@ export default function SpacePicker({
     if (!el) return;
     const rect = el.getBoundingClientRect();
     if (rect.bottom > window.innerHeight - 8) {
-      el.style.top = `${anchorRect.top - rect.height - 4}px`;
+      el.style.top = `${Math.max(8, anchorRect.top - rect.height - 4)}px`;
     }
     if (rect.right > window.innerWidth - 8) {
       el.style.left = `${window.innerWidth - rect.width - 8}px`;
