@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import type { SpaceDto } from "../api/items";
 import { useLongPress } from "../lib/useLongPress";
+import { usePopover } from "../lib/usePopover";
 
 export type SpaceFilter = "all" | "none" | number;
 
@@ -33,61 +34,11 @@ function ContextMenu({
   onDelete: () => void;
   onClose: () => void;
 }) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  // Adjust position if overflowing viewport, then focus first item
-  useEffect(() => {
-    const el = menuRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (rect.bottom > window.innerHeight - 8) {
-      el.style.top = `${y - rect.height - 4}px`;
-    }
-    if (rect.right > window.innerWidth - 8) {
-      el.style.left = `${window.innerWidth - rect.width - 8}px`;
-    }
-    el.querySelector<HTMLButtonElement>("[role=menuitem]")?.focus();
-  }, [x, y]);
-
-  // Dismiss on outside click, escape, or scroll
-  useEffect(() => {
-    const close = () => onCloseRef.current();
-    function handlePointerDown(e: PointerEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        close();
-      }
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") close();
-    }
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("scroll", close, true);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown, true);
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("scroll", close, true);
-    };
-  }, []);
-
-  function handleMenuKeyDown(e: React.KeyboardEvent) {
-    const items = menuRef.current?.querySelectorAll<HTMLButtonElement>(
-      "[role=menuitem]",
-    );
-    if (!items?.length) return;
-    const idx = Array.from(items).indexOf(
-      document.activeElement as HTMLButtonElement,
-    );
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      items[(idx + 1) % items.length].focus();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      items[(idx - 1 + items.length) % items.length].focus();
-    }
-  }
+  const { menuRef, style, handleKeyDown } = usePopover({
+    anchor: { x, y },
+    onClose,
+    initialFocus: "first",
+  });
 
   const itemClass =
     "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors";
@@ -96,8 +47,8 @@ function ContextMenu({
     <div
       ref={menuRef}
       role="menu"
-      onKeyDown={handleMenuKeyDown}
-      style={{ position: "fixed", left: x, top: y + 4, zIndex: 60 }}
+      onKeyDown={handleKeyDown}
+      style={style}
       className="dialog-pop glass-panel min-w-[140px] rounded-lg p-1"
     >
       <button

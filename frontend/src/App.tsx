@@ -15,7 +15,7 @@ import {
   Moon,
   Plus,
   Search,
-  StickyNote,
+  MessageSquareText,
   Sun,
   Layers,
   Trash2,
@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import ConfirmDialog from "./components/ConfirmDialog";
 import HowItWorksPanel from "./components/HowItWorksPanel";
+import Select from "./components/Select";
 import SpaceBar, { SpaceFilter } from "./components/SpaceBar";
 import SpacePicker from "./components/SpacePicker";
 import UploadQueue, { UploadTask } from "./components/UploadQueue";
@@ -597,7 +598,7 @@ export default function App() {
     "h-10 rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 text-sm text-[var(--app-text)] shadow-sm outline-none transition-colors hover:bg-[var(--app-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
   const controlButtonClass = `${controlClass} pressable`;
   const filterSelectClass =
-    "h-9 rounded-lg border border-transparent bg-[var(--app-hover)] appearance-none pl-3.5 pr-9 text-xs font-medium text-[var(--app-text)] outline-none transition-colors hover:bg-[var(--app-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
+    "h-9 rounded-lg border border-transparent bg-[var(--app-hover)] pl-3.5 pr-9 text-xs font-medium text-[var(--app-text)] outline-none transition-colors hover:bg-[var(--app-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
   const newMenuItemClass =
     "flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)]";
   const rowActionBaseClass =
@@ -665,7 +666,7 @@ export default function App() {
                         Save link
                       </button>
                       <button type="button" onClick={() => { setNewMenuOpen(false); setNoteSpaceId(activeSpaceId); setNoteDialogOpen(true); }} className={newMenuItemClass}>
-                        <StickyNote className="h-4 w-4 text-[var(--app-muted)]" />
+                        <MessageSquareText className="h-4 w-4 text-[var(--app-muted)]" />
                         Save note
                       </button>
                     </div>
@@ -698,43 +699,39 @@ export default function App() {
                 />
               </label>
 
-              <label className="relative">
-                <select
-                  value={kindFilter}
-                  onChange={(e) => {
-                    setKindFilter(e.target.value as KindFilter);
-                    setPage(1);
-                  }}
-                  className={`w-full ${filterSelectClass}`}
-                  aria-label="Filter by kind"
-                >
-                  <option value="all">All items</option>
-                  <option value="file">Files only</option>
-                  <option value="folder">Folders only</option>
-                  <option value="link">Links only</option>
-                  <option value="note">Notes only</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
-              </label>
+              <Select
+                value={kindFilter}
+                onChange={(v) => {
+                  setKindFilter((v || "all") as KindFilter);
+                  setPage(1);
+                }}
+                options={[
+                  { value: "all", label: "All items" },
+                  { value: "file", label: "Files only", divider: true },
+                  { value: "folder", label: "Folders only" },
+                  { value: "link", label: "Links only" },
+                  { value: "note", label: "Notes only" },
+                ]}
+                className={`w-full ${filterSelectClass}`}
+                aria-label="Filter by kind"
+              />
 
-              <label className="relative">
-                <select
-                  value={stateFilter}
-                  onChange={(e) => {
-                    setStateFilter(e.target.value as StateFilter);
-                    setPage(1);
-                  }}
-                  className={`w-full ${filterSelectClass}`}
-                  aria-label="Filter by status"
-                >
-                  <option value="all">All statuses</option>
-                  <option value="active">Active</option>
-                  <option value="done">Done</option>
-                  <option value="archived">Archived</option>
-                  <option value="ready_to_delete">Ready to delete</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-muted)]" />
-              </label>
+              <Select
+                value={stateFilter}
+                onChange={(v) => {
+                  setStateFilter((v || "all") as StateFilter);
+                  setPage(1);
+                }}
+                options={[
+                  { value: "all", label: "All statuses" },
+                  { value: "active", label: "Active", divider: true },
+                  { value: "done", label: "Done" },
+                  { value: "archived", label: "Archived" },
+                  { value: "ready_to_delete", label: "Ready to delete" },
+                ]}
+                className={`w-full ${filterSelectClass}`}
+                aria-label="Filter by status"
+              />
 
             </div>
 
@@ -806,7 +803,7 @@ export default function App() {
                   onClick={() => { setNoteSpaceId(activeSpaceId); setNoteDialogOpen(true); }}
                   className={`inline-flex items-center gap-2 ${controlButtonClass}`}
                 >
-                  <StickyNote className="h-4 w-4" />
+                  <MessageSquareText className="h-4 w-4" />
                   Save note
                 </button>
               </div>
@@ -881,7 +878,7 @@ export default function App() {
                           ) : item.kind === "link" ? (
                             <Link2 className="h-4 w-4" />
                           ) : item.kind === "note" ? (
-                            <StickyNote className="h-4 w-4" />
+                            <MessageSquareText className="h-4 w-4" />
                           ) : (
                             <FileIcon className="h-4 w-4" />
                           )}
@@ -900,26 +897,29 @@ export default function App() {
                           {preview ? <div className="mt-0.5 truncate text-xs text-[var(--app-muted)]">{preview}</div> : null}
                           <div className="mt-2.5 flex flex-col gap-1 text-xs text-[var(--app-muted)]">
                             <div className="flex items-center gap-2">
-                              <div className={`${stateSelectClass} ${stateChipClass[item.state]}`}>
-                                <span className={`h-2 w-2 shrink-0 rounded-[2px] ${stateDotClass[item.state]}`} aria-hidden />
-                                <select
-                                  value={item.state}
-                                  disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
-                                  onChange={(e) =>
-                                    updateItemMutation.mutate({ id: item.id, state: e.target.value as ItemState })
-                                  }
-                                  className="h-full w-full appearance-none bg-transparent pr-1 text-xs font-semibold outline-none disabled:cursor-not-allowed disabled:opacity-70"
-                                  aria-label="Set status"
-                                  title="Set status"
-                                >
-                                  {itemStateOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
-                                <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 opacity-70" />
-                              </div>
+                              <Select<ItemState>
+                                value={item.state}
+                                onChange={(v) => {
+                                  if (v) updateItemMutation.mutate({ id: item.id, state: v as ItemState });
+                                }}
+                                options={itemStateOptions}
+                                disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
+                                className={`${stateSelectClass} ${stateChipClass[item.state]}`}
+                                aria-label="Set status"
+                                renderTrigger={(label) => (
+                                  <>
+                                    <span className={`h-2 w-2 shrink-0 rounded-[2px] ${stateDotClass[item.state]}`} />
+                                    <span className="truncate text-xs font-semibold">{label}</span>
+                                    <ChevronDown className="absolute right-2 h-3.5 w-3.5 opacity-70" />
+                                  </>
+                                )}
+                                renderOption={(option, isSelected) => (
+                                  <>
+                                    <span className={`h-2 w-2 shrink-0 rounded-[2px] ${stateDotClass[option.value]}`} />
+                                    <span className={isSelected ? "font-semibold" : ""}>{option.label}</span>
+                                  </>
+                                )}
+                              />
 
                               {spaces.length > 0 ? (
                                 item.spaceId ? (
@@ -1024,7 +1024,7 @@ export default function App() {
                           }}
                           className={`${rowActionPrimaryClass} flex-1 justify-center lg:flex-initial`}
                         >
-                          <StickyNote className="h-3.5 w-3.5" />
+                          <MessageSquareText className="h-3.5 w-3.5" />
                           {isLoadingThisNote ? "Opening..." : isNotePreviewLoading ? "Please wait..." : "View note"}
                         </button>
                       ) : null}
@@ -1202,21 +1202,16 @@ export default function App() {
         }}
       >
         {spaces.length > 0 ? (
-          <label className="relative mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
             Space (optional)
-            <select
-              value={uploadSpaceId ?? ""}
-              onChange={(e) => setUploadSpaceId(e.target.value ? Number(e.target.value) : undefined)}
-              className={`${dialogFieldClass} appearance-none`}
-            >
-              <option value="">—</option>
-              {spaces.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 bottom-2.5 h-4 w-4 text-[var(--app-muted)]" />
+            <Select
+              value={uploadSpaceId != null ? String(uploadSpaceId) : ""}
+              onChange={(v) => setUploadSpaceId(v ? Number(v) : undefined)}
+              options={spaces.map((s) => ({ value: String(s.id), label: s.name }))}
+              placeholder="—"
+              className={`${dialogFieldClass} mt-1`}
+              aria-label="Space"
+            />
           </label>
         ) : null}
 
@@ -1318,21 +1313,16 @@ export default function App() {
         </label>
 
         {spaces.length > 0 ? (
-          <label className="relative mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
             Space (optional)
-            <select
-              value={linkSpaceId ?? ""}
-              onChange={(e) => setLinkSpaceId(e.target.value ? Number(e.target.value) : undefined)}
-              className={`${dialogFieldClass} appearance-none`}
-            >
-              <option value="">—</option>
-              {spaces.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 bottom-2.5 h-4 w-4 text-[var(--app-muted)]" />
+            <Select
+              value={linkSpaceId != null ? String(linkSpaceId) : ""}
+              onChange={(v) => setLinkSpaceId(v ? Number(v) : undefined)}
+              options={spaces.map((s) => ({ value: String(s.id), label: s.name }))}
+              placeholder="—"
+              className={`${dialogFieldClass} mt-1`}
+              aria-label="Space"
+            />
           </label>
         ) : null}
 
@@ -1409,21 +1399,16 @@ export default function App() {
         </label>
 
         {spaces.length > 0 ? (
-          <label className="relative mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
             Space (optional)
-            <select
-              value={noteSpaceId ?? ""}
-              onChange={(e) => setNoteSpaceId(e.target.value ? Number(e.target.value) : undefined)}
-              className={`${dialogFieldClass} appearance-none`}
-            >
-              <option value="">—</option>
-              {spaces.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 bottom-2.5 h-4 w-4 text-[var(--app-muted)]" />
+            <Select
+              value={noteSpaceId != null ? String(noteSpaceId) : ""}
+              onChange={(v) => setNoteSpaceId(v ? Number(v) : undefined)}
+              options={spaces.map((s) => ({ value: String(s.id), label: s.name }))}
+              placeholder="—"
+              className={`${dialogFieldClass} mt-1`}
+              aria-label="Space"
+            />
           </label>
         ) : null}
 
