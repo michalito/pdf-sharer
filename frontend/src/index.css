@@ -164,6 +164,47 @@ body::before {
     transform: translateY(1px) scale(0.98);
   }
 
+  .row-action-primary {
+    border-color: var(--accent-soft);
+    background: var(--app-panel);
+  }
+
+  .row-action-primary:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+
+  .row-action-danger {
+    border-color: rgb(225 29 72 / 0.45);
+    background: var(--app-panel);
+  }
+
+  .row-action-danger:hover {
+    background: rgb(225 29 72 / 0.1);
+    border-color: rgb(225 29 72 / 0.6);
+  }
+
+  /* Keep explicit fallbacks for browsers without color-mix() support. */
+  @supports (color: color-mix(in srgb, black 50%, transparent)) {
+    .row-action-primary {
+      border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    }
+
+    .row-action-primary:hover {
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+      border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    }
+
+    .row-action-danger {
+      border-color: color-mix(in srgb, #e11d48 45%, transparent);
+    }
+
+    .row-action-danger:hover {
+      background: color-mix(in srgb, #e11d48 10%, transparent);
+      border-color: color-mix(in srgb, #e11d48 60%, transparent);
+    }
+  }
+
   .item-row {
     transition:
       background-color 180ms ease,
