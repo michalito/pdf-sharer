@@ -14,6 +14,7 @@ def _make_item(*, kind: ItemKind, meta_json: str, password_hash: str | None) -> 
         mime_type="text/plain",
         size_bytes=1,
         created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         meta_json=meta_json,
         password_hash=password_hash,
     )

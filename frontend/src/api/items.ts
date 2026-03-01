@@ -2,6 +2,9 @@ export type ItemKind = "file" | "folder" | "link" | "note";
 
 export type ItemState = "active" | "done" | "archived" | "ready_to_delete";
 
+export type SortField = "name" | "size" | "created" | "modified";
+export type SortOrder = "asc" | "desc";
+
 export type ItemDto = {
   id: number;
   name: string;
@@ -10,6 +13,7 @@ export type ItemDto = {
   mimeType: string | null;
   sizeBytes: number;
   createdAt: string;
+  updatedAt: string;
   linkUrl: string | null;
   noteText: string | null;
   noteExcerpt: string | null;
@@ -78,6 +82,8 @@ export async function listItems(params: {
   space?: string;
   page?: number;
   perPage?: number;
+  sort?: SortField;
+  order?: SortOrder;
 }): Promise<ListItemsResponse> {
   const query = buildQuery({
     q: params.q,
@@ -87,6 +93,8 @@ export async function listItems(params: {
     space: params.space,
     page: params.page ?? 1,
     per_page: params.perPage ?? 50,
+    sort: params.sort,
+    order: params.order,
   });
   return apiJson<ListItemsResponse>(`/api/items${query}`);
 }

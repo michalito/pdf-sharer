@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Generic, Optional, TypeVar
+from datetime import datetime, timezone
+from typing import Generic, Literal, Optional, TypeVar
 
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload
@@ -14,6 +15,9 @@ from app.exceptions import NotFoundError
 
 
 T = TypeVar("T")
+
+SortField = Literal["name", "size", "created", "modified"]
+SortOrder = Literal["asc", "desc"]
 
 
 @dataclass
@@ -56,6 +60,21 @@ class ItemRepository:
 
     MAX_PER_PAGE = 200
 
+    def _build_order_by(self, sort: SortField, order: SortOrder):
+        """Return SQLAlchemy order_by clauses: pinned first, then sort field, then id tie-breaker."""
+        direction = lambda col: col.asc() if order == "asc" else col.desc()
+
+        if sort == "name":
+            secondary = direction(func.lower(Item.display_name))
+        elif sort == "size":
+            secondary = direction(Item.size_bytes)
+        elif sort == "modified":
+            secondary = direction(Item.updated_at)
+        else:  # "created"
+            secondary = direction(Item.created_at)
+
+        return [Item.is_pinned.desc(), secondary, direction(Item.id)]
+
     def find_all(
         self,
         *,
@@ -65,9 +84,11 @@ class ItemRepository:
         protected: Optional[bool] = None,
         space_id: Optional[int] = None,
         unspaced: Optional[bool] = None,
+        sort: SortField = "created",
+        order: SortOrder = "desc",
     ) -> list[Item]:
         query = Item.query.options(joinedload(Item.space)).order_by(
-            Item.is_pinned.desc(), Item.created_at.desc(),
+            *self._build_order_by(sort, order),
         )
         query = self._apply_filters(
             query, q=q, kind=kind, state=state, protected=protected,
@@ -86,12 +107,14 @@ class ItemRepository:
         unspaced: Optional[bool] = None,
         page: int = 1,
         per_page: int = 50,
+        sort: SortField = "created",
+        order: SortOrder = "desc",
     ) -> PaginatedResult[Item]:
         page = max(1, page)
         per_page = min(max(1, per_page), self.MAX_PER_PAGE)
 
         query = Item.query.options(joinedload(Item.space)).order_by(
-            Item.is_pinned.desc(), Item.created_at.desc(),
+            *self._build_order_by(sort, order),
         )
         query = self._apply_filters(
             query, q=q, kind=kind, state=state, protected=protected,
@@ -180,6 +203,7 @@ class ItemRepository:
             item.space_id = new_space_id
         if pinned is not None:
             item.is_pinned = pinned
+        item.updated_at = datetime.now(timezone.utc)
         db.session.commit()
         return item
 
