@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../App";
 import * as api from "../api/items";
@@ -17,7 +17,8 @@ vi.mock("../api/items", async () => {
     unlockItem: vi.fn(),
     deleteItem: vi.fn(),
     deleteReadyToDelete: vi.fn(),
-    updateItemState: vi.fn(),
+    updateItem: vi.fn(),
+    listSpaces: vi.fn(),
     fetchVersion: vi.fn(),
   };
 });
@@ -104,11 +105,11 @@ beforeEach(() => {
   vi.mocked(api.unlockItem).mockResolvedValue();
   vi.mocked(api.deleteItem).mockResolvedValue();
   vi.mocked(api.deleteReadyToDelete).mockResolvedValue({ deleted: 0 });
-  vi.mocked(api.updateItemState).mockResolvedValue({
+  vi.mocked(api.updateItem).mockResolvedValue({
     id: 1,
     name: "x",
     kind: "file",
-    state: "done",
+    state: "active",
     mimeType: "text/plain",
     sizeBytes: 1,
     createdAt: "2026-02-27T00:00:00+00:00",
@@ -117,7 +118,10 @@ beforeEach(() => {
     noteExcerpt: null,
     isPasswordProtected: false,
     isPasswordUnlocked: true,
+    spaceId: 1,
+    spaceName: "Design",
   });
+  vi.mocked(api.listSpaces).mockResolvedValue([]);
 
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
@@ -325,4 +329,302 @@ it("unlocks a protected note before loading preview", async () => {
   await waitFor(() => expect(api.unlockItem).toHaveBeenCalledWith(7, "safepass1"));
   await waitFor(() => expect(api.getItem).toHaveBeenCalledWith(7));
   expect(await screen.findByText("Decryption key rotates every Monday.")).toBeInTheDocument();
+});
+
+it("updates the space label optimistically after selecting from the picker", async () => {
+  vi.mocked(api.listSpaces).mockResolvedValue([
+    { id: 1, name: "Design", createdAt: "2026-02-27T00:00:00+00:00", itemCount: 0 },
+  ]);
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [
+      {
+        id: 21,
+        name: "spec.pdf",
+        kind: "file",
+        state: "active",
+        mimeType: "application/pdf",
+        sizeBytes: 42,
+        createdAt: "2026-02-27T00:00:00+00:00",
+        linkUrl: null,
+        noteText: null,
+        noteExcerpt: null,
+        isPasswordProtected: false,
+        isPasswordUnlocked: true,
+        spaceId: null,
+        spaceName: null,
+      },
+    ],
+    pagination: makePagination(1),
+  });
+
+  let resolveUpdate: ((value: api.ItemDto) => void) | null = null;
+  const updatePromise = new Promise<api.ItemDto>((resolve) => {
+    resolveUpdate = resolve;
+  });
+  vi.mocked(api.updateItem).mockReturnValue(updatePromise);
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("spec.pdf");
+  await user.click(screen.getByRole("button", { name: "Add to space" }));
+  const picker = await screen.findByRole("menu");
+  await user.click(within(picker).getByRole("menuitem", { name: "Design" }));
+
+  await waitFor(() => {
+    expect(api.updateItem).toHaveBeenCalledWith(21, expect.objectContaining({ spaceId: 1 }));
+  });
+  const changeSpaceButton = await screen.findByRole("button", { name: "Change space" });
+  expect(changeSpaceButton).toHaveTextContent("Design");
+
+  resolveUpdate?.({
+    id: 21,
+    name: "spec.pdf",
+    kind: "file",
+    state: "active",
+    mimeType: "application/pdf",
+    sizeBytes: 42,
+    createdAt: "2026-02-27T00:00:00+00:00",
+    linkUrl: null,
+    noteText: null,
+    noteExcerpt: null,
+    isPasswordProtected: false,
+    isPasswordUnlocked: true,
+    spaceId: 1,
+    spaceName: "Design",
+  });
+});
+
+it("keeps space picker open while scrolling inside and closes on outside scroll", async () => {
+  vi.mocked(api.listSpaces).mockResolvedValue(
+    Array.from({ length: 24 }, (_, i) => ({
+      id: i + 1,
+      name: `Space ${i + 1}`,
+      createdAt: "2026-02-27T00:00:00+00:00",
+      itemCount: 0,
+    })),
+  );
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [
+      {
+        id: 31,
+        name: "ops-runbook",
+        kind: "note",
+        state: "active",
+        mimeType: "text/plain",
+        sizeBytes: 11,
+        createdAt: "2026-02-27T00:00:00+00:00",
+        linkUrl: null,
+        noteText: null,
+        noteExcerpt: "Runbook",
+        isPasswordProtected: false,
+        isPasswordUnlocked: true,
+        spaceId: 1,
+        spaceName: "Space 1",
+      },
+    ],
+    pagination: makePagination(1),
+  });
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("ops-runbook");
+  await user.click(screen.getByRole("button", { name: "Change space" }));
+  const picker = await screen.findByRole("menu");
+
+  fireEvent.scroll(picker);
+  expect(screen.getByRole("menu")).toBeInTheDocument();
+
+  fireEvent.scroll(window);
+  await waitFor(() => {
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  SpacePicker tests                                                  */
+/* ------------------------------------------------------------------ */
+
+const twoSpaces: import("../api/items").SpaceDto[] = [
+  { id: 1, name: "Design", createdAt: "2026-02-28T00:00:00+00:00", itemCount: 2 },
+  { id: 2, name: "Engineering", createdAt: "2026-02-28T00:00:00+00:00", itemCount: 5 },
+];
+
+function makeItem(overrides: Partial<import("../api/items").ItemDto> = {}): import("../api/items").ItemDto {
+  return {
+    id: 1,
+    name: "report.pdf",
+    kind: "file",
+    state: "active",
+    mimeType: "application/pdf",
+    sizeBytes: 4096,
+    createdAt: "2026-02-27T00:00:00+00:00",
+    linkUrl: null,
+    noteText: null,
+    noteExcerpt: null,
+    isPasswordProtected: false,
+    isPasswordUnlocked: true,
+    spaceId: null,
+    spaceName: null,
+    ...overrides,
+  };
+}
+
+it("shows 'Add to space' button when item has no space", async () => {
+  vi.mocked(api.listSpaces).mockResolvedValue(twoSpaces);
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [makeItem()],
+    pagination: makePagination(1),
+  });
+
+  renderApp();
+
+  await screen.findByText("report.pdf");
+  expect(screen.getByRole("button", { name: "Add to space" })).toBeInTheDocument();
+});
+
+it("shows space name label when item has a space", async () => {
+  vi.mocked(api.listSpaces).mockResolvedValue(twoSpaces);
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [makeItem({ spaceId: 1, spaceName: "Design" })],
+    pagination: makePagination(1),
+  });
+
+  renderApp();
+
+  await screen.findByText("report.pdf");
+  const spaceBtn = screen.getByRole("button", { name: "Change space" });
+  expect(spaceBtn).toBeInTheDocument();
+  expect(within(spaceBtn).getByText("Design")).toBeInTheDocument();
+});
+
+it("shows a polished icon marker for assigned space and no marker mode controls", async () => {
+  vi.mocked(api.listSpaces).mockResolvedValue(twoSpaces);
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [makeItem({ spaceId: 1, spaceName: "Design" })],
+    pagination: makePagination(1),
+  });
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("report.pdf");
+  const spaceBtn = screen.getByRole("button", { name: "Change space" });
+  expect(within(spaceBtn).getByText("Design")).toBeInTheDocument();
+  expect(spaceBtn).toHaveClass("rounded-md");
+  expect(spaceBtn).not.toHaveClass("rounded-full");
+  expect(spaceBtn).toHaveAttribute("title", "Space: Design");
+  expect(screen.queryByRole("button", { name: "Icon" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Rail" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Badge" })).not.toBeInTheDocument();
+  await user.click(spaceBtn);
+  expect(await screen.findByRole("menu")).toBeInTheDocument();
+});
+
+it("opens picker, assigns a space, and calls updateItem", async () => {
+  vi.mocked(api.listSpaces).mockResolvedValue(twoSpaces);
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [makeItem()],
+    pagination: makePagination(1),
+  });
+  vi.mocked(api.updateItem).mockResolvedValue(
+    makeItem({ spaceId: 2, spaceName: "Engineering" }),
+  );
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("report.pdf");
+  await user.click(screen.getByRole("button", { name: "Add to space" }));
+
+  // Picker should show both spaces
+  const picker = screen.getByRole("menu");
+  expect(within(picker).getByText("Design")).toBeInTheDocument();
+  expect(within(picker).getByText("Engineering")).toBeInTheDocument();
+  expect(within(picker).getByText("Unassigned")).toBeInTheDocument();
+
+  await user.click(within(picker).getByText("Engineering"));
+
+  await waitFor(() => {
+    expect(api.updateItem).toHaveBeenCalledWith(1, { spaceId: 2 });
+  });
+});
+
+it("unassigns a space via the picker", async () => {
+  vi.mocked(api.listSpaces).mockResolvedValue(twoSpaces);
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [makeItem({ spaceId: 1, spaceName: "Design" })],
+    pagination: makePagination(1),
+  });
+  vi.mocked(api.updateItem).mockResolvedValue(
+    makeItem({ spaceId: null, spaceName: null }),
+  );
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("report.pdf");
+  await user.click(screen.getByRole("button", { name: "Change space" }));
+
+  const picker = screen.getByRole("menu");
+  await user.click(within(picker).getByText("Unassigned"));
+
+  await waitFor(() => {
+    expect(api.updateItem).toHaveBeenCalledWith(1, { spaceId: null });
+  });
+});
+
+it("closes picker on Escape", async () => {
+  vi.mocked(api.listSpaces).mockResolvedValue(twoSpaces);
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [makeItem()],
+    pagination: makePagination(1),
+  });
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("report.pdf");
+  await user.click(screen.getByRole("button", { name: "Add to space" }));
+  expect(screen.getByRole("menu")).toBeInTheDocument();
+
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+});
+
+it("rolls back optimistic space assignment on mutation failure", async () => {
+  vi.mocked(api.listSpaces).mockResolvedValue(twoSpaces);
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [makeItem()],
+    pagination: makePagination(1),
+  });
+
+  let rejectUpdate: ((reason: Error) => void) | null = null;
+  const updatePromise = new Promise<api.ItemDto>((_resolve, reject) => {
+    rejectUpdate = reject;
+  });
+  vi.mocked(api.updateItem).mockReturnValue(updatePromise);
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("report.pdf");
+
+  // Assign a space
+  await user.click(screen.getByRole("button", { name: "Add to space" }));
+  const picker = await screen.findByRole("menu");
+  await user.click(within(picker).getByRole("menuitem", { name: "Design" }));
+
+  // Optimistic: label should appear immediately
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Change space" })).toHaveTextContent("Design");
+  });
+
+  // Reject the mutation — should rollback to "Add to space"
+  rejectUpdate?.(new Error("Server error"));
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Add to space" })).toBeInTheDocument();
+  });
 });
