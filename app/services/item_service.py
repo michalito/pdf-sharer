@@ -18,13 +18,28 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
+from dataclasses import dataclass
+
 from app.domain.item import Item, ItemKind, ItemState
 from app.exceptions import FileOperationError, NotFoundError, ValidationError
-from app.repositories.item_repository import ItemRepository, PaginatedResult, SortField, SortOrder
+from app.repositories.item_repository import ItemRepository, PaginatedResult, SortField, SortOrder, StorageStats
 from app.utils.zip_utils import dedupe_zip_path, sanitize_zip_path
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DiskUsage:
+    total_bytes: int
+    used_bytes: int
+    free_bytes: int
+
+
+@dataclass
+class StorageOverview:
+    disk: DiskUsage | None
+    stats: StorageStats
 
 
 class ItemService:
@@ -69,6 +84,27 @@ class ItemService:
 
     def get_item(self, item_id: int) -> Item:
         return self.repository.get_by_id_or_raise(item_id)
+
+    def get_storage_overview(self) -> StorageOverview:
+        """Gather storage statistics from DB and optional disk usage."""
+        stats = self.repository.get_storage_stats()
+
+        disk: DiskUsage | None = None
+        try:
+            upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
+            usage = shutil.disk_usage(upload_folder)
+            disk = DiskUsage(
+                total_bytes=usage.total,
+                used_bytes=usage.used,
+                free_bytes=usage.free,
+            )
+        except OSError:
+            logger.warning(
+                "Could not read disk usage for upload folder",
+                exc_info=True,
+            )
+
+        return StorageOverview(disk=disk, stats=stats)
 
     def get_item_path(self, item: Item) -> Path:
         if not self._item_has_stored_file(item):

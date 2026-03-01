@@ -54,6 +54,7 @@ Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh pr
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/health` | Health check (`{"ok": true, "version": "<app-version>"}`) |
+| `GET` | `/api/storage` | Storage overview (`{disk, items: {totalCount, totalSizeBytes, countByKind, sizeByKind, countByState}, largestItems}`) |
 | `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&protected=true\|false&sort=name\|size\|created\|modified&order=asc\|desc&page=1&per_page=50`; `q` matches names and unprotected note body text; note items include `noteExcerpt`, not full `noteText`; default sort: `created` desc) |
 | `POST` | `/api/items/files` | Upload files (multipart/form-data, field: `files`, repeatable; optional `password`) |
 | `POST` | `/api/items/folder` | Upload a folder (multipart: `files` + `paths` repeatable; optional `password`) |

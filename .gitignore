@@ -1,6 +1,7 @@
 # Data directories
 instance/
 uploads/
+node_modules/
 
 # Python
 __pycache__/

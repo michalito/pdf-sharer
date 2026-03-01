@@ -164,6 +164,50 @@ def health() -> Response:
     return jsonify({"ok": True, "version": current_app.config["APP_VERSION"]})
 
 
+@api.route("/storage", methods=["GET"])
+def storage_overview() -> Response:
+    service = _get_service()
+    overview = service.get_storage_overview()
+
+    disk_dto = None
+    if overview.disk is not None:
+        disk_dto = {
+            "totalBytes": overview.disk.total_bytes,
+            "usedBytes": overview.disk.used_bytes,
+            "freeBytes": overview.disk.free_bytes,
+        }
+
+    stats = overview.stats
+    count_by_kind = {k.value: stats.count_by_kind.get(k.value, 0) for k in ItemKind}
+    size_by_kind = {k.value: stats.size_by_kind.get(k.value, 0) for k in ItemKind}
+    count_by_state = {s.value: stats.count_by_state.get(s.value, 0) for s in ItemState}
+
+    largest_items = [
+        {
+            "id": item.id,
+            "name": item.display_name,
+            "kind": item.kind,
+            "state": item.state,
+            "sizeBytes": item.size_bytes,
+            "createdAt": item.created_at.isoformat(),
+            "spaceName": item.space.name if item.space else None,
+        }
+        for item in stats.largest_items
+    ]
+
+    return jsonify({
+        "disk": disk_dto,
+        "items": {
+            "totalCount": stats.total_count,
+            "totalSizeBytes": stats.total_size_bytes,
+            "countByKind": count_by_kind,
+            "sizeByKind": size_by_kind,
+            "countByState": count_by_state,
+        },
+        "largestItems": largest_items,
+    })
+
+
 @api.route("/items", methods=["GET"])
 def list_items() -> Response:
     service = _get_service()

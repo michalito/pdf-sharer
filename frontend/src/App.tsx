@@ -10,6 +10,7 @@ import {
   File as FileIcon,
   FolderArchive,
   FolderUp,
+  HardDrive,
   Lock,
   Link2,
   Moon,
@@ -29,6 +30,7 @@ import {
 } from "lucide-react";
 import ConfirmDialog from "./components/ConfirmDialog";
 import HowItWorksPanel from "./components/HowItWorksPanel";
+import StorageDashboard from "./components/StorageDashboard";
 import Select from "./components/Select";
 import SpaceBar, { SpaceFilter } from "./components/SpaceBar";
 import SpacePicker from "./components/SpacePicker";
@@ -154,6 +156,7 @@ export default function App() {
   const newMenuRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [isStorageOpen, setIsStorageOpen] = useState(false);
   const [uploads, setUploads] = useState<UploadTask[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<ItemDto | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
@@ -1209,14 +1212,24 @@ export default function App() {
 
       <footer className="mx-auto mt-8 mb-4 flex w-full max-w-6xl items-center justify-between gap-3 border-t border-[var(--app-border)]/50 px-4 pt-4 text-[11px] text-[var(--app-muted)]">
         <div className="font-mono uppercase tracking-[0.08em]">saíta{versionQuery.data ? ` · v${versionQuery.data}` : ""} · Internal use</div>
-        <button
-          type="button"
-          onClick={() => setIsGuideOpen(true)}
-          className="inline-flex items-center gap-1.5 font-medium text-[var(--app-muted)] transition-colors hover:text-[var(--app-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-        >
-          <HelpCircle className="h-3.5 w-3.5" />
-          About & privacy
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsStorageOpen(true)}
+            className="inline-flex items-center gap-1.5 font-medium text-[var(--app-muted)] transition-colors hover:text-[var(--app-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+          >
+            <HardDrive className="h-3.5 w-3.5" />
+            Storage
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsGuideOpen(true)}
+            className="inline-flex items-center gap-1.5 font-medium text-[var(--app-muted)] transition-colors hover:text-[var(--app-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+            About & privacy
+          </button>
+        </div>
       </footer>
 
       <input
@@ -1586,6 +1599,7 @@ export default function App() {
       />
 
       <UploadQueue uploads={uploads} onDismiss={dismissUpload} />
+      <StorageDashboard open={isStorageOpen} onClose={() => setIsStorageOpen(false)} />
       <HowItWorksPanel open={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
     </div>
   );

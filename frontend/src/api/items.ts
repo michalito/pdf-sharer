@@ -215,6 +215,40 @@ export async function fetchVersion(): Promise<string> {
   return data.version ?? "dev";
 }
 
+// Storage dashboard
+
+export type DiskUsageDto = {
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+};
+
+export type ItemSummaryDto = {
+  id: number;
+  name: string;
+  kind: ItemKind;
+  state: ItemState;
+  sizeBytes: number;
+  createdAt: string;
+  spaceName: string | null;
+};
+
+export type StorageOverviewDto = {
+  disk: DiskUsageDto | null;
+  items: {
+    totalCount: number;
+    totalSizeBytes: number;
+    countByKind: Record<ItemKind, number>;
+    sizeByKind: Record<ItemKind, number>;
+    countByState: Record<ItemState, number>;
+  };
+  largestItems: ItemSummaryDto[];
+};
+
+export async function fetchStorageOverview(): Promise<StorageOverviewDto> {
+  return apiJson<StorageOverviewDto>("/api/storage");
+}
+
 export async function updateItem(
   id: number,
   fields: { state?: ItemState; spaceId?: number | null; pinned?: boolean },

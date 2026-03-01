@@ -20,6 +20,7 @@ vi.mock("../api/items", async () => {
     updateItem: vi.fn(),
     listSpaces: vi.fn(),
     fetchVersion: vi.fn(),
+    fetchStorageOverview: vi.fn(),
   };
 });
 
@@ -122,6 +123,17 @@ beforeEach(() => {
     spaceName: "Design",
   });
   vi.mocked(api.listSpaces).mockResolvedValue([]);
+  vi.mocked(api.fetchStorageOverview).mockResolvedValue({
+    disk: { totalBytes: 100_000_000_000, usedBytes: 50_000_000_000, freeBytes: 50_000_000_000 },
+    items: {
+      totalCount: 10,
+      totalSizeBytes: 5_000_000_000,
+      countByKind: { file: 5, folder: 2, link: 2, note: 1 },
+      sizeByKind: { file: 4_000_000_000, folder: 1_000_000_000, link: 200, note: 500 },
+      countByState: { active: 7, done: 2, archived: 1, ready_to_delete: 0 },
+    },
+    largestItems: [],
+  });
 
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
@@ -626,5 +638,18 @@ it("rolls back optimistic space assignment on mutation failure", async () => {
 
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Add to space" })).toBeInTheDocument();
+  });
+});
+
+it("opens storage dashboard from footer button", async () => {
+  const user = userEvent.setup();
+  renderApp();
+  await screen.findByText("Shared items");
+
+  const storageButton = screen.getByRole("button", { name: /storage/i });
+  await user.click(storageButton);
+
+  await waitFor(() => {
+    expect(screen.getByRole("dialog", { name: /storage/i })).toBeInTheDocument();
   });
 });

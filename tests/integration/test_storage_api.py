@@ -1,0 +1,121 @@
+import io
+
+from flask import Flask
+from flask.testing import FlaskClient
+
+
+def test_storage_empty_db(client: FlaskClient):
+    """Stats endpoint returns zeroes with no items."""
+    res = client.get("/api/storage")
+    assert res.status_code == 200
+    data = res.get_json()
+
+    assert data["items"]["totalCount"] == 0
+    assert data["items"]["totalSizeBytes"] == 0
+    assert data["items"]["countByKind"]["file"] == 0
+    assert data["items"]["countByKind"]["folder"] == 0
+    assert data["items"]["countByKind"]["link"] == 0
+    assert data["items"]["countByKind"]["note"] == 0
+    assert data["items"]["countByState"]["active"] == 0
+    assert data["items"]["countByState"]["done"] == 0
+    assert data["items"]["countByState"]["archived"] == 0
+    assert data["items"]["countByState"]["ready_to_delete"] == 0
+    assert data["largestItems"] == []
+
+    # disk should be non-null since upload folder exists (temp dir in tests)
+    assert data["disk"] is not None
+    assert data["disk"]["totalBytes"] > 0
+    assert data["disk"]["freeBytes"] > 0
+
+
+def test_storage_with_mixed_items(client: FlaskClient):
+    """Stats reflect uploaded files, links, and notes."""
+    # Upload two files
+    client.post(
+        "/api/items/files",
+        data={
+            "files": [
+                (io.BytesIO(b"a" * 1000), "big.bin"),
+                (io.BytesIO(b"b" * 500), "small.bin"),
+            ]
+        },
+        content_type="multipart/form-data",
+    )
+
+    # Create a link
+    client.post("/api/items/link", json={"url": "https://example.com"})
+
+    # Create a note
+    client.post("/api/items/note", json={"text": "Hello world test note"})
+
+    res = client.get("/api/storage")
+    data = res.get_json()
+
+    assert data["items"]["totalCount"] == 4
+    assert data["items"]["countByKind"]["file"] == 2
+    assert data["items"]["countByKind"]["link"] == 1
+    assert data["items"]["countByKind"]["note"] == 1
+    assert data["items"]["countByKind"]["folder"] == 0
+    assert data["items"]["sizeByKind"]["file"] == 1500
+    assert data["items"]["totalSizeBytes"] > 0
+
+    # Only file/folder items appear in largestItems
+    assert len(data["largestItems"]) == 2
+    assert data["largestItems"][0]["sizeBytes"] >= data["largestItems"][1]["sizeBytes"]
+    assert data["largestItems"][0]["name"] == "big.bin"
+
+
+def test_storage_largest_items_have_space_name(app: Flask, client: FlaskClient):
+    """Largest items include space name when assigned."""
+    # Create a space
+    res = client.post("/api/spaces", json={"name": "Test Space"})
+    space_id = res.get_json()["id"]
+
+    # Upload a file into the space
+    client.post(
+        "/api/items/files",
+        data={
+            "files": [(io.BytesIO(b"x" * 100), "test.txt")],
+            "space_id": str(space_id),
+        },
+        content_type="multipart/form-data",
+    )
+
+    res = client.get("/api/storage")
+    data = res.get_json()
+
+    assert len(data["largestItems"]) == 1
+    assert data["largestItems"][0]["spaceName"] == "Test Space"
+
+
+def test_storage_count_by_state(client: FlaskClient):
+    """State breakdown reflects state transitions."""
+    # Upload a file
+    res = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"x"), "test.txt")]},
+        content_type="multipart/form-data",
+    )
+    item_id = res.get_json()[0]["id"]
+
+    # Move to done
+    client.patch(f"/api/items/{item_id}", json={"state": "done"})
+
+    res = client.get("/api/storage")
+    data = res.get_json()
+
+    assert data["items"]["countByState"]["done"] == 1
+    assert data["items"]["countByState"]["active"] == 0
+
+
+def test_storage_disk_failure_graceful(app: Flask, client: FlaskClient):
+    """When UPLOAD_FOLDER is invalid, disk is null but stats still return."""
+    app.config["UPLOAD_FOLDER"] = "/nonexistent/path/that/will/fail"
+
+    res = client.get("/api/storage")
+    assert res.status_code == 200
+    data = res.get_json()
+
+    assert data["disk"] is None
+    # Item stats should still work
+    assert data["items"]["totalCount"] == 0

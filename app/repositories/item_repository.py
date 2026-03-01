@@ -43,6 +43,18 @@ class PaginatedResult(Generic[T]):
         }
 
 
+@dataclass
+class StorageStats:
+    """Aggregate storage statistics from the items table."""
+
+    total_count: int
+    total_size_bytes: int
+    count_by_kind: dict[str, int]
+    size_by_kind: dict[str, int]
+    count_by_state: dict[str, int]
+    largest_items: list[Item]
+
+
 class ItemRepository:
     """Repository for Item data access operations."""
 
@@ -208,6 +220,55 @@ class ItemRepository:
         item.space_id = space_id
         db.session.commit()
         return item
+
+    def get_storage_stats(self, *, top_n: int = 10) -> StorageStats:
+        """Compute aggregate storage statistics in minimal DB round-trips."""
+        kind_rows = (
+            db.session.query(
+                Item.kind,
+                func.count(Item.id),
+                func.coalesce(func.sum(Item.size_bytes), 0),
+            )
+            .group_by(Item.kind)
+            .all()
+        )
+
+        count_by_kind: dict[str, int] = {}
+        size_by_kind: dict[str, int] = {}
+        total_count = 0
+        total_size = 0
+        for kind_val, cnt, sz in kind_rows:
+            count_by_kind[kind_val] = cnt
+            size_by_kind[kind_val] = sz
+            total_count += cnt
+            total_size += sz
+
+        state_rows = (
+            db.session.query(
+                Item.state,
+                func.count(Item.id),
+            )
+            .group_by(Item.state)
+            .all()
+        )
+        count_by_state = {state_val: cnt for state_val, cnt in state_rows}
+
+        largest_items = (
+            Item.query.options(joinedload(Item.space))
+            .filter(Item.kind.in_([ItemKind.FILE.value, ItemKind.FOLDER.value]))
+            .order_by(Item.size_bytes.desc())
+            .limit(top_n)
+            .all()
+        )
+
+        return StorageStats(
+            total_count=total_count,
+            total_size_bytes=total_size,
+            count_by_kind=count_by_kind,
+            size_by_kind=size_by_kind,
+            count_by_state=count_by_state,
+            largest_items=largest_items,
+        )
 
     def _apply_filters(
         self,
