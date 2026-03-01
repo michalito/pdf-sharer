@@ -317,6 +317,7 @@ export default function App() {
     mutationFn: async (vars: { id: number; name: string }) => renameSpace(vars.id, vars.name),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      await queryClient.invalidateQueries({ queryKey: ["items"] });
       toast.success("Space renamed");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to rename space"),
