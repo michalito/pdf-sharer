@@ -203,6 +203,17 @@ def storage_overview() -> Response:
     count_by_kind = {k.value: stats.count_by_kind.get(k.value, 0) for k in ItemKind}
     size_by_kind = {k.value: stats.size_by_kind.get(k.value, 0) for k in ItemKind}
     count_by_state = {s.value: stats.count_by_state.get(s.value, 0) for s in ItemState}
+    size_by_state = {s.value: stats.size_by_state.get(s.value, 0) for s in ItemState}
+
+    space_stats = [
+        {
+            "spaceId": ss.space_id,
+            "spaceName": ss.space_name,
+            "itemCount": ss.item_count,
+            "sizeBytes": ss.size_bytes,
+        }
+        for ss in stats.space_stats
+    ]
 
     largest_items = [
         {
@@ -225,7 +236,9 @@ def storage_overview() -> Response:
             "countByKind": count_by_kind,
             "sizeByKind": size_by_kind,
             "countByState": count_by_state,
+            "sizeByState": size_by_state,
         },
+        "spaceStats": space_stats,
         "largestItems": largest_items,
     })
 

@@ -24,6 +24,11 @@ def test_storage_empty_db(client: FlaskClient):
     assert data["items"]["countByState"]["done"] == 0
     assert data["items"]["countByState"]["archived"] == 0
     assert data["items"]["countByState"]["ready_to_delete"] == 0
+    assert data["items"]["sizeByState"]["active"] == 0
+    assert data["items"]["sizeByState"]["done"] == 0
+    assert data["items"]["sizeByState"]["archived"] == 0
+    assert data["items"]["sizeByState"]["ready_to_delete"] == 0
+    assert data["spaceStats"] == []
     assert data["largestItems"] == []
 
     # disk should be non-null since upload folder exists (temp dir in tests)
@@ -130,6 +135,8 @@ def test_storage_count_by_state(client: FlaskClient):
 
     assert data["items"]["countByState"]["done"] == 1
     assert data["items"]["countByState"]["active"] == 0
+    assert data["items"]["sizeByState"]["done"] > 0
+    assert data["items"]["sizeByState"]["active"] == 0
 
 
 def test_storage_disk_failure_graceful(app: Flask, client: FlaskClient):
@@ -143,3 +150,54 @@ def test_storage_disk_failure_graceful(app: Flask, client: FlaskClient):
     assert data["disk"] is None
     # Item stats should still work
     assert data["items"]["totalCount"] == 0
+
+
+def test_storage_space_stats(client: FlaskClient):
+    """Space stats show size breakdown per space including unspaced."""
+    s1 = client.post("/api/spaces", json={"name": "Alpha"}).get_json()
+    s2 = client.post("/api/spaces", json={"name": "Beta"}).get_json()
+
+    # Upload files into different spaces and one unspaced
+    client.post(
+        "/api/items/files",
+        data={
+            "files": [(io.BytesIO(b"a" * 1000), "alpha.bin")],
+            "space_id": str(s1["id"]),
+        },
+        content_type="multipart/form-data",
+    )
+    client.post(
+        "/api/items/files",
+        data={
+            "files": [(io.BytesIO(b"b" * 2000), "beta.bin")],
+            "space_id": str(s2["id"]),
+        },
+        content_type="multipart/form-data",
+    )
+    client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"c" * 500), "loose.bin")]},
+        content_type="multipart/form-data",
+    )
+
+    res = client.get("/api/storage")
+    data = res.get_json()
+
+    space_stats = data["spaceStats"]
+    assert len(space_stats) == 3
+
+    # Sorted by size descending
+    assert space_stats[0]["sizeBytes"] >= space_stats[1]["sizeBytes"]
+    assert space_stats[1]["sizeBytes"] >= space_stats[2]["sizeBytes"]
+
+    names = {ss["spaceName"] for ss in space_stats}
+    assert names == {"Alpha", "Beta", "Unspaced"}
+
+
+def test_storage_space_stats_empty_when_no_items(client: FlaskClient):
+    """Space stats is empty when there are no items, even if spaces exist."""
+    client.post("/api/spaces", json={"name": "Empty"})
+
+    res = client.get("/api/storage")
+    data = res.get_json()
+    assert data["spaceStats"] == []

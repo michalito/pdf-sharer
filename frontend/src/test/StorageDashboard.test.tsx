@@ -21,7 +21,12 @@ const defaultData: StorageOverviewDto = {
     countByKind: { file: 5, folder: 2, link: 2, note: 1 },
     sizeByKind: { file: 4_000_000_000, folder: 1_000_000_000, link: 200, note: 500 },
     countByState: { active: 7, done: 2, archived: 1, ready_to_delete: 0 },
+    sizeByState: { active: 3_500_000_000, done: 1_000_000_000, archived: 500_000_000, ready_to_delete: 0 },
   },
+  spaceStats: [
+    { spaceId: 1, spaceName: "Design", itemCount: 4, sizeBytes: 3_000_000_000 },
+    { spaceId: null, spaceName: "Unspaced", itemCount: 6, sizeBytes: 2_000_000_000 },
+  ],
   largestItems: [
     {
       id: 1,
@@ -103,7 +108,7 @@ it("shows largest items sorted by size descending", async () => {
   expect(items).toHaveLength(2);
   expect(screen.getByText("big-archive.zip")).toBeInTheDocument();
   expect(screen.getByText("report.pdf")).toBeInTheDocument();
-  expect(screen.getByText("Design")).toBeInTheDocument();
+  expect(screen.getAllByText("Design").length).toBeGreaterThanOrEqual(1);
 });
 
 it("calls onClose when close button clicked", async () => {
@@ -138,4 +143,22 @@ it("shows error state and retry button on fetch failure", async () => {
   await waitFor(() => {
     expect(screen.getByText("Disk usage")).toBeInTheDocument();
   });
+});
+
+it("shows space distribution with space names", async () => {
+  renderDashboard();
+  await screen.findByText("Items by space");
+  expect(screen.getByText("2 spaces")).toBeInTheDocument();
+  expect(screen.getAllByText("Design").length).toBeGreaterThanOrEqual(1);
+  expect(screen.getByText("Unspaced")).toBeInTheDocument();
+});
+
+it("shows empty message when spaceStats is empty", async () => {
+  vi.mocked(api.fetchStorageOverview).mockResolvedValue({
+    ...defaultData,
+    spaceStats: [],
+  });
+  renderDashboard();
+  await screen.findByText("Items by space");
+  expect(screen.getByText("No items yet")).toBeInTheDocument();
 });

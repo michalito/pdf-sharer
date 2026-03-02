@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { fetchStorageOverview } from "../api/items";
-import type { ItemKind, ItemState, StorageOverviewDto } from "../api/items";
+import type { ItemKind, ItemState, SpaceStatsDto, StorageOverviewDto } from "../api/items";
 import { formatBytes } from "../lib/format";
 
 const kindMeta: Record<ItemKind, { label: string; icon: LucideIcon }> = {
@@ -146,7 +146,7 @@ export default function StorageDashboard(props: {
 }
 
 function DashboardContent({ data }: { data: StorageOverviewDto }) {
-  const { disk, items, largestItems } = data;
+  const { disk, items, spaceStats, largestItems } = data;
   const totalCount = items.totalCount;
 
   return (
@@ -209,7 +209,29 @@ function DashboardContent({ data }: { data: StorageOverviewDto }) {
           Items by status
         </div>
         <div className="mt-3 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
-          <StateBar counts={items.countByState} total={totalCount} />
+          <StateBar
+            counts={items.countByState}
+            sizes={items.sizeByState}
+            totalSize={items.totalSizeBytes}
+          />
+        </div>
+      </section>
+
+      {/* Space distribution */}
+      <section>
+        <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
+          Items by space
+          {spaceStats.length > 0 && (
+            <span className="ml-2 text-[var(--app-text)]">
+              {spaceStats.length} space{spaceStats.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+        <div className="mt-3 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
+          <SpaceDistribution
+            spaceStats={spaceStats}
+            totalSize={items.totalSizeBytes}
+          />
         </div>
       </section>
 
@@ -304,22 +326,24 @@ function DiskBar({
 
 function StateBar({
   counts,
-  total,
+  sizes,
+  totalSize,
 }: {
   counts: Record<ItemState, number>;
-  total: number;
+  sizes: Record<ItemState, number>;
+  totalSize: number;
 }) {
   const states = Object.keys(stateMeta) as ItemState[];
 
   return (
     <div>
-      {/* Bar */}
-      {total > 0 ? (
+      {/* Bar — sized by bytes */}
+      {totalSize > 0 ? (
         <div className="flex h-5 w-full overflow-hidden rounded-md">
           {states.map((state) => {
-            const count = counts[state];
-            if (count === 0) return null;
-            const pct = (count / total) * 100;
+            const size = sizes[state];
+            if (size === 0) return null;
+            const pct = (size / totalSize) * 100;
             return (
               <div
                 key={state}
@@ -327,9 +351,9 @@ function StateBar({
                 style={{
                   width: `${pct}%`,
                   backgroundColor: stateMeta[state].color,
-                  minWidth: count > 0 ? "4px" : undefined,
+                  minWidth: size > 0 ? "4px" : undefined,
                 }}
-                title={`${stateMeta[state].label}: ${count}`}
+                title={`${stateMeta[state].label}: ${formatBytes(size)}`}
               />
             );
           })}
@@ -338,7 +362,7 @@ function StateBar({
         <div className="h-5 w-full rounded-md bg-[var(--app-hover)]" />
       )}
 
-      {/* Legend */}
+      {/* Legend — size primary, count in parentheses */}
       <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
         {states.map((state) => (
           <div key={state} className="flex items-center gap-1.5">
@@ -349,7 +373,89 @@ function StateBar({
             <span className="text-[var(--app-muted)]">
               {stateMeta[state].label}
             </span>
-            <span className="font-mono font-medium">{counts[state]}</span>
+            <span className="font-mono font-medium">
+              {formatBytes(sizes[state])}
+            </span>
+            <span className="font-mono text-[var(--app-muted)]">
+              ({counts[state]})
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const spacePalette = [
+  "var(--accent)",
+  "var(--accent-cool)",
+  "var(--success)",
+  "var(--danger)",
+  "#a87832",
+  "#7c5cbf",
+  "#3b82f6",
+  "#ec4899",
+];
+
+function SpaceDistribution({
+  spaceStats,
+  totalSize,
+}: {
+  spaceStats: SpaceStatsDto[];
+  totalSize: number;
+}) {
+  if (spaceStats.length === 0) {
+    return (
+      <p className="text-xs text-[var(--app-muted)]">No items yet</p>
+    );
+  }
+
+  return (
+    <div>
+      {/* Bar */}
+      {totalSize > 0 ? (
+        <div className="flex h-5 w-full overflow-hidden rounded-md">
+          {spaceStats.map((ss, i) => {
+            if (ss.sizeBytes === 0) return null;
+            const pct = (ss.sizeBytes / totalSize) * 100;
+            return (
+              <div
+                key={ss.spaceId ?? "unspaced"}
+                className="first:rounded-l-md last:rounded-r-md"
+                style={{
+                  width: `${pct}%`,
+                  backgroundColor: spacePalette[i % spacePalette.length],
+                  minWidth: ss.sizeBytes > 0 ? "4px" : undefined,
+                }}
+                title={`${ss.spaceName}: ${formatBytes(ss.sizeBytes)}`}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <div className="h-5 w-full rounded-md bg-[var(--app-hover)]" />
+      )}
+
+      {/* Legend */}
+      <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+        {spaceStats.map((ss, i) => (
+          <div
+            key={ss.spaceId ?? "unspaced"}
+            className="flex items-center gap-1.5"
+          >
+            <span
+              className="h-2 w-2 rounded-[2px]"
+              style={{
+                backgroundColor: spacePalette[i % spacePalette.length],
+              }}
+            />
+            <span className="text-[var(--app-muted)]">{ss.spaceName}</span>
+            <span className="font-mono font-medium">
+              {formatBytes(ss.sizeBytes)}
+            </span>
+            <span className="font-mono text-[var(--app-muted)]">
+              ({ss.itemCount})
+            </span>
           </div>
         ))}
       </div>

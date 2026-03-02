@@ -240,6 +240,13 @@ export type ItemSummaryDto = {
   spaceName: string | null;
 };
 
+export type SpaceStatsDto = {
+  spaceId: number | null;
+  spaceName: string;
+  itemCount: number;
+  sizeBytes: number;
+};
+
 export type StorageOverviewDto = {
   disk: DiskUsageDto | null;
   items: {
@@ -248,7 +255,9 @@ export type StorageOverviewDto = {
     countByKind: Record<ItemKind, number>;
     sizeByKind: Record<ItemKind, number>;
     countByState: Record<ItemState, number>;
+    sizeByState: Record<ItemState, number>;
   };
+  spaceStats: SpaceStatsDto[];
   largestItems: ItemSummaryDto[];
 };
 

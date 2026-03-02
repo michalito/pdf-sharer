@@ -147,7 +147,7 @@ Spaces are named organizational groupings for items (one-to-many, optional). The
 
 ### Other
 - `GET /api/health` (returns `{"ok": true, "version": "<app-version>"}`)
-- `GET /api/storage` (returns `{disk, items: {totalCount, totalSizeBytes, countByKind, sizeByKind, countByState}, largestItems}`)
+- `GET /api/storage` (returns `{disk, items: {totalCount, totalSizeBytes, countByKind, sizeByKind, countByState, sizeByState}, spaceStats: [{spaceId, spaceName, itemCount, sizeBytes}], largestItems}`)
 - `GET /d/<id>` (public share link: download file/folder, redirect link, render note, or show password prompt)
 - `POST /d/<id>` (submit password for protected share links)
 

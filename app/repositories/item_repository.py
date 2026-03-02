@@ -12,6 +12,7 @@ from sqlalchemy.orm import joinedload
 from app import db
 from app.constants import DEFAULT_PAGE, DEFAULT_PER_PAGE, MAX_PER_PAGE
 from app.domain.item import Item, ItemKind, ItemState
+from app.domain.space import Space
 from app.exceptions import NotFoundError
 
 
@@ -45,6 +46,16 @@ class PaginatedResult(Generic[T]):
 
 
 @dataclass
+class SpaceStorageStats:
+    """Storage stats for a single space (or unspaced items)."""
+
+    space_id: int | None
+    space_name: str
+    item_count: int
+    size_bytes: int
+
+
+@dataclass
 class StorageStats:
     """Aggregate storage statistics from the items table."""
 
@@ -53,6 +64,8 @@ class StorageStats:
     count_by_kind: dict[str, int]
     size_by_kind: dict[str, int]
     count_by_state: dict[str, int]
+    size_by_state: dict[str, int]
+    space_stats: list[SpaceStorageStats]
     largest_items: list[Item]
 
 
@@ -258,12 +271,37 @@ class ItemRepository:
             db.session.query(
                 Item.state,
                 func.count(Item.id),
+                func.coalesce(func.sum(Item.size_bytes), 0),
             )
             .filter(active_items)
             .group_by(Item.state)
             .all()
         )
-        count_by_state = {state_val: cnt for state_val, cnt in state_rows}
+        count_by_state = {state_val: cnt for state_val, cnt, _sz in state_rows}
+        size_by_state = {state_val: sz for state_val, _cnt, sz in state_rows}
+
+        space_rows = (
+            db.session.query(
+                Item.space_id,
+                Space.name,
+                func.count(Item.id),
+                func.coalesce(func.sum(Item.size_bytes), 0),
+            )
+            .outerjoin(Space, Item.space_id == Space.id)
+            .filter(active_items)
+            .group_by(Item.space_id, Space.name)
+            .order_by(func.coalesce(func.sum(Item.size_bytes), 0).desc())
+            .all()
+        )
+        space_stats = [
+            SpaceStorageStats(
+                space_id=space_id,
+                space_name=space_name or "Unspaced",
+                item_count=cnt,
+                size_bytes=sz,
+            )
+            for space_id, space_name, cnt, sz in space_rows
+        ]
 
         largest_items = (
             Item.query.options(joinedload(Item.space))
@@ -282,6 +320,8 @@ class ItemRepository:
             count_by_kind=count_by_kind,
             size_by_kind=size_by_kind,
             count_by_state=count_by_state,
+            size_by_state=size_by_state,
+            space_stats=space_stats,
             largest_items=largest_items,
         )
 
