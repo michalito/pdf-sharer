@@ -10,6 +10,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload
 
 from app import db
+from app.constants import DEFAULT_PAGE, DEFAULT_PER_PAGE, MAX_PER_PAGE
 from app.domain.item import Item, ItemKind, ItemState
 from app.exceptions import NotFoundError
 
@@ -58,8 +59,6 @@ class StorageStats:
 class ItemRepository:
     """Repository for Item data access operations."""
 
-    MAX_PER_PAGE = 200
-
     def _build_order_by(self, sort: SortField, order: SortOrder):
         """Return SQLAlchemy order_by clauses: pinned first, then sort field, then id tie-breaker."""
         direction = lambda col: col.asc() if order == "asc" else col.desc()
@@ -106,13 +105,13 @@ class ItemRepository:
         protected: Optional[bool] = None,
         space_id: Optional[int] = None,
         unspaced: Optional[bool] = None,
-        page: int = 1,
-        per_page: int = 50,
+        page: int = DEFAULT_PAGE,
+        per_page: int = DEFAULT_PER_PAGE,
         sort: SortField = "created",
         order: SortOrder = "desc",
     ) -> PaginatedResult[Item]:
         page = max(1, page)
-        per_page = min(max(1, per_page), self.MAX_PER_PAGE)
+        per_page = min(max(1, per_page), MAX_PER_PAGE)
 
         query = Item.query.options(joinedload(Item.space)).order_by(
             *self._build_order_by(sort, order),

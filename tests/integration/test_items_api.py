@@ -926,3 +926,130 @@ def test_delete_expired_items(app: Flask, client: FlaskClient):
 
         assert db.session.get(Item, item_id) is None
         assert not (upload_folder / stored_name).exists()
+
+
+# ── Pagination edge cases ────────────────────────────────────
+
+
+def _seed_items(client: FlaskClient, count: int) -> list[int]:
+    """Create ``count`` file items and return their IDs."""
+    ids = []
+    for i in range(count):
+        res = client.post(
+            "/api/items/files",
+            data={"files": [(io.BytesIO(f"item{i}".encode()), f"item{i}.txt")]},
+            content_type="multipart/form-data",
+        )
+        assert res.status_code == 201
+        ids.extend(item["id"] for item in res.get_json())
+    return ids
+
+
+def test_pagination_metadata_fields(client: FlaskClient):
+    """Verify page, pages, hasNext, hasPrev are correct across pages."""
+    _seed_items(client, 3)
+
+    # All 3 items on one page (per_page=50 default)
+    res = client.get("/api/items")
+    p = res.get_json()["pagination"]
+    assert p["total"] == 3
+    assert p["page"] == 1
+    assert p["pages"] == 1
+    assert p["hasNext"] is False
+    assert p["hasPrev"] is False
+
+    # Split across pages
+    res = client.get("/api/items?per_page=2")
+    p = res.get_json()["pagination"]
+    assert p["total"] == 3
+    assert p["page"] == 1
+    assert p["perPage"] == 2
+    assert p["pages"] == 2
+    assert p["hasNext"] is True
+    assert p["hasPrev"] is False
+
+    # Second page
+    res = client.get("/api/items?per_page=2&page=2")
+    p = res.get_json()["pagination"]
+    assert p["page"] == 2
+    assert p["pages"] == 2
+    assert p["hasNext"] is False
+    assert p["hasPrev"] is True
+    assert len(res.get_json()["items"]) == 1
+
+
+def test_pagination_page_beyond_total_clamps(client: FlaskClient):
+    """Requesting a page beyond total pages is clamped to the last page."""
+    _seed_items(client, 2)
+
+    res = client.get("/api/items?per_page=1&page=999")
+    assert res.status_code == 200
+    p = res.get_json()["pagination"]
+    assert p["page"] == 2  # clamped to last page
+    assert p["pages"] == 2
+    assert len(res.get_json()["items"]) == 1
+
+
+def test_pagination_empty_result_set(client: FlaskClient):
+    """Empty DB returns page 1 of 1 with no items."""
+    res = client.get("/api/items")
+    assert res.status_code == 200
+    p = res.get_json()["pagination"]
+    assert p["total"] == 0
+    assert p["page"] == 1
+    assert p["pages"] == 1
+    assert p["hasNext"] is False
+    assert p["hasPrev"] is False
+    assert res.get_json()["items"] == []
+
+
+def test_pagination_rejects_negative_page(client: FlaskClient):
+    """Negative page values return 400."""
+    res = client.get("/api/items?page=-1")
+    assert res.status_code == 400
+    assert "page" in res.get_json()["error"].lower()
+
+
+def test_pagination_rejects_zero_page(client: FlaskClient):
+    """page=0 returns 400."""
+    res = client.get("/api/items?page=0")
+    assert res.status_code == 400
+
+
+def test_pagination_rejects_zero_per_page(client: FlaskClient):
+    """per_page=0 returns 400."""
+    res = client.get("/api/items?per_page=0")
+    assert res.status_code == 400
+
+
+def test_pagination_rejects_negative_per_page(client: FlaskClient):
+    """per_page=-5 returns 400."""
+    res = client.get("/api/items?per_page=-5")
+    assert res.status_code == 400
+    assert "per_page" in res.get_json()["error"].lower()
+
+
+def test_pagination_rejects_excessive_per_page(client: FlaskClient):
+    """per_page exceeding MAX_PER_PAGE returns 400."""
+    res = client.get("/api/items?per_page=201")
+    assert res.status_code == 400
+    assert "per_page" in res.get_json()["error"].lower()
+
+
+def test_pagination_rejects_non_numeric_values(client: FlaskClient):
+    """Non-numeric page/per_page values return 400."""
+    res = client.get("/api/items?page=abc")
+    assert res.status_code == 400
+
+    res = client.get("/api/items?per_page=xyz")
+    assert res.status_code == 400
+
+
+def test_pagination_per_page_boundary(client: FlaskClient):
+    """per_page=200 (MAX_PER_PAGE) is accepted, 201 is not."""
+    res = client.get("/api/items?per_page=200")
+    assert res.status_code == 200
+    assert res.get_json()["pagination"]["perPage"] == 200
+
+    res = client.get("/api/items?per_page=201")
+    assert res.status_code == 400

@@ -11,7 +11,10 @@ from app.api import api, get_json_body
 from app.api.item_presenter import present_item_for_api
 from app.constants import (
     DEFAULT_NOTE_EXCERPT_LENGTH,
+    DEFAULT_PAGE,
+    DEFAULT_PER_PAGE,
     MAX_NOTE_EXCERPT_LENGTH,
+    MAX_PER_PAGE,
     MIN_NOTE_EXCERPT_LENGTH,
 )
 from app.domain.item import ItemKind, ItemState
@@ -116,6 +119,25 @@ def _parse_sort_params() -> tuple[str, str]:
         raise ValidationError("Invalid 'order' value. Use 'asc' or 'desc'.")
 
     return sort, order
+
+
+def _parse_pagination_params() -> tuple[int, int]:
+    """Parse and validate ``page`` and ``per_page`` query params."""
+    try:
+        page = int(request.args.get("page", DEFAULT_PAGE))
+    except (TypeError, ValueError):
+        raise ValidationError("Invalid 'page' value. Must be an integer.")
+    try:
+        per_page = int(request.args.get("per_page", DEFAULT_PER_PAGE))
+    except (TypeError, ValueError):
+        raise ValidationError("Invalid 'per_page' value. Must be an integer.")
+
+    if page < 1:
+        raise ValidationError("'page' must be at least 1")
+    if per_page < 1 or per_page > MAX_PER_PAGE:
+        raise ValidationError(f"'per_page' must be between 1 and {MAX_PER_PAGE}")
+
+    return page, per_page
 
 
 def _parse_bool_query_param(raw: Optional[str], *, field: str) -> Optional[bool]:
@@ -232,12 +254,7 @@ def list_items() -> Response:
 
     space_id, unspaced = _parse_space_query_param(request.args.get("space"))
     sort, order = _parse_sort_params()
-
-    try:
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 50))
-    except ValueError:
-        raise ValidationError("Invalid pagination parameters")
+    page, per_page = _parse_pagination_params()
 
     note_excerpt_chars = _get_note_excerpt_length()
     result = service.list_items(

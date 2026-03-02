@@ -697,6 +697,15 @@ export default function App() {
 
   const items = itemsQuery.data?.items ?? [];
   const pagination = itemsQuery.data?.pagination;
+
+  // Sync local page state when the server clamps to a different page
+  // (e.g. user was on page 3, then a filter reduced results to 1 page).
+  useEffect(() => {
+    if (pagination && pagination.page !== page) {
+      setPage(pagination.page);
+    }
+  }, [pagination?.page]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const visibleCounts = useMemo(
     () => ({
       active: items.filter((it) => it.state === "active").length,

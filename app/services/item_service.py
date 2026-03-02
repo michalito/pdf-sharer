@@ -21,7 +21,7 @@ from werkzeug.utils import secure_filename
 
 from dataclasses import dataclass
 
-from app.constants import ALLOWED_TTL_PRESETS
+from app.constants import ALLOWED_TTL_PRESETS, DEFAULT_PAGE, DEFAULT_PER_PAGE
 from app.domain.item import Item, ItemKind, ItemState
 from app.exceptions import FileOperationError, ValidationError
 from app.repositories.item_repository import ItemRepository, PaginatedResult, SortField, SortOrder, StorageStats
@@ -66,8 +66,8 @@ class ItemService:
         protected: Optional[bool] = None,
         space_id: Optional[int] = None,
         unspaced: Optional[bool] = None,
-        page: int = 1,
-        per_page: int = 50,
+        page: int = DEFAULT_PAGE,
+        per_page: int = DEFAULT_PER_PAGE,
         sort: SortField = "created",
         order: SortOrder = "desc",
     ) -> PaginatedResult[Item]:
