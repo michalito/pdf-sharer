@@ -227,11 +227,6 @@ class ItemRepository:
     def rollback(self) -> None:
         db.session.rollback()
 
-    def update_state(self, item: Item, state: ItemState) -> Item:
-        item.state = state.value
-        db.session.commit()
-        return item
-
     def update_item_fields(
         self,
         item: Item,
@@ -260,11 +255,6 @@ class ItemRepository:
         for item in items:
             db.session.delete(item)
         db.session.commit()
-
-    def update_space(self, item: Item, space_id: Optional[int]) -> Item:
-        item.space_id = space_id
-        db.session.commit()
-        return item
 
     def get_storage_stats(self, *, top_n: int = 10) -> StorageStats:
         """Compute aggregate storage statistics in minimal DB round-trips."""

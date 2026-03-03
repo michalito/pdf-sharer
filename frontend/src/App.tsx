@@ -769,11 +769,14 @@ export default function App() {
 
   // Sync local page state when the server clamps to a different page
   // (e.g. user was on page 3, then a filter reduced results to 1 page).
+  // pagination.page is the only intentional trigger — including `page`
+  // would create a render loop (setPage → effect → setPage).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (pagination && pagination.page !== page) {
       setPage(pagination.page);
     }
-  }, [pagination?.page]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pagination?.page]);
 
   const visibleCounts = useMemo(
     () => ({

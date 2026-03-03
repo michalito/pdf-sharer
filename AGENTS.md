@@ -91,6 +91,7 @@ npm --prefix frontend run build
 - Any non-production `FLASK_ENV` uses `Config.for_development()`, which currently fixes DB path and upload folder to local defaults.
 - `MAX_CONTENT_LENGTH` default is `2147483648` (2GB).
 - `NOTE_EXCERPT_LENGTH` controls note preview length in `GET /api/items` and is bounded to `40..1000` (default `180`).
+- `TRUST_PROXY_HOPS` controls how many reverse-proxy hops are trusted for `X-Forwarded-For` when deriving client IP (`0` by default; set `1` for one proxy).
 - `APP_VERSION` is exposed by `GET /api/health` and the UI footer; when unset, `deploy.sh` auto-detects from latest git tag (fallback `dev`).
 
 ## Change Checklist For Agents

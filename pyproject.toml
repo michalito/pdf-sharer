@@ -1,7 +1,7 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = ["-v", "--tb=short", "-ra"]
+addopts = ["-v", "--tb=short", "-ra", "--timeout=10"]
 
 [tool.coverage.run]
 source = ["app"]

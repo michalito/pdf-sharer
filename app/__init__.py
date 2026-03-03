@@ -8,6 +8,7 @@ from typing import Optional
 from flask import Flask, g, request
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import Config, get_config
 
@@ -94,6 +95,25 @@ def _setup_request_handlers(app: Flask) -> None:
         return response
 
 
+def _configure_proxy_fix(app: Flask) -> None:
+    """Enable proxy-aware client IP handling when configured."""
+    hops = app.config.get("TRUST_PROXY_HOPS", 0)
+    try:
+        trusted_hops = int(hops)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("TRUST_PROXY_HOPS must be a non-negative integer") from exc
+
+    if trusted_hops < 0:
+        raise ValueError("TRUST_PROXY_HOPS must be a non-negative integer")
+
+    if trusted_hops > 0:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=trusted_hops)
+        app.logger.info(
+            "ProxyFix enabled for X-Forwarded-For with %s trusted hop(s)",
+            trusted_hops,
+        )
+
+
 def create_app(config: Optional[Config] = None) -> Flask:
     """
     Create and configure the Flask application.
@@ -127,6 +147,7 @@ def create_app(config: Optional[Config] = None) -> Flask:
 
     # Configure logging
     _configure_logging(app)
+    _configure_proxy_fix(app)
 
     # Ensure directories exist
     _ensure_directories(config)

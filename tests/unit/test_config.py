@@ -30,3 +30,32 @@ def test_from_env_requires_secret_key(monkeypatch):
     monkeypatch.delenv("SECRET_KEY", raising=False)
     with pytest.raises(ValueError, match="SECRET_KEY"):
         Config.from_env()
+
+
+def test_from_env_rejects_non_sqlite_database_url(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/saita")
+    with pytest.raises(ValueError, match="Only SQLite is supported"):
+        Config.from_env()
+
+
+def test_from_env_defaults_trust_proxy_hops_to_zero(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.delenv("TRUST_PROXY_HOPS", raising=False)
+    config = Config.from_env()
+    assert config.TRUST_PROXY_HOPS == 0
+
+
+def test_from_env_parses_trust_proxy_hops(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("TRUST_PROXY_HOPS", "1")
+    config = Config.from_env()
+    assert config.TRUST_PROXY_HOPS == 1
+
+
+@pytest.mark.parametrize("raw", ["-1", "abc"])
+def test_from_env_rejects_invalid_trust_proxy_hops(monkeypatch, raw: str):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("TRUST_PROXY_HOPS", raw)
+    with pytest.raises(ValueError, match="TRUST_PROXY_HOPS"):
+        Config.from_env()

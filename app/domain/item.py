@@ -10,6 +10,7 @@ An Item represents a shareable resource. Items may be:
 from __future__ import annotations
 
 import json
+import textwrap
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
@@ -173,4 +174,4 @@ class Item(db.Model):
         if len(compact) <= max_chars:
             return compact
 
-        return f"{compact[: max_chars - 3].rstrip()}..."
+        return textwrap.shorten(compact, width=max_chars, placeholder="...")
