@@ -80,3 +80,20 @@ def test_upload_folder_cleans_zip_on_duplicate_lookup_failure(tmp_path: Path):
             service.upload_folder(files, paths)
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_upload_files_cleans_staged_files_on_duplicate_lookup_failure(tmp_path: Path):
+    app = Flask(__name__)
+    app.config["UPLOAD_FOLDER"] = tmp_path
+
+    service = ItemService(repository=_FailingFindByHashRepository())
+    files = [
+        FileStorage(stream=BytesIO(b"a"), filename="a.txt", content_type="text/plain"),
+        FileStorage(stream=BytesIO(b"b"), filename="b.txt", content_type="text/plain"),
+    ]
+
+    with app.app_context():
+        with pytest.raises(FileOperationError, match="Failed to check duplicate content"):
+            service.upload_files(files)
+
+    assert list(tmp_path.iterdir()) == []

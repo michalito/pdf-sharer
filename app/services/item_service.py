@@ -175,7 +175,11 @@ class ItemService:
             content_hashes = [content_hash for _, _, _, content_hash, _, _ in saved]
             with acquire_content_hash_locks(content_hashes):
                 if not skip_dedup:
-                    grouped_dupes = self._collect_upload_file_duplicates(saved)
+                    try:
+                        grouped_dupes = self._collect_upload_file_duplicates(saved)
+                    except SQLAlchemyError as e:
+                        logger.error("Database error checking file duplicates: %s", e, exc_info=True)
+                        raise FileOperationError("Failed to check duplicate content")
                     if grouped_dupes:
                         raise DuplicateDetectedError("Duplicate content detected", duplicates=grouped_dupes)
 
