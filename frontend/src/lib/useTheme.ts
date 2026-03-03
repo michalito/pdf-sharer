@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 
 type Theme = "light" | "dark";
 
+const THEME_COLORS: Record<Theme, string> = {
+  light: "#f5efe4",
+  dark: "#120f14",
+};
+
 function getInitialTheme(): Theme {
   const stored = localStorage.getItem("theme");
   if (stored === "light" || stored === "dark") return stored;
@@ -14,6 +19,7 @@ export function useTheme() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
     localStorage.setItem("theme", theme);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLORS[theme]);
   }, [theme]);
 
   const api = useMemo(

@@ -35,10 +35,15 @@ jobs:
 
       - name: Stage frontend assets for Docker build
         run: |
-          mkdir -p app/templates app/static/assets
+          mkdir -p app/templates app/static/assets app/static/icons
           cp frontend/dist/index.html app/templates/index.html
           cp -r frontend/dist/assets/* app/static/assets/
           cp frontend/dist/logo.png app/static/logo.png
+          cp frontend/dist/sw.js app/static/sw.js
+          cp frontend/dist/workbox-*.js app/static/
+          cp frontend/dist/manifest.webmanifest app/static/manifest.webmanifest
+          cp -r frontend/dist/icons/* app/static/icons/
+          cp frontend/dist/apple-touch-icon.png app/static/apple-touch-icon.png
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

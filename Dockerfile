@@ -69,4 +69,9 @@ FROM runtime-base AS prod
 COPY --chown=app:app --from=frontend-builder /frontend/dist/index.html /app/app/templates/index.html
 COPY --chown=app:app --from=frontend-builder /frontend/dist/assets /app/app/static/assets
 COPY --chown=app:app --from=frontend-builder /frontend/dist/logo.png /app/app/static/logo.png
+COPY --chown=app:app --from=frontend-builder /frontend/dist/sw.js /app/app/static/sw.js
+COPY --chown=app:app --from=frontend-builder /frontend/dist/workbox-*.js /app/app/static/
+COPY --chown=app:app --from=frontend-builder /frontend/dist/manifest.webmanifest /app/app/static/manifest.webmanifest
+COPY --chown=app:app --from=frontend-builder /frontend/dist/icons /app/app/static/icons
+COPY --chown=app:app --from=frontend-builder /frontend/dist/apple-touch-icon.png /app/app/static/apple-touch-icon.png
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "run:app"]

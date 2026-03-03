@@ -5,6 +5,14 @@ import { Toaster } from "react-hot-toast";
 import App from "./App";
 import "./index.css";
 
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+  });
+} else if (!window.isSecureContext && import.meta.env.PROD) {
+  console.info("PWA: Service worker requires HTTPS (or localhost). Skipping registration.");
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
