@@ -1053,3 +1053,357 @@ def test_pagination_per_page_boundary(client: FlaskClient):
 
     res = client.get("/api/items?per_page=201")
     assert res.status_code == 400
+
+
+# === Duplicate detection tests ===
+
+
+def test_upload_file_duplicate_returns_409(client: FlaskClient):
+    """Uploading the same file content twice returns 409 with duplicate info."""
+    content = b"duplicate file content"
+    res1 = client.post("/api/items/files", data={"files": [(io.BytesIO(content), "a.txt")]}, content_type="multipart/form-data")
+    assert res1.status_code == 201
+    first = res1.get_json()[0]
+    assert first["contentHash"] is not None
+
+    res2 = client.post("/api/items/files", data={"files": [(io.BytesIO(content), "b.txt")]}, content_type="multipart/form-data")
+    assert res2.status_code == 409
+    body = res2.get_json()
+    assert body["code"] == "DUPLICATE_CONTENT"
+    assert len(body["duplicates"]) == 1
+    dup = body["duplicates"][0]
+    assert dup["fileIndex"] == 0
+    assert dup["fileName"] == "b.txt"
+    assert dup["existingItems"][0]["id"] == first["id"]
+
+
+def test_upload_file_duplicate_with_force_succeeds(client: FlaskClient):
+    """force=true bypasses duplicate check."""
+    content = b"force bypass content"
+    res1 = client.post("/api/items/files", data={"files": [(io.BytesIO(content), "a.txt")]}, content_type="multipart/form-data")
+    assert res1.status_code == 201
+
+    res2 = client.post("/api/items/files", data={
+        "files": [(io.BytesIO(content), "b.txt")],
+        "force": "true",
+    }, content_type="multipart/form-data")
+    assert res2.status_code == 201
+    assert len(res2.get_json()) == 1
+
+
+def test_upload_different_files_no_duplicate(client: FlaskClient):
+    """Different content does not trigger duplicate detection."""
+    res1 = client.post("/api/items/files", data={"files": [(io.BytesIO(b"aaa"), "a.txt")]}, content_type="multipart/form-data")
+    assert res1.status_code == 201
+
+    res2 = client.post("/api/items/files", data={"files": [(io.BytesIO(b"bbb"), "b.txt")]}, content_type="multipart/form-data")
+    assert res2.status_code == 201
+
+
+def test_upload_same_filename_preserves_per_file_mime_type(client: FlaskClient):
+    """Files sharing a basename keep their own MIME types."""
+    res = client.post(
+        "/api/items/files",
+        data={
+            "files": [
+                (io.BytesIO(b"plain"), "dup.txt", "text/plain"),
+                (io.BytesIO(b"%PDF-1.4"), "dup.txt", "application/pdf"),
+            ]
+        },
+        content_type="multipart/form-data",
+    )
+    assert res.status_code == 201
+    items = res.get_json()
+    assert [item["mimeType"] for item in items] == ["text/plain", "application/pdf"]
+
+
+def test_create_link_duplicate_returns_409(client: FlaskClient):
+    """Creating a link with the same URL twice returns 409."""
+    res1 = client.post("/api/items/link", json={"url": "https://example.com/page"})
+    assert res1.status_code == 201
+    first = res1.get_json()
+
+    res2 = client.post("/api/items/link", json={"url": "https://example.com/page"})
+    assert res2.status_code == 409
+    body = res2.get_json()
+    assert body["code"] == "DUPLICATE_CONTENT"
+    assert body["duplicates"][0]["id"] == first["id"]
+
+
+def test_create_link_duplicate_with_force(client: FlaskClient):
+    """force=true bypasses link duplicate check."""
+    res1 = client.post("/api/items/link", json={"url": "https://example.com/dup"})
+    assert res1.status_code == 201
+
+    res2 = client.post("/api/items/link", json={"url": "https://example.com/dup", "force": True})
+    assert res2.status_code == 201
+
+
+def test_create_link_force_string_false_does_not_bypass_dedup(client: FlaskClient):
+    """'force': 'false' should still enforce duplicate checks."""
+    res1 = client.post("/api/items/link", json={"url": "https://example.com/strict-force"})
+    assert res1.status_code == 201
+
+    res2 = client.post("/api/items/link", json={"url": "https://example.com/strict-force", "force": "false"})
+    assert res2.status_code == 409
+    assert res2.get_json()["code"] == "DUPLICATE_CONTENT"
+
+
+def test_create_note_force_string_false_does_not_bypass_dedup(client: FlaskClient):
+    """'force': 'false' should still enforce duplicate checks for notes."""
+    res1 = client.post("/api/items/note", json={"text": "strict note force content"})
+    assert res1.status_code == 201
+
+    res2 = client.post("/api/items/note", json={"text": "strict note force content", "force": "false"})
+    assert res2.status_code == 409
+    assert res2.get_json()["code"] == "DUPLICATE_CONTENT"
+
+
+def test_create_note_duplicate_returns_409(client: FlaskClient):
+    """Creating a note with the same text twice returns 409."""
+    res1 = client.post("/api/items/note", json={"text": "duplicate note text"})
+    assert res1.status_code == 201
+    first = res1.get_json()
+
+    res2 = client.post("/api/items/note", json={"text": "duplicate note text"})
+    assert res2.status_code == 409
+    body = res2.get_json()
+    assert body["code"] == "DUPLICATE_CONTENT"
+    assert body["duplicates"][0]["id"] == first["id"]
+
+
+def test_create_note_duplicate_with_force(client: FlaskClient):
+    """force=true bypasses note duplicate check."""
+    res1 = client.post("/api/items/note", json={"text": "force note content"})
+    assert res1.status_code == 201
+
+    res2 = client.post("/api/items/note", json={"text": "force note content", "force": True})
+    assert res2.status_code == 201
+
+
+def test_cross_kind_duplicate_between_link_and_note(client: FlaskClient):
+    """Cross-kind dedup is intentional: note text can duplicate a link URL."""
+    shared_content = "https://example.com/cross-kind"
+    res1 = client.post("/api/items/link", json={"url": shared_content})
+    assert res1.status_code == 201
+    link = res1.get_json()
+
+    res2 = client.post("/api/items/note", json={"text": shared_content})
+    assert res2.status_code == 409
+    body = res2.get_json()
+    assert body["code"] == "DUPLICATE_CONTENT"
+    assert body["duplicates"][0]["id"] == link["id"]
+    assert body["duplicates"][0]["kind"] == "link"
+
+
+def test_ttl_item_does_not_trigger_dedup(client: FlaskClient):
+    """Uploading with TTL skips the duplicate check entirely."""
+    content = b"ttl skip content"
+    res1 = client.post("/api/items/files", data={"files": [(io.BytesIO(content), "a.txt")]}, content_type="multipart/form-data")
+    assert res1.status_code == 201
+
+    # Same content with TTL should succeed without force
+    res2 = client.post("/api/items/files", data={
+        "files": [(io.BytesIO(content), "b.txt")],
+        "ttl": "1h",
+    }, content_type="multipart/form-data")
+    assert res2.status_code == 201
+
+
+def test_ttl_item_not_counted_as_duplicate(client: FlaskClient):
+    """An item with TTL does not count as a duplicate target."""
+    content = b"ttl target content"
+    # Upload with TTL first
+    res1 = client.post("/api/items/files", data={
+        "files": [(io.BytesIO(content), "a.txt")],
+        "ttl": "1h",
+    }, content_type="multipart/form-data")
+    assert res1.status_code == 201
+
+    # Upload same content without TTL — should succeed (TTL item is not a dup target)
+    res2 = client.post("/api/items/files", data={"files": [(io.BytesIO(content), "b.txt")]}, content_type="multipart/form-data")
+    assert res2.status_code == 201
+
+
+def test_duplicate_across_spaces(app: Flask, client: FlaskClient):
+    """Duplicate detection works across different spaces."""
+    space_res = client.post("/api/spaces", json={"name": "Space A"})
+    space_id = space_res.get_json()["id"]
+
+    content = b"cross space content"
+    res1 = client.post("/api/items/files", data={
+        "files": [(io.BytesIO(content), "a.txt")],
+        "space_id": str(space_id),
+    }, content_type="multipart/form-data")
+    assert res1.status_code == 201
+
+    # Same content, no space — should be detected as duplicate
+    res2 = client.post("/api/items/files", data={"files": [(io.BytesIO(content), "b.txt")]}, content_type="multipart/form-data")
+    assert res2.status_code == 409
+    body = res2.get_json()
+    assert body["duplicates"][0]["existingItems"][0]["spaceName"] == "Space A"
+
+
+def test_duplicate_includes_all_states(client: FlaskClient):
+    """Items in any state (including archived) count as duplicate targets."""
+    content = b"archived dup content"
+    res1 = client.post("/api/items/files", data={"files": [(io.BytesIO(content), "a.txt")]}, content_type="multipart/form-data")
+    assert res1.status_code == 201
+    item_id = res1.get_json()[0]["id"]
+
+    # Move to archived
+    client.patch(f"/api/items/{item_id}", json={"state": "archived"})
+
+    # Same content — should still be detected
+    res2 = client.post("/api/items/files", data={"files": [(io.BytesIO(content), "b.txt")]}, content_type="multipart/form-data")
+    assert res2.status_code == 409
+    assert res2.get_json()["duplicates"][0]["existingItems"][0]["state"] == "archived"
+
+
+def test_multi_file_partial_duplicate(client: FlaskClient):
+    """Multi-file upload where only some files are duplicates."""
+    dup_content = b"already exists"
+    client.post("/api/items/files", data={"files": [(io.BytesIO(dup_content), "existing.txt")]}, content_type="multipart/form-data")
+
+    # Upload two files: one is a duplicate, one is new
+    res = client.post("/api/items/files", data={
+        "files": [
+            (io.BytesIO(dup_content), "dup.txt"),
+            (io.BytesIO(b"brand new"), "new.txt"),
+        ]
+    }, content_type="multipart/form-data")
+    assert res.status_code == 409
+    body = res.get_json()
+    # Only the duplicate file is listed
+    assert len(body["duplicates"]) == 1
+    assert body["duplicates"][0]["fileIndex"] == 0
+    assert body["duplicates"][0]["fileName"] == "dup.txt"
+
+
+def test_multi_file_duplicate_within_same_request_returns_409(app: Flask, client: FlaskClient):
+    """Duplicate content within one upload request is rejected."""
+    res = client.post("/api/items/files", data={
+        "files": [
+            (io.BytesIO(b"same payload"), "a.txt"),
+            (io.BytesIO(b"same payload"), "b.txt"),
+        ]
+    }, content_type="multipart/form-data")
+    assert res.status_code == 409
+    body = res.get_json()
+    assert body["code"] == "DUPLICATE_CONTENT"
+    assert len(body["duplicates"]) == 1
+    assert body["duplicates"][0]["fileIndex"] == 1
+    assert body["duplicates"][0]["fileName"] == "b.txt"
+    assert body["duplicates"][0]["existingItems"][0]["name"] == "a.txt (same upload)"
+
+    list_res = client.get("/api/items")
+    assert list_res.status_code == 200
+    assert list_res.get_json()["pagination"]["total"] == 0
+    assert list(Path(app.config["UPLOAD_FOLDER"]).iterdir()) == []
+
+
+def test_upload_folder_duplicate_detected_when_file_order_differs(client: FlaskClient):
+    """Folder dedup must be stable even when multipart file order changes."""
+    res1 = client.post(
+        "/api/items/folder",
+        data={
+            "files": [
+                (io.BytesIO(b"alpha"), "a.txt"),
+                (io.BytesIO(b"beta"), "b.txt"),
+            ],
+            "paths": [
+                "folder/a.txt",
+                "folder/b.txt",
+            ],
+        },
+        content_type="multipart/form-data",
+    )
+    assert res1.status_code == 201
+    first = res1.get_json()
+
+    # Same logical folder, reversed multipart order.
+    res2 = client.post(
+        "/api/items/folder",
+        data={
+            "files": [
+                (io.BytesIO(b"beta"), "b.txt"),
+                (io.BytesIO(b"alpha"), "a.txt"),
+            ],
+            "paths": [
+                "folder/b.txt",
+                "folder/a.txt",
+            ],
+        },
+        content_type="multipart/form-data",
+    )
+    assert res2.status_code == 409
+    body = res2.get_json()
+    assert body["code"] == "DUPLICATE_CONTENT"
+    assert body["duplicates"][0]["id"] == first["id"]
+    assert body["duplicates"][0]["kind"] == "folder"
+
+
+def test_duplicate_file_cleanup_on_reject(app: Flask, client: FlaskClient):
+    """When a duplicate is rejected, the temporarily saved file is cleaned up."""
+    content = b"cleanup test content"
+    client.post("/api/items/files", data={"files": [(io.BytesIO(content), "a.txt")]}, content_type="multipart/form-data")
+
+    upload_dir = Path(app.config["UPLOAD_FOLDER"])
+    files_before = set(upload_dir.iterdir())
+
+    # This will be rejected as duplicate — the saved file should be cleaned up
+    res = client.post("/api/items/files", data={"files": [(io.BytesIO(content), "b.txt")]}, content_type="multipart/form-data")
+    assert res.status_code == 409
+
+    files_after = set(upload_dir.iterdir())
+    assert files_after == files_before, "Temporarily saved file should have been cleaned up"
+
+
+def test_content_hash_in_response(client: FlaskClient):
+    """contentHash field is present in item response."""
+    res = client.post("/api/items/files", data={"files": [(io.BytesIO(b"hash check"), "test.txt")]}, content_type="multipart/form-data")
+    assert res.status_code == 201
+    item = res.get_json()[0]
+    assert "contentHash" in item
+    assert isinstance(item["contentHash"], str)
+    assert len(item["contentHash"]) == 64
+
+
+def test_content_hash_in_link_response(client: FlaskClient):
+    """contentHash field is present for links."""
+    res = client.post("/api/items/link", json={"url": "https://example.com/hash"})
+    assert res.status_code == 201
+    item = res.get_json()
+    assert isinstance(item["contentHash"], str)
+    assert len(item["contentHash"]) == 64
+
+
+def test_content_hash_in_note_response(client: FlaskClient):
+    """contentHash field is present for notes."""
+    res = client.post("/api/items/note", json={"text": "hash note"})
+    assert res.status_code == 201
+    item = res.get_json()
+    assert isinstance(item["contentHash"], str)
+    assert len(item["contentHash"]) == 64
+
+
+def test_locked_protected_item_hides_content_hash(app: Flask, client: FlaskClient):
+    """Protected locked items must not expose contentHash in API responses."""
+    create = client.post("/api/items/note", json={"text": "secret note", "password": "password123"})
+    assert create.status_code == 201
+    created_item = create.get_json()
+
+    # New client has no unlock session.
+    locked_client = app.test_client()
+
+    list_res = locked_client.get("/api/items")
+    assert list_res.status_code == 200
+    listed = next(item for item in list_res.get_json()["items"] if item["id"] == created_item["id"])
+    assert listed["isPasswordUnlocked"] is False
+    assert listed["contentHash"] is None
+
+    detail_res = locked_client.get(f"/api/items/{created_item['id']}")
+    assert detail_res.status_code == 200
+    detail = detail_res.get_json()
+    assert detail["isPasswordUnlocked"] is False
+    assert detail["contentHash"] is None

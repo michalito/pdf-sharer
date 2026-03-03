@@ -20,6 +20,7 @@ export type ItemDto = {
   linkUrl: string | null;
   noteText: string | null;
   noteExcerpt: string | null;
+  contentHash: string | null;
   isPasswordProtected: boolean;
   isPasswordUnlocked: boolean;
   isPinned: boolean;
@@ -48,7 +49,36 @@ export type ListItemsResponse = {
   pagination: PaginationDto;
 };
 
-type ApiErrorBody = { error?: string; code?: string };
+type ApiErrorBody = { error?: string; code?: string; duplicates?: DuplicateInfo[] };
+
+export type DuplicateItemInfo = {
+  id: number;
+  name: string;
+  kind: ItemKind;
+  state: ItemState;
+  spaceId: number | null;
+  spaceName: string | null;
+  createdAt: string;
+};
+
+export type FileDuplicateInfo = {
+  fileIndex: number;
+  fileName: string;
+  existingItems: DuplicateItemInfo[];
+};
+
+export type DuplicateInfo = DuplicateItemInfo | FileDuplicateInfo;
+
+export class DuplicateContentError extends Error {
+  code = "DUPLICATE_CONTENT" as const;
+  duplicates: DuplicateInfo[];
+
+  constructor(message: string, duplicates: DuplicateInfo[]) {
+    super(message);
+    this.name = "DuplicateContentError";
+    this.duplicates = duplicates;
+  }
+}
 
 function buildQuery(params: Record<string, string | number | undefined | null>): string {
   const usp = new URLSearchParams();
@@ -66,6 +96,9 @@ async function parseApiError(response: Response): Promise<Error> {
     body = (await response.json()) as ApiErrorBody;
   } catch {
     // ignore
+  }
+  if (response.status === 409 && body?.code === "DUPLICATE_CONTENT" && body.duplicates) {
+    return new DuplicateContentError(body.error || "Duplicate content detected", body.duplicates);
   }
   const message = body?.error || `Request failed (${response.status})`;
   return new Error(message);
@@ -124,7 +157,12 @@ function xhrForm<T>(url: string, formData: FormData, onProgress?: (pct: number) 
       const ok = xhr.status >= 200 && xhr.status < 300;
       const body = xhr.response as ApiErrorBody | T | null;
       if (!ok) {
-        const message = (body as ApiErrorBody | null)?.error || `Request failed (${xhr.status})`;
+        const errBody = body as ApiErrorBody | null;
+        if (xhr.status === 409 && errBody?.code === "DUPLICATE_CONTENT" && errBody.duplicates) {
+          reject(new DuplicateContentError(errBody.error || "Duplicate content detected", errBody.duplicates));
+          return;
+        }
+        const message = errBody?.error || `Request failed (${xhr.status})`;
         reject(new Error(message));
         return;
       }
@@ -137,19 +175,20 @@ function xhrForm<T>(url: string, formData: FormData, onProgress?: (pct: number) 
 
 export async function uploadFiles(
   files: File[],
-  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number; ttl?: TtlPreset },
+  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number; ttl?: TtlPreset; force?: boolean },
 ): Promise<ItemDto[]> {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
   if (opts?.password) formData.append("password", opts.password);
   if (opts?.spaceId != null) formData.append("space_id", String(opts.spaceId));
   if (opts?.ttl) formData.append("ttl", opts.ttl);
+  if (opts?.force) formData.append("force", "true");
   return xhrForm<ItemDto[]>("/api/items/files", formData, opts?.onProgress);
 }
 
 export async function uploadFolder(
   files: File[],
-  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number; ttl?: TtlPreset },
+  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number; ttl?: TtlPreset; force?: boolean },
 ): Promise<ItemDto> {
   const formData = new FormData();
   for (const file of files) {
@@ -160,6 +199,7 @@ export async function uploadFolder(
   if (opts?.password) formData.append("password", opts.password);
   if (opts?.spaceId != null) formData.append("space_id", String(opts.spaceId));
   if (opts?.ttl) formData.append("ttl", opts.ttl);
+  if (opts?.force) formData.append("force", "true");
   return xhrForm<ItemDto>("/api/items/folder", formData, opts?.onProgress);
 }
 
@@ -169,6 +209,7 @@ export async function createLink(params: {
   password?: string;
   spaceId?: number;
   ttl?: TtlPreset;
+  force?: boolean;
 }): Promise<ItemDto> {
   return apiJson<ItemDto>("/api/items/link", {
     method: "POST",
@@ -183,6 +224,7 @@ export async function createNote(params: {
   password?: string;
   spaceId?: number;
   ttl?: TtlPreset;
+  force?: boolean;
 }): Promise<ItemDto> {
   return apiJson<ItemDto>("/api/items/note", {
     method: "POST",

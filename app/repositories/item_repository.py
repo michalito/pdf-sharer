@@ -173,6 +173,18 @@ class ItemRepository:
             raise NotFoundError(f"Item with ID {item_id} not found")
         return item
 
+    def find_by_content_hash(self, content_hash: str) -> list[Item]:
+        """Find non-expired, non-TTL items with a matching content hash."""
+        return (
+            Item.query.options(joinedload(Item.space))
+            .filter(
+                Item.content_hash == content_hash,
+                Item.expires_at.is_(None),
+                self._active_items_filter(),
+            )
+            .all()
+        )
+
     def create(
         self,
         *,
@@ -186,6 +198,7 @@ class ItemRepository:
         password_hash: Optional[str] = None,
         space_id: Optional[int] = None,
         expires_at: Optional[datetime] = None,
+        content_hash: Optional[str] = None,
     ) -> Item:
         item = Item(
             stored_name=stored_name,
@@ -198,6 +211,7 @@ class ItemRepository:
             password_hash=password_hash,
             space_id=space_id,
             expires_at=expires_at,
+            content_hash=content_hash,
         )
         db.session.add(item)
         db.session.commit()

@@ -29,5 +29,6 @@ def present_item_for_api(
         dto["linkUrl"] = None
         dto["noteText"] = None
         dto["noteExcerpt"] = None
+        dto["contentHash"] = None
 
     return dto
