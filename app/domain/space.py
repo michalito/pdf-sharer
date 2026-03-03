@@ -23,6 +23,7 @@ class Space(db.Model):
     normalized_name: str = db.Column(
         db.String(120), nullable=False, unique=True, index=True
     )
+    position: int = db.Column(db.Integer, nullable=True)
     created_at: datetime = db.Column(
         db.DateTime(timezone=True),
         nullable=False,
@@ -39,6 +40,7 @@ class Space(db.Model):
         return {
             "id": self.id,
             "name": self.name,
+            "position": self.position,
             "createdAt": self.created_at.isoformat(),
             "itemCount": count,
         }

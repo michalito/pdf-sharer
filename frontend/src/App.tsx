@@ -58,6 +58,7 @@ import {
   listItems,
   listSpaces,
   renameSpace,
+  reorderSpaces,
   SpaceDto,
   updateItem,
   SortField,
@@ -467,6 +468,14 @@ export default function App() {
       toast.success("Space renamed");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to rename space"),
+  });
+
+  const reorderSpacesMutation = useMutation({
+    mutationFn: async (orderedIds: number[]) => reorderSpaces(orderedIds),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to reorder spaces"),
   });
 
   const deleteSpaceMutation = useMutation({
@@ -992,6 +1001,9 @@ export default function App() {
                 const s = spaces.find((sp) => sp.id === id);
                 if (s) setDeleteSpaceTarget(s);
               }}
+              onReorderSpaces={(orderedIds) =>
+                reorderSpacesMutation.mutateAsync(orderedIds)
+              }
               isCreating={createSpaceMutation.isPending}
             />
           </div>

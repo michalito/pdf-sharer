@@ -68,6 +68,11 @@ Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh pr
 | `POST` | `/api/items/<id>/unlock` | Unlock a protected item for current browser session (JSON: `{"password":"..."}`) |
 | `DELETE` | `/api/items/<id>` | Delete an item (requires state `ready_to_delete`) |
 | `DELETE` | `/api/items/ready-to-delete` | Bulk delete items in state `ready_to_delete` (optional filters: `?q=...&kind=file\|folder\|link\|note&protected=true\|false`) |
+| `GET` | `/api/spaces` | List all spaces with item counts, ordered by position |
+| `POST` | `/api/spaces` | Create a space (JSON: `{"name":"..."}`) |
+| `PATCH` | `/api/spaces/<id>` | Rename a space (JSON: `{"name":"..."}`) |
+| `PUT` | `/api/spaces/reorder` | Reorder spaces (JSON: `{"orderedIds": [3, 1, 2]}` — must be an exact permutation of all space IDs) |
+| `DELETE` | `/api/spaces/<id>` | Delete a space (unassigns its items, returns `{"unassigned": N}`) |
 | `GET` | `/d/<id>` | Public share link (downloads file/folder, redirects link, renders note, or prompts for password if protected) |
 | `POST` | `/d/<id>` | Submit password to unlock a protected public share link in the current session |
 

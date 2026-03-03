@@ -1,6 +1,32 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type Modifier,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  horizontalListSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  ArrowLeftRight,
+  Check,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import type { SpaceDto } from "../api/items";
 import { useLongPress } from "../lib/useLongPress";
 import { usePopover } from "../lib/usePopover";
@@ -14,6 +40,7 @@ type Props = {
   onCreateSpace: (name: string) => void;
   onRenameSpace: (id: number, name: string) => void;
   onDeleteSpace: (id: number) => void;
+  onReorderSpaces: (orderedIds: number[]) => Promise<void>;
   isCreating?: boolean;
 };
 
@@ -24,12 +51,16 @@ type Props = {
 function ContextMenu({
   x,
   y,
+  showRearrange,
+  onRearrange,
   onRename,
   onDelete,
   onClose,
 }: {
   x: number;
   y: number;
+  showRearrange: boolean;
+  onRearrange: () => void;
   onRename: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -40,9 +71,6 @@ function ContextMenu({
     initialFocus: "first",
   });
 
-  const itemClass =
-    "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors";
-
   return createPortal(
     <div
       ref={menuRef}
@@ -51,10 +79,24 @@ function ContextMenu({
       style={style}
       className="dialog-pop glass-panel min-w-[140px] rounded-lg p-1"
     >
+      {showRearrange && (
+        <button
+          role="menuitem"
+          type="button"
+          className={`${menuItemClass} text-[var(--app-text)] hover:bg-[var(--app-hover)]`}
+          onClick={() => {
+            onRearrange();
+            onClose();
+          }}
+        >
+          <ArrowLeftRight className="h-3.5 w-3.5 text-[var(--app-muted)]" />
+          Rearrange
+        </button>
+      )}
       <button
         role="menuitem"
         type="button"
-        className={`${itemClass} text-[var(--app-text)] hover:bg-[var(--app-hover)]`}
+        className={`${menuItemClass} text-[var(--app-text)] hover:bg-[var(--app-hover)]`}
         onClick={() => {
           onRename();
           onClose();
@@ -66,7 +108,7 @@ function ContextMenu({
       <button
         role="menuitem"
         type="button"
-        className={`${itemClass} text-[var(--danger)] hover:bg-[var(--danger)]/10`}
+        className={`${menuItemClass} text-[var(--danger)] hover:bg-[var(--danger)]/10`}
         onClick={() => {
           onDelete();
           onClose();
@@ -81,7 +123,7 @@ function ContextMenu({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Space chip (extracted so useLongPress can be called per chip)       */
+/*  Shared chip styles                                                 */
 /* ------------------------------------------------------------------ */
 
 const chipBase =
@@ -90,6 +132,21 @@ const chipInactive =
   "border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text)] hover:bg-[var(--app-hover)]";
 const chipActive =
   "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)] dark:text-[var(--accent)]";
+const chipRearrange =
+  "border-dashed border-[var(--accent)] bg-[var(--accent-soft)]/50 text-[var(--app-text)] cursor-grab";
+const chipDragging =
+  "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-strong)] dark:text-[var(--accent)] cursor-grabbing shadow-md z-10 relative";
+const menuItemClass =
+  "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors";
+
+const restrictToHorizontalAxis: Modifier = ({ transform }) => ({
+  ...transform,
+  y: 0,
+});
+
+/* ------------------------------------------------------------------ */
+/*  Space chip (normal mode — with long-press / right-click)           */
+/* ------------------------------------------------------------------ */
 
 function SpaceChip({
   space,
@@ -133,6 +190,43 @@ function SpaceChip({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Sortable chip (rearrange mode — draggable via @dnd-kit)            */
+/* ------------------------------------------------------------------ */
+
+function SortableChip({ space }: { space: SpaceDto }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: space.id });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`shrink-0 ${chipBase} ${isDragging ? chipDragging : chipRearrange} transition-all duration-200`}
+    >
+      <span>{space.name}</span>
+      {space.itemCount > 0 && (
+        <span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[var(--app-border)] px-1 text-[10px] font-semibold tabular-nums leading-none text-[var(--app-text)]">
+          {space.itemCount}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  SpaceBar                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -143,6 +237,7 @@ export default function SpaceBar({
   onCreateSpace,
   onRenameSpace,
   onDeleteSpace,
+  onReorderSpaces,
   isCreating,
 }: Props) {
   const [showCreateInput, setShowCreateInput] = useState(false);
@@ -154,8 +249,95 @@ export default function SpaceBar({
     x: number;
     y: number;
   } | null>(null);
+
+  // Rearrange mode
+  const [rearranging, setRearranging] = useState(false);
+  const [localOrder, setLocalOrder] = useState<SpaceDto[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const spacesSnapshotRef = useRef<SpaceDto[]>([]);
+  const isDraggingRef = useRef(false);
+
   const createInputRef = useRef<HTMLInputElement | null>(null);
   const editInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Sensors for dnd-kit — Space only for pick-up/drop so Enter stays free for "Done"
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: {
+        start: ["Space"],
+        cancel: ["Escape"],
+        end: ["Space"],
+      },
+    }),
+  );
+
+  // Sync local order when spaces prop changes and we're not rearranging
+  useEffect(() => {
+    if (!rearranging) {
+      setLocalOrder(spaces);
+    }
+  }, [spaces, rearranging]);
+
+  // Stable ref to latest exitRearrangeMode for the keyboard handler
+  const exitRef = useRef<() => void>(() => {});
+
+  // Keyboard shortcuts: Escape = cancel, Enter = save
+  useEffect(() => {
+    if (!rearranging) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setRearranging(false);
+        setLocalOrder(spacesSnapshotRef.current);
+      }
+      if (e.key === "Enter" && !isDraggingRef.current) {
+        e.preventDefault();
+        exitRef.current();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [rearranging]);
+
+  function enterRearrangeMode() {
+    spacesSnapshotRef.current = spaces;
+    setLocalOrder([...spaces]);
+    setRearranging(true);
+    setShowCreateInput(false);
+    setEditingId(null);
+  }
+
+  async function exitRearrangeMode() {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await onReorderSpaces(localOrder.map((s) => s.id));
+      setRearranging(false);
+    } catch {
+      // stay in rearrange mode so user can retry or cancel
+    } finally {
+      setIsSaving(false);
+    }
+  }
+  exitRef.current = exitRearrangeMode;
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setLocalOrder((prev) => {
+        const oldIndex = prev.findIndex((s) => s.id === active.id);
+        const newIndex = prev.findIndex((s) => s.id === over.id);
+        return arrayMove(prev, oldIndex, newIndex);
+      });
+    }
+  }
 
   function handleCreateSubmit() {
     const name = createName.trim();
@@ -183,62 +365,131 @@ export default function SpaceBar({
     setEditName("");
   }
 
+  const displaySpaces = rearranging ? localOrder : spaces;
+
   return (
     <div className="flex items-center gap-2 overflow-x-auto p-1 -m-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Fixed chips — dimmed in rearrange mode */}
       <button
         type="button"
-        onClick={() => onFilterChange("all")}
-        className={`shrink-0 ${chipBase} ${activeFilter === "all" ? chipActive : chipInactive}`}
+        onClick={() => !rearranging && onFilterChange("all")}
+        className={`shrink-0 ${chipBase} ${activeFilter === "all" && !rearranging ? chipActive : chipInactive} transition-all duration-200 ${
+          rearranging ? "opacity-40 pointer-events-none" : ""
+        }`}
       >
         All items
       </button>
 
       <button
         type="button"
-        onClick={() => onFilterChange("none")}
-        className={`shrink-0 ${chipBase} ${activeFilter === "none" ? chipActive : chipInactive}`}
+        onClick={() => !rearranging && onFilterChange("none")}
+        className={`shrink-0 ${chipBase} ${activeFilter === "none" && !rearranging ? chipActive : chipInactive} transition-all duration-200 ${
+          rearranging ? "opacity-40 pointer-events-none" : ""
+        }`}
       >
         Uncollected
       </button>
 
-      {spaces.length > 0 && (
-        <div className="mx-0.5 h-4 w-px shrink-0 bg-[var(--app-border)]" />
+      {displaySpaces.length > 0 && (
+        <div
+          className={`mx-0.5 h-4 w-px shrink-0 transition-colors duration-200 ${
+            rearranging ? "bg-[var(--accent)]/40" : "bg-[var(--app-border)]"
+          }`}
+        />
       )}
 
-      {spaces.map((space) => {
-        if (editingId === space.id) {
+      {/* Space chips — sortable in rearrange mode */}
+      {rearranging ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToHorizontalAxis]}
+          onDragStart={() => {
+            isDraggingRef.current = true;
+          }}
+          onDragEnd={(event) => {
+            isDraggingRef.current = false;
+            handleDragEnd(event);
+          }}
+          onDragCancel={() => {
+            isDraggingRef.current = false;
+          }}
+        >
+          <SortableContext
+            items={localOrder.map((s) => s.id)}
+            strategy={horizontalListSortingStrategy}
+          >
+            {localOrder.map((space) => (
+              <SortableChip key={space.id} space={space} />
+            ))}
+          </SortableContext>
+        </DndContext>
+      ) : (
+        displaySpaces.map((space) => {
+          if (editingId === space.id) {
+            return (
+              <input
+                key={space.id}
+                ref={editInputRef}
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleEditSubmit();
+                  if (e.key === "Escape") {
+                    setEditingId(null);
+                    setEditName("");
+                  }
+                }}
+                onBlur={handleEditSubmit}
+                className="h-8 w-32 shrink-0 rounded-lg border border-[var(--accent)] bg-[var(--app-panel-strong)] px-2.5 text-xs text-[var(--app-text)] outline-none"
+                autoFocus
+              />
+            );
+          }
+
           return (
-            <input
+            <SpaceChip
               key={space.id}
-              ref={editInputRef}
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleEditSubmit();
-                if (e.key === "Escape") {
-                  setEditingId(null);
-                  setEditName("");
-                }
-              }}
-              onBlur={handleEditSubmit}
-              className="h-8 w-32 shrink-0 rounded-lg border border-[var(--accent)] bg-[var(--app-panel-strong)] px-2.5 text-xs text-[var(--app-text)] outline-none"
-              autoFocus
+              space={space}
+              isActive={activeFilter === space.id}
+              onFilter={() => onFilterChange(space.id)}
+              onLongPress={(pos) => setContextMenu({ space, ...pos })}
             />
           );
-        }
+        })
+      )}
 
-        return (
-          <SpaceChip
-            key={space.id}
-            space={space}
-            isActive={activeFilter === space.id}
-            onFilter={() => onFilterChange(space.id)}
-            onLongPress={(pos) => setContextMenu({ space, ...pos })}
-          />
-        );
-      })}
-
-      {showCreateInput ? (
+      {/* Create / Done+Cancel buttons */}
+      {rearranging ? (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setRearranging(false);
+              setLocalOrder(spacesSnapshotRef.current);
+            }}
+            disabled={isSaving}
+            className={`shrink-0 ${chipBase} ${chipInactive} transition-all duration-200`}
+            title="Cancel rearranging (Esc)"
+            aria-label="Cancel rearranging"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={exitRearrangeMode}
+            disabled={isSaving}
+            className={`shrink-0 ${chipBase} border-[var(--accent)] bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)] transition-all duration-200 ${
+              isSaving ? "opacity-60" : ""
+            }`}
+            title="Save order"
+            aria-label="Save order"
+          >
+            <Check className="h-3.5 w-3.5" />
+            <span>Done</span>
+          </button>
+        </>
+      ) : showCreateInput ? (
         <input
           ref={createInputRef}
           value={createName}
@@ -265,15 +516,18 @@ export default function SpaceBar({
           }}
           className={`shrink-0 ${chipBase} ${chipInactive}`}
           title="Create new space"
+          aria-label="Create new space"
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
       )}
 
-      {contextMenu && (
+      {contextMenu && !rearranging && (
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
+          showRearrange={spaces.length >= 2}
+          onRearrange={() => enterRearrangeMode()}
           onRename={() => startEdit(contextMenu.space)}
           onDelete={() => onDeleteSpace(contextMenu.space.id)}
           onClose={() => setContextMenu(null)}

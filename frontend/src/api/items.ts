@@ -31,6 +31,7 @@ export type ItemDto = {
 export type SpaceDto = {
   id: number;
   name: string;
+  position: number | null;
   createdAt: string;
   itemCount: number;
 };
@@ -359,4 +360,12 @@ export async function renameSpace(id: number, name: string): Promise<SpaceDto> {
 
 export async function deleteSpace(id: number): Promise<{ unassigned: number }> {
   return apiJson<{ unassigned: number }>(`/api/spaces/${id}`, { method: "DELETE" });
+}
+
+export async function reorderSpaces(orderedIds: number[]): Promise<void> {
+  await apiJson<{ ok: boolean }>("/api/spaces/reorder", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderedIds }),
+  });
 }
