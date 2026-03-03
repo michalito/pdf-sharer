@@ -32,6 +32,7 @@ import {
   Upload,
 } from "lucide-react";
 import ConfirmDialog from "./components/ConfirmDialog";
+import DuplicateDialog from "./components/DuplicateDialog";
 import DropOverlay from "./components/DropOverlay";
 import MarkdownProse from "./components/MarkdownProse";
 import HowItWorksPanel from "./components/HowItWorksPanel";
@@ -61,6 +62,8 @@ import {
   updateItem,
   SortField,
   SortOrder,
+  DuplicateContentError,
+  DuplicateInfo,
   unlockItem,
   uploadFiles,
   uploadFolder,
@@ -244,6 +247,10 @@ export default function App() {
   const [unlockPassword, setUnlockPassword] = useState("");
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [queuedDrops, setQueuedDrops] = useState<Array<{ files: File[]; kind: "files" | "folder" }>>([]);
+  const [duplicateDialog, setDuplicateDialog] = useState<{
+    duplicates: DuplicateInfo[];
+    retryFn: () => Promise<void>;
+  } | null>(null);
 
   const anyDialogOpen =
     Boolean(deleteTarget) ||
@@ -254,6 +261,7 @@ export default function App() {
     Boolean(notePreviewItem) ||
     Boolean(unlockTarget) ||
     Boolean(deleteSpaceTarget) ||
+    Boolean(duplicateDialog) ||
     isGuideOpen;
 
   const { isOverWindow } = useFullPageDrop({
@@ -415,23 +423,29 @@ export default function App() {
   });
 
   const createLinkMutation = useMutation({
-    mutationFn: async (vars: { url: string; name?: string; password?: string; spaceId?: number; ttl?: TtlPreset }) => createLink(vars),
+    mutationFn: async (vars: { url: string; name?: string; password?: string; spaceId?: number; ttl?: TtlPreset; force?: boolean }) => createLink(vars),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
       toast.success("Link saved");
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to save link"),
+    onError: (e) => {
+      if (e instanceof DuplicateContentError) return; // handled in handleCreateLink
+      toast.error(e instanceof Error ? e.message : "Failed to save link");
+    },
   });
 
   const createNoteMutation = useMutation({
-    mutationFn: async (vars: { text: string; title?: string; password?: string; spaceId?: number; ttl?: TtlPreset }) => createNote(vars),
+    mutationFn: async (vars: { text: string; title?: string; password?: string; spaceId?: number; ttl?: TtlPreset; force?: boolean }) => createNote(vars),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
       toast.success("Note saved");
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to save note"),
+    onError: (e) => {
+      if (e instanceof DuplicateContentError) return; // handled in handleCreateNote
+      toast.error(e instanceof Error ? e.message : "Failed to save note");
+    },
   });
 
   const createSpaceMutation = useMutation({
@@ -509,28 +523,42 @@ export default function App() {
 
   const activeSpaceId = typeof spaceFilter === "number" ? spaceFilter : undefined;
 
-  async function handleUploadFiles(files: File[], password?: string, spaceId?: number, ttl?: TtlPreset) {
+  async function handleUploadFiles(files: File[], password?: string, spaceId?: number, ttl?: TtlPreset, force?: boolean) {
     if (files.length === 0) return;
     const label = files.length === 1 ? `Uploading ${files[0].name}` : `Uploading ${files.length} files`;
     const task: UploadTask = { id: uuid(), label, progress: 0, status: "uploading" };
 
     try {
-      const created = await runUpload(task, (onProgress) => uploadFiles(files, { onProgress, password, spaceId, ttl }));
+      const created = await runUpload(task, (onProgress) => uploadFiles(files, { onProgress, password, spaceId, ttl, force }));
       toast.success(created.length === 1 ? "Uploaded" : `Uploaded ${created.length} files`);
     } catch (e) {
+      if (e instanceof DuplicateContentError) {
+        setDuplicateDialog({
+          duplicates: e.duplicates,
+          retryFn: () => handleUploadFiles(files, password, spaceId, ttl, true),
+        });
+        return;
+      }
       toast.error(e instanceof Error ? e.message : "Upload failed");
     }
   }
 
-  async function handleUploadFolder(files: File[], password?: string, spaceId?: number, ttl?: TtlPreset) {
+  async function handleUploadFolder(files: File[], password?: string, spaceId?: number, ttl?: TtlPreset, force?: boolean) {
     if (files.length === 0) return;
     const folderName = inferFolderName(files);
     const task: UploadTask = { id: uuid(), label: `Uploading folder "${folderName}"`, progress: 0, status: "uploading" };
 
     try {
-      await runUpload(task, (onProgress) => uploadFolder(files, { onProgress, password, spaceId, ttl }));
+      await runUpload(task, (onProgress) => uploadFolder(files, { onProgress, password, spaceId, ttl, force }));
       toast.success(`Uploaded folder "${folderName}"`);
     } catch (e) {
+      if (e instanceof DuplicateContentError) {
+        setDuplicateDialog({
+          duplicates: e.duplicates,
+          retryFn: () => handleUploadFolder(files, password, spaceId, ttl, true),
+        });
+        return;
+      }
       toast.error(e instanceof Error ? e.message : "Folder upload failed");
     }
   }
@@ -560,7 +588,7 @@ export default function App() {
     await queryClient.invalidateQueries({ queryKey: ["spaces"] });
   }
 
-  async function handleCreateLink() {
+  async function handleCreateLink(force?: boolean) {
     const url = linkUrl.trim();
     if (!url || createLinkMutation.isPending) return;
 
@@ -577,6 +605,7 @@ export default function App() {
         password: validation.password,
         spaceId: linkSpaceId,
         ttl: linkTtl || undefined,
+        force,
       });
       setLinkDialogOpen(false);
       setLinkUrl("");
@@ -585,12 +614,20 @@ export default function App() {
       setLinkPasswordConfirm("");
       setLinkSpaceId(undefined);
       setLinkTtl("");
-    } catch {
-      // Error toast is handled by mutation onError.
+    } catch (e) {
+      if (e instanceof DuplicateContentError) {
+        setLinkDialogOpen(false);
+        setDuplicateDialog({
+          duplicates: e.duplicates,
+          retryFn: () => handleCreateLink(true),
+        });
+        return;
+      }
+      // Other errors handled by mutation onError.
     }
   }
 
-  async function handleCreateNote() {
+  async function handleCreateNote(force?: boolean) {
     const text = noteText.trim();
     if (!text || createNoteMutation.isPending) return;
 
@@ -607,6 +644,7 @@ export default function App() {
         password: validation.password,
         spaceId: noteSpaceId,
         ttl: noteTtl || undefined,
+        force,
       });
       setNoteDialogOpen(false);
       setNoteTitle("");
@@ -616,8 +654,16 @@ export default function App() {
       setNotePasswordConfirm("");
       setNoteTtl("");
       setNoteSpaceId(undefined);
-    } catch {
-      // Error toast is handled by mutation onError.
+    } catch (e) {
+      if (e instanceof DuplicateContentError) {
+        setNoteDialogOpen(false);
+        setDuplicateDialog({
+          duplicates: e.duplicates,
+          retryFn: () => handleCreateNote(true),
+        });
+        return;
+      }
+      // Other errors handled by mutation onError.
     }
   }
 
@@ -1815,6 +1861,17 @@ export default function App() {
             onError: () => setDeleteSpaceTarget(null),
           });
         }}
+      />
+
+      <DuplicateDialog
+        open={Boolean(duplicateDialog)}
+        duplicates={duplicateDialog?.duplicates ?? []}
+        onConfirm={() => {
+          const retry = duplicateDialog?.retryFn;
+          setDuplicateDialog(null);
+          if (retry) void retry();
+        }}
+        onCancel={() => setDuplicateDialog(null)}
       />
 
       <DropOverlay visible={isOverWindow} />

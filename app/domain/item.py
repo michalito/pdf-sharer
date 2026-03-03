@@ -84,6 +84,7 @@ class Item(db.Model):
     )
     meta_json: Optional[str] = db.Column(db.Text, nullable=True)
     is_pinned: bool = db.Column(db.Boolean, nullable=False, default=False)
+    content_hash: Optional[str] = db.Column(db.String(64), nullable=True, index=True)
     expires_at: Optional[datetime] = db.Column(
         db.DateTime(timezone=True), nullable=True, index=True,
     )
@@ -139,6 +140,7 @@ class Item(db.Model):
             "linkUrl": link_url if isinstance(link_url, str) else None,
             "noteText": note_text if isinstance(note_text, str) else None,
             "noteExcerpt": note_excerpt,
+            "contentHash": self.content_hash,
             "isPasswordProtected": self.is_password_protected,
             "isPinned": self.is_pinned,
             "spaceId": self.space_id,

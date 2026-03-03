@@ -23,12 +23,17 @@ from dataclasses import dataclass
 
 from app.constants import ALLOWED_TTL_PRESETS, DEFAULT_PAGE, DEFAULT_PER_PAGE
 from app.domain.item import Item, ItemKind, ItemState
-from app.exceptions import FileOperationError, ValidationError
+from app.exceptions import DuplicateDetectedError, FileOperationError, ValidationError
 from app.repositories.item_repository import ItemRepository, PaginatedResult, SortField, SortOrder, StorageStats
+from app.utils.content_hash_lock import acquire_content_hash_locks
+from app.utils.hashing import hash_file, hash_string
 from app.utils.zip_utils import dedupe_zip_path, sanitize_zip_path
 
 
 logger = logging.getLogger(__name__)
+
+
+SavedUploadFile = tuple[Path, str, str, str, int, str | None]
 
 
 @dataclass
@@ -127,74 +132,86 @@ class ItemService:
         password: Optional[str] = None,
         space_id: Optional[int] = None,
         ttl: Optional[str] = None,
+        force: bool = False,
     ) -> list[Item]:
         if not files:
             raise ValidationError("No files provided")
 
         normalized_password = self.normalize_item_password(password)
         expires_at = self._resolve_expires_at(ttl)
-        created: list[Item] = []
-        for file in files:
-            created.append(
-                self._upload_single_file(
-                    file, normalized_password=normalized_password,
-                    space_id=space_id, expires_at=expires_at,
-                )
-            )
-        return created
-
-    def _upload_single_file(
-        self,
-        file: FileStorage,
-        *,
-        normalized_password: Optional[str] = None,
-        space_id: Optional[int] = None,
-        expires_at: Optional[datetime] = None,
-    ) -> Item:
-        if not file or not file.filename:
-            raise ValidationError("File is missing a filename")
-
-        raw_name = file.filename.strip() or "unnamed"
-        original_name = Path(raw_name).name or "unnamed"
-
-        ext = Path(original_name).suffix
-        stored_name = f"{uuid.uuid4().hex}{ext}"
+        skip_dedup = force or expires_at is not None
 
         upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
         upload_folder.mkdir(parents=True, exist_ok=True)
 
-        file_path = upload_folder / stored_name
-
+        # Phase 1: save all files to disk and compute hashes.
+        saved: list[SavedUploadFile] = []
+        persisted_paths: set[Path] = set()
         try:
-            file.save(str(file_path))
-            size_bytes = file_path.stat().st_size
-        except OSError as e:
-            logger.error("Failed to save file: %s", e, exc_info=True)
-            raise FileOperationError("Failed to save file")
+            for file in files:
+                if not file or not file.filename:
+                    raise ValidationError("File is missing a filename")
 
-        mime_type = file.mimetype or mimetypes.guess_type(original_name)[0]
-        password_hash = (
-            self.hash_item_password(normalized_password)
-            if normalized_password is not None
-            else None
-        )
+                raw_name = file.filename.strip() or "unnamed"
+                original_name = Path(raw_name).name or "unnamed"
+                ext = Path(original_name).suffix
+                stored_name = f"{uuid.uuid4().hex}{ext}"
+                file_path = upload_folder / stored_name
 
-        try:
-            item = self.repository.create(
-                stored_name=stored_name,
-                display_name=original_name,
-                kind=ItemKind.FILE,
-                mime_type=mime_type,
-                size_bytes=size_bytes,
-                password_hash=password_hash,
-                space_id=space_id,
-                expires_at=expires_at,
-            )
-            return item
-        except SQLAlchemyError as e:
-            file_path.unlink(missing_ok=True)
-            logger.error("Database error creating item: %s", e, exc_info=True)
-            raise FileOperationError("Failed to create item record")
+                try:
+                    file.save(str(file_path))
+                    size_bytes = file_path.stat().st_size
+                    content_hash = hash_file(file_path)
+                except OSError as e:
+                    file_path.unlink(missing_ok=True)
+                    logger.error("Failed to save file: %s", e, exc_info=True)
+                    raise FileOperationError("Failed to save file")
+
+                mime_type = file.mimetype or mimetypes.guess_type(original_name)[0]
+                saved.append((file_path, stored_name, original_name, content_hash, size_bytes, mime_type))
+
+            # Phase 2 + 3: check duplicates and create DB records while holding
+            # per-hash locks to serialize concurrent writers for the same content.
+            content_hashes = [content_hash for _, _, _, content_hash, _, _ in saved]
+            with acquire_content_hash_locks(content_hashes):
+                if not skip_dedup:
+                    grouped_dupes = self._collect_upload_file_duplicates(saved)
+                    if grouped_dupes:
+                        raise DuplicateDetectedError("Duplicate content detected", duplicates=grouped_dupes)
+
+                password_hash = (
+                    self.hash_item_password(normalized_password)
+                    if normalized_password is not None
+                    else None
+                )
+                created: list[Item] = []
+                for file_path, stored_name, original_name, content_hash, size_bytes, mime_type in saved:
+                    try:
+                        item = self.repository.create(
+                            stored_name=stored_name,
+                            display_name=original_name,
+                            kind=ItemKind.FILE,
+                            mime_type=mime_type,
+                            size_bytes=size_bytes,
+                            password_hash=password_hash,
+                            space_id=space_id,
+                            expires_at=expires_at,
+                            content_hash=content_hash,
+                        )
+                        created.append(item)
+                        persisted_paths.add(file_path)
+                    except SQLAlchemyError as e:
+                        logger.error("Database error creating item: %s", e, exc_info=True)
+                        raise FileOperationError("Failed to create item record")
+                return created
+
+        except (DuplicateDetectedError, ValidationError, FileOperationError):
+            # Clean up only files that were not persisted in DB.
+            for file_path, *_ in saved:
+                if file_path in persisted_paths:
+                    continue
+                file_path.unlink(missing_ok=True)
+            raise
 
     def upload_folder(
         self,
@@ -203,6 +220,7 @@ class ItemService:
         password: Optional[str] = None,
         space_id: Optional[int] = None,
         ttl: Optional[str] = None,
+        force: bool = False,
     ) -> Item:
         if not files:
             raise ValidationError("No files provided")
@@ -213,6 +231,7 @@ class ItemService:
 
         normalized_password = self.normalize_item_password(password)
         expires_at = self._resolve_expires_at(ttl)
+        skip_dedup = force or expires_at is not None
         folder_name = self._infer_folder_name(paths)
         stored_name = f"{uuid.uuid4().hex}.zip"
 
@@ -221,14 +240,19 @@ class ItemService:
         zip_path = upload_folder / stored_name
 
         used_paths: set[str] = set()
+        zip_entries: list[tuple[str, FileStorage]] = []
+        for file, rel_path in zip(files, paths, strict=True):
+            if not file or not file.filename:
+                raise ValidationError("A folder file is missing a filename")
+            zip_entries.append((sanitize_zip_path(rel_path), file))
+
+        # Keep folder archive byte layout deterministic for the same logical input,
+        # regardless of browser-provided multipart ordering.
+        zip_entries.sort(key=lambda entry: (entry[0], (entry[1].filename or "").lower()))
 
         try:
             with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                for file, rel_path in zip(files, paths, strict=True):
-                    if not file or not file.filename:
-                        raise ValidationError("A folder file is missing a filename")
-
-                    safe_rel = sanitize_zip_path(rel_path)
+                for safe_rel, file in zip_entries:
                     safe_rel = dedupe_zip_path(safe_rel, used_paths)
 
                     # Stream into the zip without buffering the full file in memory.
@@ -240,35 +264,48 @@ class ItemService:
             logger.error("Failed to create zip: %s", e, exc_info=True)
             raise FileOperationError("Failed to create folder zip")
 
-        size_bytes = zip_path.stat().st_size
-        meta_json = json.dumps(
-            {"file_count": len(files), "top_level_dir": folder_name},
-            separators=(",", ":"),
-        )
-        password_hash = (
-            self.hash_item_password(normalized_password)
-            if normalized_password is not None
-            else None
-        )
+        content_hash = hash_file(zip_path)
 
-        try:
-            item = self.repository.create(
-                stored_name=stored_name,
-                display_name=folder_name,
-                kind=ItemKind.FOLDER,
-                state=ItemState.ACTIVE,
-                mime_type="application/zip",
-                size_bytes=size_bytes,
-                meta_json=meta_json,
-                password_hash=password_hash,
-                space_id=space_id,
-                expires_at=expires_at,
+        with acquire_content_hash_locks([content_hash]):
+            if not skip_dedup:
+                existing = self.repository.find_by_content_hash(content_hash)
+                if existing:
+                    zip_path.unlink(missing_ok=True)
+                    raise DuplicateDetectedError(
+                        "Duplicate content detected",
+                        duplicates=[self._format_duplicate_info(item) for item in existing],
+                    )
+
+            size_bytes = zip_path.stat().st_size
+            meta_json = json.dumps(
+                {"file_count": len(files), "top_level_dir": folder_name},
+                separators=(",", ":"),
             )
-            return item
-        except SQLAlchemyError as e:
-            zip_path.unlink(missing_ok=True)
-            logger.error("Database error creating folder item: %s", e, exc_info=True)
-            raise FileOperationError("Failed to create item record")
+            password_hash = (
+                self.hash_item_password(normalized_password)
+                if normalized_password is not None
+                else None
+            )
+
+            try:
+                item = self.repository.create(
+                    stored_name=stored_name,
+                    display_name=folder_name,
+                    kind=ItemKind.FOLDER,
+                    state=ItemState.ACTIVE,
+                    mime_type="application/zip",
+                    size_bytes=size_bytes,
+                    meta_json=meta_json,
+                    password_hash=password_hash,
+                    space_id=space_id,
+                    expires_at=expires_at,
+                    content_hash=content_hash,
+                )
+                return item
+            except SQLAlchemyError as e:
+                zip_path.unlink(missing_ok=True)
+                logger.error("Database error creating folder item: %s", e, exc_info=True)
+                raise FileOperationError("Failed to create item record")
 
     def create_link(
         self,
@@ -278,10 +315,14 @@ class ItemService:
         password: Optional[str] = None,
         space_id: Optional[int] = None,
         ttl: Optional[str] = None,
+        force: bool = False,
     ) -> Item:
         normalized_url = self._normalize_link_url(url)
         normalized_password = self.normalize_item_password(password)
         expires_at = self._resolve_expires_at(ttl)
+        skip_dedup = force or expires_at is not None
+        content_hash = hash_string(normalized_url)
+
         display_name = self._normalize_display_name(name) or self._derive_link_display_name(normalized_url)
         stored_name = self._synthetic_stored_name("link")
         meta_json = json.dumps({"url": normalized_url}, separators=(",", ":"))
@@ -291,22 +332,31 @@ class ItemService:
             else None
         )
 
-        try:
-            return self.repository.create(
-                stored_name=stored_name,
-                display_name=display_name,
-                kind=ItemKind.LINK,
-                state=ItemState.ACTIVE,
-                mime_type="text/uri-list",
-                size_bytes=len(normalized_url.encode("utf-8")),
-                meta_json=meta_json,
-                password_hash=password_hash,
-                space_id=space_id,
-                expires_at=expires_at,
-            )
-        except SQLAlchemyError as e:
-            logger.error("Database error creating link item: %s", e, exc_info=True)
-            raise FileOperationError("Failed to create item record")
+        with acquire_content_hash_locks([content_hash]):
+            if not skip_dedup:
+                existing = self.repository.find_by_content_hash(content_hash)
+                if existing:
+                    raise DuplicateDetectedError(
+                        "Duplicate content detected",
+                        duplicates=[self._format_duplicate_info(item) for item in existing],
+                    )
+            try:
+                return self.repository.create(
+                    stored_name=stored_name,
+                    display_name=display_name,
+                    kind=ItemKind.LINK,
+                    state=ItemState.ACTIVE,
+                    mime_type="text/uri-list",
+                    size_bytes=len(normalized_url.encode("utf-8")),
+                    meta_json=meta_json,
+                    password_hash=password_hash,
+                    space_id=space_id,
+                    expires_at=expires_at,
+                    content_hash=content_hash,
+                )
+            except SQLAlchemyError as e:
+                logger.error("Database error creating link item: %s", e, exc_info=True)
+                raise FileOperationError("Failed to create item record")
 
     def create_note(
         self,
@@ -316,10 +366,14 @@ class ItemService:
         password: Optional[str] = None,
         space_id: Optional[int] = None,
         ttl: Optional[str] = None,
+        force: bool = False,
     ) -> Item:
         normalized_text = self._normalize_note_text(text)
         normalized_password = self.normalize_item_password(password)
         expires_at = self._resolve_expires_at(ttl)
+        skip_dedup = force or expires_at is not None
+        content_hash = hash_string(normalized_text)
+
         display_name = self._normalize_note_title(title) or self._derive_note_title(normalized_text)
         stored_name = self._synthetic_stored_name("note")
         meta_json = json.dumps({"text": normalized_text}, separators=(",", ":"))
@@ -329,22 +383,31 @@ class ItemService:
             else None
         )
 
-        try:
-            return self.repository.create(
-                stored_name=stored_name,
-                display_name=display_name,
-                kind=ItemKind.NOTE,
-                state=ItemState.ACTIVE,
-                mime_type="text/plain",
-                size_bytes=len(normalized_text.encode("utf-8")),
-                meta_json=meta_json,
-                password_hash=password_hash,
-                space_id=space_id,
-                expires_at=expires_at,
-            )
-        except SQLAlchemyError as e:
-            logger.error("Database error creating note item: %s", e, exc_info=True)
-            raise FileOperationError("Failed to create item record")
+        with acquire_content_hash_locks([content_hash]):
+            if not skip_dedup:
+                existing = self.repository.find_by_content_hash(content_hash)
+                if existing:
+                    raise DuplicateDetectedError(
+                        "Duplicate content detected",
+                        duplicates=[self._format_duplicate_info(item) for item in existing],
+                    )
+            try:
+                return self.repository.create(
+                    stored_name=stored_name,
+                    display_name=display_name,
+                    kind=ItemKind.NOTE,
+                    state=ItemState.ACTIVE,
+                    mime_type="text/plain",
+                    size_bytes=len(normalized_text.encode("utf-8")),
+                    meta_json=meta_json,
+                    password_hash=password_hash,
+                    space_id=space_id,
+                    expires_at=expires_at,
+                    content_hash=content_hash,
+                )
+            except SQLAlchemyError as e:
+                logger.error("Database error creating note item: %s", e, exc_info=True)
+                raise FileOperationError("Failed to create item record")
 
     def get_link_url(self, item: Item) -> str:
         if item.kind != ItemKind.LINK.value:
@@ -562,6 +625,72 @@ class ItemService:
         root = root.strip() or "folder"
         root = secure_filename(root) or root
         return root
+
+    def _format_duplicate_info(self, item: Item) -> dict:
+        """Format an existing item's info for duplicate detection responses."""
+        created = item.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        return {
+            "id": item.id,
+            "name": item.display_name,
+            "kind": item.kind,
+            "state": item.state,
+            "spaceId": item.space_id,
+            "spaceName": item.space.name if item.space else None,
+            "createdAt": created.astimezone(timezone.utc).isoformat(),
+        }
+
+    def _collect_upload_file_duplicates(self, saved: list[SavedUploadFile]) -> list[dict]:
+        """Collect duplicate details for file uploads.
+
+        Detects:
+        1. Existing DB duplicates by content hash.
+        2. Duplicate files inside the same upload request.
+        """
+        grouped_dupes: list[dict] = []
+        existing_by_hash: dict[str, list[Item]] = {}
+        first_seen_by_hash: dict[str, tuple[int, str]] = {}
+        batch_created_at = datetime.now(timezone.utc).isoformat()
+
+        for idx, (_, _, display_name, content_hash, _, _) in enumerate(saved):
+            existing = existing_by_hash.get(content_hash)
+            if existing is None:
+                existing = self.repository.find_by_content_hash(content_hash)
+                existing_by_hash[content_hash] = existing
+
+            first_seen = first_seen_by_hash.get(content_hash)
+            if first_seen is None:
+                first_seen_by_hash[content_hash] = (idx, display_name)
+
+            existing_items = [self._format_duplicate_info(item) for item in existing]
+            if first_seen is not None:
+                first_idx, first_name = first_seen
+                existing_items = [
+                    self._format_in_batch_duplicate_info(first_idx, first_name, created_at=batch_created_at),
+                    *existing_items,
+                ]
+
+            if existing_items:
+                grouped_dupes.append({
+                    "fileIndex": idx,
+                    "fileName": display_name,
+                    "existingItems": existing_items,
+                })
+
+        return grouped_dupes
+
+    def _format_in_batch_duplicate_info(self, file_index: int, file_name: str, *, created_at: str) -> dict:
+        """Represent an earlier file in the same request as an existing duplicate."""
+        return {
+            "id": -(file_index + 1),
+            "name": f"{file_name} (same upload)",
+            "kind": ItemKind.FILE.value,
+            "state": ItemState.ACTIVE.value,
+            "spaceId": None,
+            "spaceName": None,
+            "createdAt": created_at,
+        }
 
     def _item_has_stored_file(self, item: Item) -> bool:
         return item.kind in {ItemKind.FILE.value, ItemKind.FOLDER.value}

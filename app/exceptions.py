@@ -43,3 +43,11 @@ class AuthorizationError(AppError):
 
     def __init__(self, message: str = "Access denied"):
         super().__init__(message, status_code=403)
+
+
+class DuplicateDetectedError(AppError):
+    """Content hash matches an existing item."""
+
+    def __init__(self, message: str, duplicates: list[dict]):
+        super().__init__(message, status_code=409)
+        self.duplicates = duplicates

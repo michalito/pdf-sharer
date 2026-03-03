@@ -16,7 +16,7 @@ from typing import Callable
 from flask import Blueprint, Response, jsonify
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 
-from app.exceptions import AppError
+from app.exceptions import AppError, DuplicateDetectedError
 
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,16 @@ def _create_error_response(
     if error_code:
         response["code"] = error_code
     return jsonify(response), status_code
+
+
+def handle_duplicate_detected(error: DuplicateDetectedError) -> tuple[Response, int]:
+    """Handle duplicate content detection."""
+    logger.info(f"Duplicate content detected: {error.message}")
+    return jsonify({
+        "error": error.message,
+        "code": "DUPLICATE_CONTENT",
+        "duplicates": error.duplicates,
+    }), 409
 
 
 def handle_app_error(error: AppError) -> tuple[Response, int]:
@@ -254,6 +264,7 @@ def register_error_handlers(blueprint: Blueprint) -> None:
         blueprint: The Flask blueprint to register handlers on
     """
     # Application errors (most specific - our own exceptions)
+    blueprint.register_error_handler(DuplicateDetectedError, handle_duplicate_detected)
     blueprint.register_error_handler(AppError, handle_app_error)
     blueprint.register_error_handler(ValueError, handle_value_error)
     blueprint.register_error_handler(400, handle_bad_request)

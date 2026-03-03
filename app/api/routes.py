@@ -140,6 +140,27 @@ def _parse_pagination_params() -> tuple[int, int]:
     return page, per_page
 
 
+def _parse_bool_form_field(raw: Optional[str]) -> bool:
+    if raw is None:
+        return False
+    return raw.strip().lower() in {"1", "true", "yes"}
+
+
+def _parse_bool_json_field(data: dict, field: str, *, default: bool = False) -> bool:
+    raw = data.get(field)
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        value = raw.strip().lower()
+        if value in {"1", "true", "yes"}:
+            return True
+        if value in {"0", "false", "no"}:
+            return False
+    raise ValidationError(f"Field '{field}' must be a boolean")
+
+
 def _parse_bool_query_param(raw: Optional[str], *, field: str) -> Optional[bool]:
     if raw is None or raw == "":
         return None
@@ -310,7 +331,8 @@ def upload_files() -> tuple[Response, int]:
     space_id = _parse_optional_int_form_field("space_id")
     _validate_space_id(space_id)
     ttl = request.form.get("ttl")
-    items = service.upload_files(files, password=password, space_id=space_id, ttl=ttl)
+    force = _parse_bool_form_field(request.form.get("force"))
+    items = service.upload_files(files, password=password, space_id=space_id, ttl=ttl, force=force)
     for item in items:
         _remember_item_unlock_if_protected(service, item)
     return jsonify([_present_item(service, item) for item in items]), 201
@@ -326,8 +348,9 @@ def upload_folder() -> tuple[Response, int]:
     space_id = _parse_optional_int_form_field("space_id")
     _validate_space_id(space_id)
     ttl = request.form.get("ttl")
+    force = _parse_bool_form_field(request.form.get("force"))
 
-    item = service.upload_folder(files, paths, password=password, space_id=space_id, ttl=ttl)
+    item = service.upload_folder(files, paths, password=password, space_id=space_id, ttl=ttl, force=force)
     _remember_item_unlock_if_protected(service, item)
     return jsonify(_present_item(service, item)), 201
 
@@ -348,7 +371,8 @@ def create_link() -> tuple[Response, int]:
     space_id = _parse_optional_int_json_field(data, "spaceId")
     _validate_space_id(space_id)
     ttl = data["ttl"] if "ttl" in data else None
-    item = service.create_link(url=url_raw, name=name, password=password, space_id=space_id, ttl=ttl)
+    force = _parse_bool_json_field(data, "force", default=False)
+    item = service.create_link(url=url_raw, name=name, password=password, space_id=space_id, ttl=ttl, force=force)
     _remember_item_unlock_if_protected(service, item)
     return jsonify(_present_item(service, item)), 201
 
@@ -369,7 +393,8 @@ def create_note() -> tuple[Response, int]:
     space_id = _parse_optional_int_json_field(data, "spaceId")
     _validate_space_id(space_id)
     ttl = data["ttl"] if "ttl" in data else None
-    item = service.create_note(text=text_raw, title=title, password=password, space_id=space_id, ttl=ttl)
+    force = _parse_bool_json_field(data, "force", default=False)
+    item = service.create_note(text=text_raw, title=title, password=password, space_id=space_id, ttl=ttl, force=force)
     _remember_item_unlock_if_protected(service, item)
     return jsonify(_present_item(service, item)), 201
 
