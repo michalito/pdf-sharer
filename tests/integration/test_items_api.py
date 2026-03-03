@@ -1416,3 +1416,109 @@ def test_locked_protected_item_hides_content_hash(app: Flask, client: FlaskClien
     detail = detail_res.get_json()
     assert detail["isPasswordUnlocked"] is False
     assert detail["contentHash"] is None
+
+
+# --- Unlock throttle / brute-force protection ---
+
+
+def test_unlock_rate_limited_after_max_failures(app: Flask, client: FlaskClient):
+    """API unlock endpoint returns 429 after too many failed attempts."""
+    from app.services.unlock_throttle import UnlockThrottle
+
+    throttle = UnlockThrottle(max_attempts=2, window_seconds=60, cooldown_seconds=30)
+    app.config["UNLOCK_THROTTLE"] = throttle
+
+    create = client.post(
+        "/api/items/link",
+        json={"url": "https://example.com/rate-test", "password": "supersecret"},
+    )
+    assert create.status_code == 201
+    item_id = create.get_json()["id"]
+
+    other = app.test_client()
+
+    for _ in range(2):
+        res = other.post(f"/api/items/{item_id}/unlock", json={"password": "wrongpass1"})
+        assert res.status_code == 401
+
+    res = other.post(f"/api/items/{item_id}/unlock", json={"password": "wrongpass1"})
+    assert res.status_code == 429
+    body = res.get_json()
+    assert body["code"] == "RATE_LIMITED"
+    assert "retryAfter" in body
+    assert "Retry-After" in res.headers
+
+
+def test_unlock_rate_limit_resets_on_success(app: Flask, client: FlaskClient):
+    """Successful unlock clears the failure count."""
+    from app.services.unlock_throttle import UnlockThrottle
+
+    throttle = UnlockThrottle(max_attempts=3, window_seconds=60, cooldown_seconds=30)
+    app.config["UNLOCK_THROTTLE"] = throttle
+
+    create = client.post(
+        "/api/items/link",
+        json={"url": "https://example.com/reset-test", "password": "correctpass"},
+    )
+    item_id = create.get_json()["id"]
+
+    other = app.test_client()
+
+    for _ in range(2):
+        other.post(f"/api/items/{item_id}/unlock", json={"password": "wrongpass1"})
+
+    res = other.post(f"/api/items/{item_id}/unlock", json={"password": "correctpass"})
+    assert res.status_code == 204
+
+    # Failures cleared — use a fresh client (previous one has unlock in session)
+    fresh = app.test_client()
+    for _ in range(2):
+        res = fresh.post(f"/api/items/{item_id}/unlock", json={"password": "wrongpass1"})
+        assert res.status_code == 401
+
+
+def test_unlock_rate_limit_scoped_per_item(app: Flask, client: FlaskClient):
+    """Rate limiting one item doesn't affect another."""
+    from app.services.unlock_throttle import UnlockThrottle
+
+    throttle = UnlockThrottle(max_attempts=2, window_seconds=60, cooldown_seconds=30)
+    app.config["UNLOCK_THROTTLE"] = throttle
+
+    c1 = client.post("/api/items/link", json={"url": "https://example.com/1", "password": "password1x"})
+    c2 = client.post("/api/items/link", json={"url": "https://example.com/2", "password": "password2x"})
+    id1 = c1.get_json()["id"]
+    id2 = c2.get_json()["id"]
+
+    other = app.test_client()
+
+    for _ in range(2):
+        other.post(f"/api/items/{id1}/unlock", json={"password": "wrongpass1"})
+
+    res1 = other.post(f"/api/items/{id1}/unlock", json={"password": "wrongpass1"})
+    assert res1.status_code == 429
+
+    res2 = other.post(f"/api/items/{id2}/unlock", json={"password": "password2x"})
+    assert res2.status_code == 204
+
+
+def test_web_unlock_rate_limited(app: Flask, client: FlaskClient):
+    """Web form unlock returns 429 with password prompt."""
+    from app.services.unlock_throttle import UnlockThrottle
+
+    throttle = UnlockThrottle(max_attempts=2, window_seconds=60, cooldown_seconds=30)
+    app.config["UNLOCK_THROTTLE"] = throttle
+
+    create = client.post(
+        "/api/items/link",
+        json={"url": "https://example.com/web-rate", "password": "webpassword"},
+    )
+    item_id = create.get_json()["id"]
+
+    other = app.test_client()
+
+    for _ in range(2):
+        other.post(f"/d/{item_id}", data={"password": "wrongpass1"})
+
+    res = other.post(f"/d/{item_id}", data={"password": "wrongpass1"})
+    assert res.status_code == 429
+    assert b"Too many attempts" in res.data

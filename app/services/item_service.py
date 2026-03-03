@@ -556,24 +556,6 @@ class ItemService:
             logger.error("Failed to update item %s: %s", item_id, e, exc_info=True)
             raise FileOperationError("Failed to update item")
 
-    def update_state(self, item_id: int, state: ItemState) -> Item:
-        item = self.repository.get_by_id_or_raise(item_id)
-        try:
-            updated = self.repository.update_state(item, state)
-        except SQLAlchemyError as e:
-            logger.error("Failed to update item state %s: %s", item_id, e, exc_info=True)
-            raise FileOperationError("Failed to update item state")
-        return updated
-
-    def set_item_space(self, item_id: int, space_id: Optional[int]) -> Item:
-        """Assign or remove an item's space. Caller must validate space_id exists."""
-        item = self.repository.get_by_id_or_raise(item_id)
-        try:
-            return self.repository.update_space(item, space_id)
-        except SQLAlchemyError as e:
-            logger.error("Failed to update item space %s: %s", item_id, e, exc_info=True)
-            raise FileOperationError("Failed to update item space")
-
     def get_download_name(self, item: Item) -> str:
         if not self._item_has_stored_file(item):
             raise ValidationError(f"Item kind '{item.kind}' does not have downloadable file content")

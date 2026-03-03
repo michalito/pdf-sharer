@@ -227,11 +227,6 @@ class ItemRepository:
     def rollback(self) -> None:
         db.session.rollback()
 
-    def update_state(self, item: Item, state: ItemState) -> Item:
-        item.state = state.value
-        db.session.commit()
-        return item
-
     def update_item_fields(
         self,
         item: Item,
@@ -260,11 +255,6 @@ class ItemRepository:
         for item in items:
             db.session.delete(item)
         db.session.commit()
-
-    def update_space(self, item: Item, space_id: Optional[int]) -> Item:
-        item.space_id = space_id
-        db.session.commit()
-        return item
 
     def get_storage_stats(self, *, top_n: int = 10) -> StorageStats:
         """Compute aggregate storage statistics in minimal DB round-trips."""
@@ -401,7 +391,9 @@ class ItemRepository:
             note_text_match = and_(
                 Item.kind == ItemKind.NOTE.value,
                 Item.password_hash.is_(None),
-                func.lower(func.coalesce(Item.meta_json, "")).like(needle),
+                func.lower(
+                    func.coalesce(func.json_extract(Item.meta_json, "$.text"), "")
+                ).like(needle),
             )
             query = query.filter(or_(display_name_match, note_text_match))
 

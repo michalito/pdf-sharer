@@ -181,7 +181,7 @@ Test files:
 - `FLASK_ENV=production` → `Config.from_env()` (reads `DATABASE_URL`, `UPLOAD_FOLDER`, etc.) and **requires** `SECRET_KEY`.
 - Any other `FLASK_ENV` → `Config.for_development()` (local SQLite defaults)
 - Keep `SECRET_KEY` stable across production restarts/deploys to preserve protected-item unlock sessions.
-- Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `APP_VERSION` (health/UI version string; auto-detected from latest git tag by `deploy.sh`, fallback `dev`), `HOST_PORT` (default 5001)
+- Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `TRUST_PROXY_HOPS` (default `0`; set `1` behind one reverse proxy), `APP_VERSION` (health/UI version string; auto-detected from latest git tag by `deploy.sh`, fallback `dev`), `HOST_PORT` (default 5001)
 - `.env.example` documents all production config options.
 
 ## CI/CD

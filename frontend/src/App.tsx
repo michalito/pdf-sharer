@@ -64,6 +64,7 @@ import {
   SortOrder,
   DuplicateContentError,
   DuplicateInfo,
+  RateLimitError,
   unlockItem,
   uploadFiles,
   uploadFolder,
@@ -737,7 +738,11 @@ export default function App() {
       setUnlockPassword("");
       await performItemAction(unlockedItem, unlockTarget.action);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to unlock item");
+      if (e instanceof RateLimitError) {
+        toast.error(`Too many attempts. Please wait ${Math.ceil(e.retryAfter)} seconds.`);
+      } else {
+        toast.error(e instanceof Error ? e.message : "Failed to unlock item");
+      }
     } finally {
       setIsUnlocking(false);
     }
@@ -764,11 +769,14 @@ export default function App() {
 
   // Sync local page state when the server clamps to a different page
   // (e.g. user was on page 3, then a filter reduced results to 1 page).
+  // pagination.page is the only intentional trigger — including `page`
+  // would create a render loop (setPage → effect → setPage).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (pagination && pagination.page !== page) {
       setPage(pagination.page);
     }
-  }, [pagination?.page]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pagination?.page]);
 
   const visibleCounts = useMemo(
     () => ({

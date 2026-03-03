@@ -43,12 +43,13 @@ Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh pr
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SECRET_KEY` | Cookie signing key (**required in production**; keep stable across restarts for protected-item unlock sessions) | Required in production |
-| `DATABASE_URL` | Database connection string | SQLite at `instance/saita.db` |
+| `DATABASE_URL` | SQLite connection string (SQLite is the only supported DB backend currently) | SQLite at `instance/saita.db` |
 | `UPLOAD_FOLDER` | File storage directory | `uploads/` |
 | `MAX_CONTENT_LENGTH` | Max upload size in bytes | 2147483648 (2GB) |
 | `NOTE_EXCERPT_LENGTH` | Max note preview length in list responses (bounded 40..1000) | 180 |
 | `APP_VERSION` | Version string exposed by `GET /api/health` and shown in the UI footer. `deploy.sh` auto-detects from latest git tag when unset. | Latest git tag (fallback `dev`) |
 | `HOST_PORT` | Docker host port | 5001 |
+| `TRUST_PROXY_HOPS` | Trusted reverse-proxy hops for `X-Forwarded-For` (set `1` for one proxy in front) | 0 |
 
 ## API
 

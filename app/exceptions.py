@@ -45,6 +45,14 @@ class AuthorizationError(AppError):
         super().__init__(message, status_code=403)
 
 
+class RateLimitError(AppError):
+    """Too many attempts - rate limited."""
+
+    def __init__(self, message: str = "Too many attempts", retry_after: float = 0.0):
+        super().__init__(message, status_code=429)
+        self.retry_after = retry_after
+
+
 class DuplicateDetectedError(AppError):
     """Content hash matches an existing item."""
 

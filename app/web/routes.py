@@ -21,12 +21,21 @@ from app.domain.item import ItemKind
 from app.exceptions import AppError, ValidationError
 from app.services.item_access import is_item_unlocked, mark_item_unlocked
 from app.services.item_service import ItemService
+from app.services.unlock_throttle import UnlockThrottle
 from app.utils.markdown import render_markdown
 from app.web import web
 
 
 def _get_service() -> ItemService:
     return g.item_service
+
+
+def _get_throttle() -> UnlockThrottle:
+    return current_app.config["UNLOCK_THROTTLE"]
+
+
+def _get_client_ip() -> str:
+    return request.remote_addr or "unknown"
 
 
 @web.route("/")
@@ -69,6 +78,16 @@ def unlock_public_item(item_id: int) -> Response:
     if not service.item_requires_password(item):
         return redirect(url_for("web.public_download", item_id=item_id), code=302)
 
+    throttle = _get_throttle()
+    client_ip = _get_client_ip()
+    allowed, retry_after = throttle.check(client_ip, item.id)
+    if not allowed:
+        return _render_password_prompt(
+            item,
+            error_message=f"Too many attempts. Please wait {int(retry_after)} seconds before trying again.",
+            status_code=429,
+        )
+
     password = request.form.get("password")
     try:
         is_valid = service.verify_item_password(item, password)
@@ -76,12 +95,14 @@ def unlock_public_item(item_id: int) -> Response:
         is_valid = False
 
     if not is_valid:
+        throttle.record_failure(client_ip, item.id)
         return _render_password_prompt(
             item,
             error_message="Invalid password. Please try again.",
             status_code=401,
         )
 
+    throttle.record_success(client_ip, item.id)
     mark_item_unlocked(item.id)
     return redirect(url_for("web.public_download", item_id=item_id), code=302)
 

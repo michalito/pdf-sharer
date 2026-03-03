@@ -8,6 +8,7 @@ from typing import Optional
 from flask import Flask, g, request
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import Config, get_config
 
@@ -73,6 +74,12 @@ def _setup_request_handlers(app: Flask) -> None:
             return
         _expire_check_ts[0] = now
         try:
+            throttle = app.config.get("UNLOCK_THROTTLE")
+            if throttle:
+                throttle.cleanup()
+        except Exception:
+            app.logger.exception("Unlock throttle cleanup failed")
+        try:
             g.item_service.delete_expired_items(limit=50)
         except Exception:
             app.logger.exception("Expired item cleanup failed")
@@ -86,6 +93,25 @@ def _setup_request_handlers(app: Flask) -> None:
         """Add request ID to response headers."""
         response.headers["X-Request-ID"] = getattr(g, "request_id", "-")
         return response
+
+
+def _configure_proxy_fix(app: Flask) -> None:
+    """Enable proxy-aware client IP handling when configured."""
+    hops = app.config.get("TRUST_PROXY_HOPS", 0)
+    try:
+        trusted_hops = int(hops)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("TRUST_PROXY_HOPS must be a non-negative integer") from exc
+
+    if trusted_hops < 0:
+        raise ValueError("TRUST_PROXY_HOPS must be a non-negative integer")
+
+    if trusted_hops > 0:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=trusted_hops)
+        app.logger.info(
+            "ProxyFix enabled for X-Forwarded-For with %s trusted hop(s)",
+            trusted_hops,
+        )
 
 
 def create_app(config: Optional[Config] = None) -> Flask:
@@ -105,8 +131,23 @@ def create_app(config: Optional[Config] = None) -> Flask:
     app = Flask(__name__)
     app.config.from_mapping(config.to_flask_config())
 
+    if "UNLOCK_THROTTLE" not in app.config:
+        from app.constants import (
+            UNLOCK_THROTTLE_COOLDOWN_SECONDS,
+            UNLOCK_THROTTLE_MAX_ATTEMPTS,
+            UNLOCK_THROTTLE_WINDOW_SECONDS,
+        )
+        from app.services.unlock_throttle import UnlockThrottle
+
+        app.config["UNLOCK_THROTTLE"] = UnlockThrottle(
+            max_attempts=UNLOCK_THROTTLE_MAX_ATTEMPTS,
+            window_seconds=UNLOCK_THROTTLE_WINDOW_SECONDS,
+            cooldown_seconds=UNLOCK_THROTTLE_COOLDOWN_SECONDS,
+        )
+
     # Configure logging
     _configure_logging(app)
+    _configure_proxy_fix(app)
 
     # Ensure directories exist
     _ensure_directories(config)
