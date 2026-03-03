@@ -1,6 +1,6 @@
 # CI-specific Dockerfile for ARM64 builds
 # Skips the frontend-builder stage (frontend is pre-built natively by CI)
-# and expects built assets already placed in app/templates/ and app/static/assets/
+# and expects built assets already placed in app/templates/ and app/static/
 
 FROM python:3.12-slim-bookworm AS py-builder
 

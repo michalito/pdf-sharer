@@ -13,14 +13,14 @@ export default defineConfig(({ command }) => {
         injectRegister: false,
         manifest: false,
         workbox: {
-          globPatterns: ["**/*.{js,css,woff2}"],
-          // Vite builds with base "/static/" so browsers request /static/assets/...
-          // but Workbox sees relative paths (assets/...). Prepend /static/ to match.
+          globPatterns: ["**/*.{js,css,woff2,png,webmanifest,html}"],
+          globIgnores: ["logo.png"],
+          // Vite builds with base "/static/" and Flask serves built frontend files from /static.
+          // Prepend /static/ so precache keys match browser request URLs.
           modifyURLPrefix: { "": "/static/" },
-          navigateFallback: null,
+          navigateFallback: "/static/index.html",
           skipWaiting: true,
           clientsClaim: true,
-          dontCacheBustURLsMatching: /-[A-Za-z0-9_-]{8}\./,
           navigateFallbackDenylist: [/^\/api/, /^\/d\//],
           runtimeCaching: [
             {

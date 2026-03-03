@@ -13,6 +13,7 @@ saíta is an internal web application for sharing **any type of file**, **zip ar
 - Direct internal share links (`/d/<id>`) with “Copy Link”
 - Workflow status: Active / Done / Archived / Ready to delete
 - Safe deletion workflow (mark “Ready to delete”, then delete — per-item or bulk)
+- Installable PWA with offline app-shell startup (no API offline caching)
 - REST API for automation/integrations
 
 ## Quick Start (Docker)

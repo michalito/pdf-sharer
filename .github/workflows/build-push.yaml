@@ -37,6 +37,7 @@ jobs:
         run: |
           mkdir -p app/templates app/static/assets app/static/icons
           cp frontend/dist/index.html app/templates/index.html
+          cp frontend/dist/index.html app/static/index.html
           cp -r frontend/dist/assets/* app/static/assets/
           cp frontend/dist/logo.png app/static/logo.png
           cp frontend/dist/sw.js app/static/sw.js
