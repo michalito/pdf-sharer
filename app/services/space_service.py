@@ -38,7 +38,10 @@ class SpaceService:
             raise ValidationError(f"A space named '{existing.name}' already exists")
 
         try:
-            return self.repository.create(name=display, normalized_name=normalized)
+            position = self.repository.get_max_position() + 1
+            return self.repository.create(
+                name=display, normalized_name=normalized, position=position
+            )
         except SQLAlchemyError as e:
             logger.error("Failed to create space: %s", e, exc_info=True)
             raise FileOperationError("Failed to create space")
@@ -69,6 +72,38 @@ class SpaceService:
             logger.error("Failed to delete space %s: %s", space_id, e, exc_info=True)
             raise FileOperationError("Failed to delete space")
         return count
+
+    def reorder_spaces(self, ordered_ids: list[int]) -> None:
+        """Reorder spaces by setting positions based on the given ID order.
+
+        ``ordered_ids`` must be an exact permutation of all existing space IDs
+        (no duplicates, no missing, no extras).
+        """
+        if not ordered_ids:
+            raise ValidationError("orderedIds must be a non-empty list")
+
+        if len(ordered_ids) != len(set(ordered_ids)):
+            raise ValidationError("orderedIds must not contain duplicates")
+
+        existing_ids = self.repository.get_all_ids()
+        given_ids = set(ordered_ids)
+        if given_ids != existing_ids:
+            missing = existing_ids - given_ids
+            extra = given_ids - existing_ids
+            parts = []
+            if missing:
+                parts.append(f"missing IDs: {sorted(missing)}")
+            if extra:
+                parts.append(f"unknown IDs: {sorted(extra)}")
+            raise ValidationError(
+                f"orderedIds must be an exact permutation of all space IDs ({', '.join(parts)})"
+            )
+
+        try:
+            self.repository.reorder(ordered_ids)
+        except SQLAlchemyError as e:
+            logger.error("Failed to reorder spaces: %s", e, exc_info=True)
+            raise FileOperationError("Failed to reorder spaces")
 
     def _normalize_name(self, raw: str) -> tuple[str, str]:
         """Validate and normalize a space name.

@@ -16,12 +16,12 @@ class SpaceRepository:
     """Repository for Space data access operations."""
 
     def get_all(self) -> list[tuple[Space, int]]:
-        """Return all spaces ordered by name (case-insensitive) with item counts."""
+        """Return all spaces ordered by position (then name as tiebreaker) with item counts."""
         results = (
             db.session.query(Space, func.count(Item.id))
             .outerjoin(Item, Item.space_id == Space.id)
             .group_by(Space.id)
-            .order_by(Space.normalized_name)
+            .order_by(Space.position.asc(), Space.normalized_name)
             .all()
         )
         return results
@@ -40,8 +40,18 @@ class SpaceRepository:
             Space.normalized_name == normalized_name
         ).first()
 
-    def create(self, *, name: str, normalized_name: str) -> Space:
-        space = Space(name=name, normalized_name=normalized_name)
+    def get_all_ids(self) -> set[int]:
+        """Return the set of all space IDs."""
+        rows = db.session.query(Space.id).all()
+        return {row[0] for row in rows}
+
+    def get_max_position(self) -> int:
+        """Return the highest position value, or -1 if no spaces exist."""
+        result = db.session.query(func.max(Space.position)).scalar()
+        return result if result is not None else -1
+
+    def create(self, *, name: str, normalized_name: str, position: int) -> Space:
+        space = Space(name=name, normalized_name=normalized_name, position=position)
         db.session.add(space)
         db.session.commit()
         return space
@@ -51,6 +61,14 @@ class SpaceRepository:
         space.normalized_name = normalized_name
         db.session.commit()
         return space
+
+    def reorder(self, ordered_ids: list[int]) -> None:
+        """Set positions based on the order of IDs in the list."""
+        for position, space_id in enumerate(ordered_ids):
+            db.session.query(Space).filter(Space.id == space_id).update(
+                {"position": position}
+            )
+        db.session.commit()
 
     def delete(self, space: Space) -> None:
         db.session.delete(space)

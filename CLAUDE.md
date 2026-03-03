@@ -144,6 +144,7 @@ Spaces are named organizational groupings for items (one-to-many, optional). The
 - `GET /api/spaces` — list all spaces with item counts
 - `POST /api/spaces` (JSON: `{"name":"..."}`) — returns 201
 - `PATCH /api/spaces/<id>` (JSON: `{"name":"..."}`) — rename
+- `PUT /api/spaces/reorder` (JSON: `{"orderedIds": [3, 1, 2]}`) — reorders spaces by position
 - `DELETE /api/spaces/<id>` — returns `{"unassigned": N}`
 
 ### Other

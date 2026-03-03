@@ -287,14 +287,101 @@ def test_item_dto_includes_space_id_and_space_name(client: FlaskClient):
     assert spaced_items[0]["spaceName"] == "Docs"
 
 
-def test_spaces_ordered_by_name(client: FlaskClient):
+def test_spaces_ordered_by_position(client: FlaskClient):
+    """New spaces get ascending positions; list returns by position order."""
     client.post("/api/spaces", json={"name": "Zebra"})
     client.post("/api/spaces", json={"name": "alpha"})
     client.post("/api/spaces", json={"name": "Beta"})
 
     spaces = client.get("/api/spaces").get_json()
     names = [s["name"] for s in spaces]
-    assert names == ["alpha", "Beta", "Zebra"]
+    # Ordered by creation position (0, 1, 2), not alphabetically
+    assert names == ["Zebra", "alpha", "Beta"]
+    assert spaces[0]["position"] == 0
+    assert spaces[1]["position"] == 1
+    assert spaces[2]["position"] == 2
+
+
+def test_reorder_spaces(client: FlaskClient):
+    s1 = client.post("/api/spaces", json={"name": "First"}).get_json()
+    s2 = client.post("/api/spaces", json={"name": "Second"}).get_json()
+    s3 = client.post("/api/spaces", json={"name": "Third"}).get_json()
+
+    # Reverse the order
+    res = client.put(
+        "/api/spaces/reorder",
+        json={"orderedIds": [s3["id"], s2["id"], s1["id"]]},
+    )
+    assert res.status_code == 200
+
+    spaces = client.get("/api/spaces").get_json()
+    names = [s["name"] for s in spaces]
+    assert names == ["Third", "Second", "First"]
+
+
+def test_reorder_spaces_invalid_ids(client: FlaskClient):
+    client.post("/api/spaces", json={"name": "Only"})
+
+    res = client.put(
+        "/api/spaces/reorder",
+        json={"orderedIds": [999]},
+    )
+    assert res.status_code == 400
+    assert "unknown IDs" in res.get_json()["error"]
+
+
+def test_reorder_spaces_validation(client: FlaskClient):
+    res = client.put("/api/spaces/reorder", json={"orderedIds": "bad"})
+    assert res.status_code == 400
+
+    res = client.put("/api/spaces/reorder", json={})
+    assert res.status_code == 400
+
+
+def test_reorder_rejects_booleans(client: FlaskClient):
+    """bool is a subclass of int in Python; ensure booleans are rejected."""
+    res = client.put("/api/spaces/reorder", json={"orderedIds": [True, False]})
+    assert res.status_code == 400
+
+
+def test_reorder_rejects_partial_ids(client: FlaskClient):
+    """orderedIds must include ALL space IDs, not a subset."""
+    s1 = client.post("/api/spaces", json={"name": "A"}).get_json()
+    client.post("/api/spaces", json={"name": "B"})
+
+    res = client.put("/api/spaces/reorder", json={"orderedIds": [s1["id"]]})
+    assert res.status_code == 400
+    assert "missing IDs" in res.get_json()["error"]
+
+
+def test_reorder_rejects_duplicate_ids(client: FlaskClient):
+    s1 = client.post("/api/spaces", json={"name": "A"}).get_json()
+    client.post("/api/spaces", json={"name": "B"})
+
+    res = client.put(
+        "/api/spaces/reorder",
+        json={"orderedIds": [s1["id"], s1["id"]]},
+    )
+    assert res.status_code == 400
+    assert "duplicates" in res.get_json()["error"]
+
+
+def test_new_space_appended_to_end(client: FlaskClient):
+    s1 = client.post("/api/spaces", json={"name": "First"}).get_json()
+    s2 = client.post("/api/spaces", json={"name": "Second"}).get_json()
+
+    # Reorder: swap them
+    client.put(
+        "/api/spaces/reorder",
+        json={"orderedIds": [s2["id"], s1["id"]]},
+    )
+
+    # Create a new space — should appear at the end
+    client.post("/api/spaces", json={"name": "Third"})
+
+    spaces = client.get("/api/spaces").get_json()
+    names = [s["name"] for s in spaces]
+    assert names == ["Second", "First", "Third"]
 
 
 # --- Regression tests: atomic PATCH, space validation, boolean rejection ---

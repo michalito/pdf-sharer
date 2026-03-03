@@ -37,6 +37,20 @@ def create_space() -> tuple[Response, int]:
     return jsonify(space.to_dto()), 201
 
 
+@api.route("/spaces/reorder", methods=["PUT"])
+def reorder_spaces() -> Response:
+    service = _get_space_service()
+    data = get_json_body()
+    ordered_ids = data.get("orderedIds")
+    if not isinstance(ordered_ids, list) or not all(
+        type(i) is int for i in ordered_ids
+    ):
+        raise ValidationError("'orderedIds' must be an array of integers")
+
+    service.reorder_spaces(ordered_ids)
+    return jsonify({"ok": True})
+
+
 @api.route("/spaces/<int:space_id>", methods=["PATCH"])
 def rename_space(space_id: int) -> Response:
     service = _get_space_service()
