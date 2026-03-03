@@ -19,9 +19,10 @@ from app.constants import (
 )
 from app.domain.item import ItemKind, ItemState
 from app.error_handlers import register_error_handlers
-from app.exceptions import AuthenticationError, ValidationError
+from app.exceptions import AuthenticationError, RateLimitError, ValidationError
 from app.services.item_access import is_item_unlocked, mark_item_unlocked
 from app.services.item_service import ItemService
+from app.services.unlock_throttle import UnlockThrottle
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,14 @@ register_error_handlers(api)
 
 def _get_service() -> ItemService:
     return g.item_service
+
+
+def _get_throttle() -> UnlockThrottle:
+    return current_app.config["UNLOCK_THROTTLE"]
+
+
+def _get_client_ip() -> str:
+    return request.remote_addr or "unknown"
 
 
 def _get_note_excerpt_length() -> int:
@@ -432,14 +441,25 @@ def unlock_item(item_id: int) -> tuple[str, int]:
     if not service.item_requires_password(item) or is_item_unlocked(item.id):
         return "", 204
 
+    throttle = _get_throttle()
+    client_ip = _get_client_ip()
+    allowed, retry_after = throttle.check(client_ip, item.id)
+    if not allowed:
+        raise RateLimitError(
+            f"Too many unlock attempts. Try again in {int(retry_after)} seconds.",
+            retry_after=retry_after,
+        )
+
     data = get_json_body()
     password_raw = data.get("password")
     if not isinstance(password_raw, str):
         raise ValidationError("Missing 'password' field in request body")
 
     if not service.verify_item_password(item, password_raw):
+        throttle.record_failure(client_ip, item.id)
         raise AuthenticationError("Invalid password")
 
+    throttle.record_success(client_ip, item.id)
     mark_item_unlocked(item.id)
     return "", 204
 

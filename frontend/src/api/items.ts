@@ -49,7 +49,7 @@ export type ListItemsResponse = {
   pagination: PaginationDto;
 };
 
-type ApiErrorBody = { error?: string; code?: string; duplicates?: DuplicateInfo[] };
+type ApiErrorBody = { error?: string; code?: string; duplicates?: DuplicateInfo[]; retryAfter?: number };
 
 export type DuplicateItemInfo = {
   id: number;
@@ -68,6 +68,17 @@ export type FileDuplicateInfo = {
 };
 
 export type DuplicateInfo = DuplicateItemInfo | FileDuplicateInfo;
+
+export class RateLimitError extends Error {
+  code = "RATE_LIMITED" as const;
+  retryAfter: number;
+
+  constructor(message: string, retryAfter: number) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfter = retryAfter;
+  }
+}
 
 export class DuplicateContentError extends Error {
   code = "DUPLICATE_CONTENT" as const;
@@ -99,6 +110,12 @@ async function parseApiError(response: Response): Promise<Error> {
   }
   if (response.status === 409 && body?.code === "DUPLICATE_CONTENT" && body.duplicates) {
     return new DuplicateContentError(body.error || "Duplicate content detected", body.duplicates);
+  }
+  if (response.status === 429 && body?.code === "RATE_LIMITED") {
+    return new RateLimitError(
+      body.error || "Too many attempts. Please try again later.",
+      body.retryAfter ?? 60,
+    );
   }
   const message = body?.error || `Request failed (${response.status})`;
   return new Error(message);

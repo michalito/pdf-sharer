@@ -73,6 +73,12 @@ def _setup_request_handlers(app: Flask) -> None:
             return
         _expire_check_ts[0] = now
         try:
+            throttle = app.config.get("UNLOCK_THROTTLE")
+            if throttle:
+                throttle.cleanup()
+        except Exception:
+            app.logger.exception("Unlock throttle cleanup failed")
+        try:
             g.item_service.delete_expired_items(limit=50)
         except Exception:
             app.logger.exception("Expired item cleanup failed")
@@ -104,6 +110,20 @@ def create_app(config: Optional[Config] = None) -> Flask:
 
     app = Flask(__name__)
     app.config.from_mapping(config.to_flask_config())
+
+    if "UNLOCK_THROTTLE" not in app.config:
+        from app.constants import (
+            UNLOCK_THROTTLE_COOLDOWN_SECONDS,
+            UNLOCK_THROTTLE_MAX_ATTEMPTS,
+            UNLOCK_THROTTLE_WINDOW_SECONDS,
+        )
+        from app.services.unlock_throttle import UnlockThrottle
+
+        app.config["UNLOCK_THROTTLE"] = UnlockThrottle(
+            max_attempts=UNLOCK_THROTTLE_MAX_ATTEMPTS,
+            window_seconds=UNLOCK_THROTTLE_WINDOW_SECONDS,
+            cooldown_seconds=UNLOCK_THROTTLE_COOLDOWN_SECONDS,
+        )
 
     # Configure logging
     _configure_logging(app)

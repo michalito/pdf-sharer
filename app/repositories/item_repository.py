@@ -401,7 +401,9 @@ class ItemRepository:
             note_text_match = and_(
                 Item.kind == ItemKind.NOTE.value,
                 Item.password_hash.is_(None),
-                func.lower(func.coalesce(Item.meta_json, "")).like(needle),
+                func.lower(
+                    func.coalesce(func.json_extract(Item.meta_json, "$.text"), "")
+                ).like(needle),
             )
             query = query.filter(or_(display_name_match, note_text_match))
 
