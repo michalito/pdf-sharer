@@ -265,47 +265,55 @@ class ItemService:
             raise FileOperationError("Failed to create folder zip")
 
         content_hash = hash_file(zip_path)
+        persisted = False
+        try:
+            with acquire_content_hash_locks([content_hash]):
+                if not skip_dedup:
+                    try:
+                        existing = self.repository.find_by_content_hash(content_hash)
+                    except SQLAlchemyError as e:
+                        logger.error("Database error checking folder duplicates: %s", e, exc_info=True)
+                        raise FileOperationError("Failed to check duplicate content")
 
-        with acquire_content_hash_locks([content_hash]):
-            if not skip_dedup:
-                existing = self.repository.find_by_content_hash(content_hash)
-                if existing:
-                    zip_path.unlink(missing_ok=True)
-                    raise DuplicateDetectedError(
-                        "Duplicate content detected",
-                        duplicates=[self._format_duplicate_info(item) for item in existing],
-                    )
+                    if existing:
+                        raise DuplicateDetectedError(
+                            "Duplicate content detected",
+                            duplicates=[self._format_duplicate_info(item) for item in existing],
+                        )
 
-            size_bytes = zip_path.stat().st_size
-            meta_json = json.dumps(
-                {"file_count": len(files), "top_level_dir": folder_name},
-                separators=(",", ":"),
-            )
-            password_hash = (
-                self.hash_item_password(normalized_password)
-                if normalized_password is not None
-                else None
-            )
-
-            try:
-                item = self.repository.create(
-                    stored_name=stored_name,
-                    display_name=folder_name,
-                    kind=ItemKind.FOLDER,
-                    state=ItemState.ACTIVE,
-                    mime_type="application/zip",
-                    size_bytes=size_bytes,
-                    meta_json=meta_json,
-                    password_hash=password_hash,
-                    space_id=space_id,
-                    expires_at=expires_at,
-                    content_hash=content_hash,
+                size_bytes = zip_path.stat().st_size
+                meta_json = json.dumps(
+                    {"file_count": len(files), "top_level_dir": folder_name},
+                    separators=(",", ":"),
                 )
-                return item
-            except SQLAlchemyError as e:
+                password_hash = (
+                    self.hash_item_password(normalized_password)
+                    if normalized_password is not None
+                    else None
+                )
+
+                try:
+                    item = self.repository.create(
+                        stored_name=stored_name,
+                        display_name=folder_name,
+                        kind=ItemKind.FOLDER,
+                        state=ItemState.ACTIVE,
+                        mime_type="application/zip",
+                        size_bytes=size_bytes,
+                        meta_json=meta_json,
+                        password_hash=password_hash,
+                        space_id=space_id,
+                        expires_at=expires_at,
+                        content_hash=content_hash,
+                    )
+                    persisted = True
+                    return item
+                except SQLAlchemyError as e:
+                    logger.error("Database error creating folder item: %s", e, exc_info=True)
+                    raise FileOperationError("Failed to create item record")
+        finally:
+            if not persisted:
                 zip_path.unlink(missing_ok=True)
-                logger.error("Database error creating folder item: %s", e, exc_info=True)
-                raise FileOperationError("Failed to create item record")
 
     def create_link(
         self,

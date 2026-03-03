@@ -34,6 +34,18 @@ class _FailingCreateRepository:
         return _CreatedItem()
 
 
+class _FailingFindByHashRepository:
+    """Repository stub that fails while checking duplicate content."""
+
+    def find_by_content_hash(self, content_hash: str) -> list[object]:
+        _ = content_hash
+        raise SQLAlchemyError("simulated duplicate lookup failure")
+
+    def create(self, **kwargs):
+        _ = kwargs
+        raise AssertionError("create should not be called when duplicate lookup fails")
+
+
 def test_upload_files_cleans_only_non_persisted_files_on_db_failure(tmp_path: Path):
     app = Flask(__name__)
     app.config["UPLOAD_FOLDER"] = tmp_path
@@ -51,3 +63,20 @@ def test_upload_files_cleans_only_non_persisted_files_on_db_failure(tmp_path: Pa
 
     # First file may be persisted before failure; later unsaved files must be cleaned up.
     assert len(list(tmp_path.iterdir())) == 1
+
+
+def test_upload_folder_cleans_zip_on_duplicate_lookup_failure(tmp_path: Path):
+    app = Flask(__name__)
+    app.config["UPLOAD_FOLDER"] = tmp_path
+
+    service = ItemService(repository=_FailingFindByHashRepository())
+    files = [
+        FileStorage(stream=BytesIO(b"a"), filename="a.txt", content_type="text/plain"),
+    ]
+    paths = ["folder/a.txt"]
+
+    with app.app_context():
+        with pytest.raises(FileOperationError, match="Failed to check duplicate content"):
+            service.upload_folder(files, paths)
+
+    assert list(tmp_path.iterdir()) == []
