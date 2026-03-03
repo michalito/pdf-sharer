@@ -42,7 +42,7 @@ class Config:
     NOTE_EXCERPT_LENGTH: int = DEFAULT_NOTE_EXCERPT_LENGTH
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
     # Session security settings
-    SESSION_COOKIE_SECURE: bool = True
+    SESSION_COOKIE_SECURE: bool = False
     SESSION_COOKIE_HTTPONLY: bool = True
     SESSION_COOKIE_SAMESITE: str = "Lax"
     PERMANENT_SESSION_LIFETIME: int = 3600  # 1 hour
@@ -67,6 +67,7 @@ class Config:
 
         max_content_length = int(os.environ.get("MAX_CONTENT_LENGTH", DEFAULT_MAX_CONTENT_LENGTH))
         note_excerpt_length = _parse_note_excerpt_length(os.environ.get("NOTE_EXCERPT_LENGTH"))
+        session_cookie_secure = os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in ("true", "1", "yes")
 
         return cls(
             SECRET_KEY=secret_key,
@@ -75,6 +76,7 @@ class Config:
             MAX_CONTENT_LENGTH=max_content_length,
             NOTE_EXCERPT_LENGTH=note_excerpt_length,
             APP_VERSION=os.environ.get("APP_VERSION", "dev"),
+            SESSION_COOKIE_SECURE=session_cookie_secure,
         )
 
     @classmethod

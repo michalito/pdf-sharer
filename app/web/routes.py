@@ -8,6 +8,7 @@ from flask import (
     Response,
     current_app,
     g,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -37,6 +38,9 @@ def index() -> str:
 @web.route("/<path:filename>")
 def serve_public(filename: str):
     """Serve public files (logo, etc.) at root path, falling back to SPA."""
+    if filename == "api" or filename.startswith("api/"):
+        return jsonify({"error": "Not found"}), 404
+
     static_folder = current_app.static_folder
     file_path = os.path.join(static_folder, filename)
     if os.path.isfile(file_path):

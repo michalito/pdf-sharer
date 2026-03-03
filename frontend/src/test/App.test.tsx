@@ -162,7 +162,9 @@ beforeEach(() => {
       countByKind: { file: 5, folder: 2, link: 2, note: 1 },
       sizeByKind: { file: 4_000_000_000, folder: 1_000_000_000, link: 200, note: 500 },
       countByState: { active: 7, done: 2, archived: 1, ready_to_delete: 0 },
+      sizeByState: { active: 3_500_000_000, done: 1_000_000_000, archived: 500_000_000, ready_to_delete: 0 },
     },
+    spaceStats: [],
     largestItems: [],
   });
 

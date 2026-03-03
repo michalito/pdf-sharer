@@ -14,6 +14,7 @@ services:
       - saita_uploads:/app/uploads
     environment:
       - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:-}
       - DATABASE_URL=${DATABASE_URL:-}
       - MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-2147483648}
     restart: unless-stopped

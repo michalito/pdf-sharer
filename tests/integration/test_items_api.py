@@ -46,6 +46,15 @@ def test_health_returns_configured_version(temp_upload_dir):
         db.drop_all()
 
 
+def test_unknown_api_paths_return_json_404(client: FlaskClient):
+    """Unknown /api paths must return JSON 404, not SPA HTML."""
+    for path in ("/api", "/api/nope"):
+        resp = client.get(path)
+        assert resp.status_code == 404
+        assert resp.content_type.startswith("application/json")
+        assert resp.get_json()["error"] == "Not found"
+
+
 def test_upload_files_list_download_and_delete(app: Flask, client: FlaskClient):
     data = {
         "files": [

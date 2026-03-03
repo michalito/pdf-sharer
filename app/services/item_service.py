@@ -146,7 +146,6 @@ class ItemService:
 
         # Phase 1: save all files to disk and compute hashes.
         saved: list[SavedUploadFile] = []
-        persisted_paths: set[Path] = set()
         try:
             for file in files:
                 if not file or not file.filename:
@@ -189,8 +188,8 @@ class ItemService:
                     else None
                 )
                 created: list[Item] = []
-                for file_path, stored_name, original_name, content_hash, size_bytes, mime_type in saved:
-                    try:
+                try:
+                    for file_path, stored_name, original_name, content_hash, size_bytes, mime_type in saved:
                         item = self.repository.create(
                             stored_name=stored_name,
                             display_name=original_name,
@@ -201,19 +200,18 @@ class ItemService:
                             space_id=space_id,
                             expires_at=expires_at,
                             content_hash=content_hash,
+                            commit=False,
                         )
                         created.append(item)
-                        persisted_paths.add(file_path)
-                    except SQLAlchemyError as e:
-                        logger.error("Database error creating item: %s", e, exc_info=True)
-                        raise FileOperationError("Failed to create item record")
+                    self.repository.commit()
+                except SQLAlchemyError as e:
+                    self.repository.rollback()
+                    logger.error("Database error creating item: %s", e, exc_info=True)
+                    raise FileOperationError("Failed to create item record")
                 return created
 
         except (DuplicateDetectedError, ValidationError, FileOperationError):
-            # Clean up only files that were not persisted in DB.
             for file_path, *_ in saved:
-                if file_path in persisted_paths:
-                    continue
                 file_path.unlink(missing_ok=True)
             raise
 
