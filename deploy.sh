@@ -56,6 +56,16 @@ ensure_env_file() {
     fi
 }
 
+ensure_secret_key() {
+    if [[ -z "${SECRET_KEY:-}" ]]; then
+        local key
+        key=$(openssl rand -hex 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(32))")
+        echo "SECRET_KEY=$key" >> .env
+        export SECRET_KEY="$key"
+        info "Generated SECRET_KEY and saved to .env (keep .env stable across deploys)"
+    fi
+}
+
 load_env() {
     if [[ -f .env ]]; then
         set -a
@@ -167,6 +177,7 @@ cmd_prod() {
             info "Starting production containers..."
             ensure_env_file
             load_env
+            ensure_secret_key
             detect_app_version
 
             # Build and start (detached)
@@ -227,8 +238,11 @@ cmd_rebuild() {
     info "Rebuilding containers..."
     if [[ "$compose_file" == "docker-compose.yaml" ]]; then
         ensure_env_file
+        load_env
+        ensure_secret_key
+    else
+        load_env
     fi
-    load_env
     detect_app_version
 
     docker compose -f "$compose_file" down

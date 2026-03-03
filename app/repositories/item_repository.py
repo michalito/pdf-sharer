@@ -199,6 +199,7 @@ class ItemRepository:
         space_id: Optional[int] = None,
         expires_at: Optional[datetime] = None,
         content_hash: Optional[str] = None,
+        commit: bool = True,
     ) -> Item:
         item = Item(
             stored_name=stored_name,
@@ -214,8 +215,17 @@ class ItemRepository:
             content_hash=content_hash,
         )
         db.session.add(item)
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return item
+
+    def commit(self) -> None:
+        db.session.commit()
+
+    def rollback(self) -> None:
+        db.session.rollback()
 
     def update_state(self, item: Item, state: ItemState) -> Item:
         item.state = state.value
