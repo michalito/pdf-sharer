@@ -2,13 +2,15 @@ export type UploadTask = {
   id: string;
   label: string;
   progress: number;
-  status: "uploading" | "done" | "error";
+  status: "uploading" | "done" | "error" | "duplicate" | "cancelled";
 };
 
 const toneClass = {
   uploading: "bg-[var(--accent)]",
   done: "bg-[var(--success)]",
   error: "bg-[var(--danger)]",
+  duplicate: "bg-amber-500",
+  cancelled: "bg-[var(--app-muted)]",
 } as const;
 
 export default function UploadQueue(props: {
@@ -16,7 +18,9 @@ export default function UploadQueue(props: {
   onDismiss: (id: string) => void;
 }) {
   const { uploads, onDismiss } = props;
-  const visible = uploads.filter((u) => u.status === "uploading" || u.status === "error").slice(0, 4);
+  const visible = uploads
+    .filter((u) => u.status === "uploading" || u.status === "error" || u.status === "duplicate" || u.status === "cancelled")
+    .slice(0, 4);
 
   if (visible.length === 0) return null;
 
@@ -45,7 +49,15 @@ export default function UploadQueue(props: {
           </div>
 
           <div className="mt-2 text-xs text-[var(--app-muted)]">
-            {u.status === "uploading" ? `${u.progress}% uploaded` : u.status === "error" ? "Upload failed" : "Done"}
+            {u.status === "uploading"
+              ? `${u.progress}% uploaded`
+              : u.status === "error"
+                ? "Upload failed"
+                : u.status === "duplicate"
+                  ? "Duplicate detected - choose an action"
+                  : u.status === "cancelled"
+                    ? "Upload cancelled by user"
+                    : "Done"}
           </div>
         </div>
       ))}

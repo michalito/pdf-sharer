@@ -250,6 +250,7 @@ export default function App() {
   const [duplicateDialog, setDuplicateDialog] = useState<{
     duplicates: DuplicateInfo[];
     retryFn: () => Promise<void>;
+    cancelFn?: () => void;
   } | null>(null);
 
   const anyDialogOpen =
@@ -494,7 +495,10 @@ export default function App() {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       return result;
     } catch (e) {
-      setUploads((prev) => prev.map((u) => (u.id === task.id ? { ...u, status: "error" } : u)));
+      const isDuplicate = e instanceof DuplicateContentError;
+      setUploads((prev) =>
+        prev.map((u) => (u.id === task.id ? { ...u, status: isDuplicate ? "duplicate" : "error", progress: isDuplicate ? 50 : u.progress } : u)),
+      );
       throw e;
     }
   }
@@ -535,7 +539,14 @@ export default function App() {
       if (e instanceof DuplicateContentError) {
         setDuplicateDialog({
           duplicates: e.duplicates,
-          retryFn: () => handleUploadFiles(files, password, spaceId, ttl, true),
+          retryFn: async () => {
+            dismissUpload(task.id);
+            await handleUploadFiles(files, password, spaceId, ttl, true);
+          },
+          cancelFn: () => {
+            setUploads((prev) => prev.map((u) => (u.id === task.id ? { ...u, status: "cancelled", progress: 50 } : u)));
+            toast("Upload cancelled");
+          },
         });
         return;
       }
@@ -555,7 +566,14 @@ export default function App() {
       if (e instanceof DuplicateContentError) {
         setDuplicateDialog({
           duplicates: e.duplicates,
-          retryFn: () => handleUploadFolder(files, password, spaceId, ttl, true),
+          retryFn: async () => {
+            dismissUpload(task.id);
+            await handleUploadFolder(files, password, spaceId, ttl, true);
+          },
+          cancelFn: () => {
+            setUploads((prev) => prev.map((u) => (u.id === task.id ? { ...u, status: "cancelled", progress: 50 } : u)));
+            toast("Folder upload cancelled");
+          },
         });
         return;
       }
@@ -1871,7 +1889,10 @@ export default function App() {
           setDuplicateDialog(null);
           if (retry) void retry();
         }}
-        onCancel={() => setDuplicateDialog(null)}
+        onCancel={() => {
+          duplicateDialog?.cancelFn?.();
+          setDuplicateDialog(null);
+        }}
       />
 
       <DropOverlay visible={isOverWindow} />
