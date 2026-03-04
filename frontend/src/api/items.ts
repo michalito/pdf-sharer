@@ -2,7 +2,7 @@ export type ItemKind = "file" | "folder" | "link" | "note";
 
 export type ItemState = "active" | "done" | "archived" | "ready_to_delete";
 
-export type SortField = "name" | "size" | "created" | "modified";
+export type SortField = "name" | "size" | "created" | "modified" | "manual";
 export type SortOrder = "asc" | "desc";
 
 export type TtlPreset = "1h" | "6h" | "24h" | "3d" | "7d" | "30d";
@@ -26,6 +26,7 @@ export type ItemDto = {
   isPinned: boolean;
   spaceId: number | null;
   spaceName: string | null;
+  position: number | null;
 };
 
 export type SpaceDto = {
@@ -333,6 +334,21 @@ export async function updateItem(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(fields),
+  });
+}
+
+// Item ordering
+
+export async function getItemOrder(params?: { space?: string }): Promise<{ orderedIds: number[] }> {
+  const query = buildQuery({ space: params?.space });
+  return apiJson<{ orderedIds: number[] }>(`/api/items/order${query}`);
+}
+
+export async function reorderItems(orderedIds: number[]): Promise<void> {
+  await apiJson<{ ok: boolean }>("/api/items/reorder", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderedIds }),
   });
 }
 

@@ -21,6 +21,8 @@ vi.mock("../api/items", async () => {
     ...actual,
     listItems: vi.fn(),
     getItem: vi.fn(),
+    getItemOrder: vi.fn(),
+    reorderItems: vi.fn(),
     createLink: vi.fn(),
     createNote: vi.fn(),
     uploadFiles: vi.fn(),
@@ -667,9 +669,37 @@ function makeItem(overrides: Partial<import("../api/items").ItemDto> = {}): impo
     isPasswordUnlocked: true,
     spaceId: null,
     spaceName: null,
+    position: 0,
     ...overrides,
   };
 }
+
+it("allows entering reorder mode when filtering by done state", async () => {
+  vi.mocked(api.listItems).mockImplementation(async (params) => {
+    const state = params.state ?? "active";
+    return {
+      items: [
+        makeItem({
+          id: state === "done" ? 2 : 1,
+          name: state === "done" ? "done-item.pdf" : "active-item.pdf",
+          state,
+        }),
+      ],
+      pagination: makePagination(1),
+    };
+  });
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("active-item.pdf");
+  await user.click(screen.getByRole("combobox", { name: "Filter by status" }));
+  const listbox = await screen.findByRole("listbox");
+  await user.click(within(listbox).getByRole("option", { name: "Done" }));
+
+  await screen.findByText("done-item.pdf");
+  expect(screen.getByRole("button", { name: "Enter reorder mode" })).toBeEnabled();
+});
 
 it("shows 'Add to space' button when item has no space", async () => {
   vi.mocked(api.listSpaces).mockResolvedValue(twoSpaces);

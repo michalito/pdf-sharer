@@ -18,7 +18,7 @@ from app.exceptions import NotFoundError
 
 T = TypeVar("T")
 
-SortField = Literal["name", "size", "created", "modified"]
+SortField = Literal["name", "size", "created", "modified", "manual"]
 SortOrder = Literal["asc", "desc"]
 
 
@@ -74,6 +74,9 @@ class ItemRepository:
 
     def _build_order_by(self, sort: SortField, order: SortOrder):
         """Return SQLAlchemy order_by clauses: pinned first, then sort field, then id tie-breaker."""
+        if sort == "manual":
+            return [Item.is_pinned.desc(), Item.position.asc(), Item.id.asc()]
+
         direction = lambda col: col.asc() if order == "asc" else col.desc()
 
         if sort == "name":
@@ -199,6 +202,7 @@ class ItemRepository:
         space_id: Optional[int] = None,
         expires_at: Optional[datetime] = None,
         content_hash: Optional[str] = None,
+        position: Optional[int] = None,
         commit: bool = True,
     ) -> Item:
         item = Item(
@@ -213,6 +217,7 @@ class ItemRepository:
             space_id=space_id,
             expires_at=expires_at,
             content_hash=content_hash,
+            position=position,
         )
         db.session.add(item)
         if commit:
@@ -255,6 +260,36 @@ class ItemRepository:
         for item in items:
             db.session.delete(item)
         db.session.commit()
+
+    def get_all_active_ids(
+        self,
+        *,
+        space_id: Optional[int] = None,
+        unspaced: Optional[bool] = None,
+    ) -> list[int]:
+        """Return all non-expired item IDs in manual sort order."""
+        query = db.session.query(Item.id).filter(self._active_items_filter())
+        if space_id is not None:
+            query = query.filter(Item.space_id == space_id)
+        elif unspaced is True:
+            query = query.filter(Item.space_id.is_(None))
+        query = query.order_by(Item.is_pinned.desc(), Item.position.asc(), Item.id.asc())
+        return [row[0] for row in query.all()]
+
+    def reorder(self, ordered_ids: list[int]) -> None:
+        """Set positions based on the order of IDs in the list."""
+        for position, item_id in enumerate(ordered_ids):
+            db.session.query(Item).filter(Item.id == item_id).update(
+                {"position": position}
+            )
+        db.session.commit()
+
+    def get_max_position(self) -> int:
+        """Return the highest position value among non-expired items, or -1 if none."""
+        result = db.session.query(func.max(Item.position)).filter(
+            self._active_items_filter()
+        ).scalar()
+        return result if result is not None else -1
 
     def get_storage_stats(self, *, top_n: int = 10) -> StorageStats:
         """Compute aggregate storage statistics in minimal DB round-trips."""

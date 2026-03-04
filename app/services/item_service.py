@@ -188,8 +188,9 @@ class ItemService:
                     else None
                 )
                 created: list[Item] = []
+                next_position = self.repository.get_max_position() + 1
                 try:
-                    for file_path, stored_name, original_name, content_hash, size_bytes, mime_type in saved:
+                    for idx, (file_path, stored_name, original_name, content_hash, size_bytes, mime_type) in enumerate(saved):
                         item = self.repository.create(
                             stored_name=stored_name,
                             display_name=original_name,
@@ -200,6 +201,7 @@ class ItemService:
                             space_id=space_id,
                             expires_at=expires_at,
                             content_hash=content_hash,
+                            position=next_position + idx,
                             commit=False,
                         )
                         created.append(item)
@@ -294,6 +296,7 @@ class ItemService:
                     else None
                 )
 
+                next_position = self.repository.get_max_position() + 1
                 try:
                     item = self.repository.create(
                         stored_name=stored_name,
@@ -307,6 +310,7 @@ class ItemService:
                         space_id=space_id,
                         expires_at=expires_at,
                         content_hash=content_hash,
+                        position=next_position,
                     )
                     persisted = True
                     return item
@@ -350,6 +354,7 @@ class ItemService:
                         "Duplicate content detected",
                         duplicates=[self._format_duplicate_info(item) for item in existing],
                     )
+            next_position = self.repository.get_max_position() + 1
             try:
                 return self.repository.create(
                     stored_name=stored_name,
@@ -363,6 +368,7 @@ class ItemService:
                     space_id=space_id,
                     expires_at=expires_at,
                     content_hash=content_hash,
+                    position=next_position,
                 )
             except SQLAlchemyError as e:
                 logger.error("Database error creating link item: %s", e, exc_info=True)
@@ -401,6 +407,7 @@ class ItemService:
                         "Duplicate content detected",
                         duplicates=[self._format_duplicate_info(item) for item in existing],
                     )
+            next_position = self.repository.get_max_position() + 1
             try:
                 return self.repository.create(
                     stored_name=stored_name,
@@ -414,6 +421,7 @@ class ItemService:
                     space_id=space_id,
                     expires_at=expires_at,
                     content_hash=content_hash,
+                    position=next_position,
                 )
             except SQLAlchemyError as e:
                 logger.error("Database error creating note item: %s", e, exc_info=True)
@@ -555,6 +563,48 @@ class ItemService:
         except SQLAlchemyError as e:
             logger.error("Failed to update item %s: %s", item_id, e, exc_info=True)
             raise FileOperationError("Failed to update item")
+
+    def get_item_order(
+        self,
+        *,
+        space_id: Optional[int] = None,
+        unspaced: Optional[bool] = None,
+    ) -> list[int]:
+        """Return all active item IDs in their current manual sort order."""
+        return self.repository.get_all_active_ids(
+            space_id=space_id, unspaced=unspaced,
+        )
+
+    def reorder_items(self, ordered_ids: list[int]) -> None:
+        """Reorder items by setting positions based on the given ID order.
+
+        ordered_ids must be an exact permutation of all active (non-expired) item IDs.
+        """
+        if not ordered_ids:
+            raise ValidationError("orderedIds must be a non-empty list")
+
+        if len(ordered_ids) != len(set(ordered_ids)):
+            raise ValidationError("orderedIds must not contain duplicates")
+
+        existing_ids = set(self.repository.get_all_active_ids())
+        given_ids = set(ordered_ids)
+        if given_ids != existing_ids:
+            missing = existing_ids - given_ids
+            extra = given_ids - existing_ids
+            parts = []
+            if missing:
+                parts.append(f"missing IDs: {sorted(missing)}")
+            if extra:
+                parts.append(f"unknown IDs: {sorted(extra)}")
+            raise ValidationError(
+                f"orderedIds must be an exact permutation of all active item IDs ({', '.join(parts)})"
+            )
+
+        try:
+            self.repository.reorder(ordered_ids)
+        except SQLAlchemyError as e:
+            logger.error("Failed to reorder items: %s", e, exc_info=True)
+            raise FileOperationError("Failed to reorder items")
 
     def get_download_name(self, item: Item) -> str:
         if not self._item_has_stored_file(item):

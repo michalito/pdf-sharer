@@ -1522,3 +1522,133 @@ def test_web_unlock_rate_limited(app: Flask, client: FlaskClient):
     res = other.post(f"/d/{item_id}", data={"password": "wrongpass1"})
     assert res.status_code == 429
     assert b"Too many attempts" in res.data
+
+
+# --- Item Position & Reordering Tests ---
+
+
+def test_item_dto_includes_position(client: FlaskClient):
+    res = client.post("/api/items/note", json={"text": "hello", "force": True})
+    item = res.get_json()
+    assert "position" in item
+    assert isinstance(item["position"], int)
+
+
+def test_new_items_get_ascending_positions(client: FlaskClient):
+    n1 = client.post("/api/items/note", json={"text": "first", "force": True}).get_json()
+    n2 = client.post("/api/items/note", json={"text": "second", "force": True}).get_json()
+    n3 = client.post("/api/items/note", json={"text": "third", "force": True}).get_json()
+    assert n1["position"] < n2["position"] < n3["position"]
+
+
+def test_sort_by_manual(client: FlaskClient):
+    n1 = client.post("/api/items/note", json={"text": "aaa", "force": True}).get_json()
+    n2 = client.post("/api/items/note", json={"text": "bbb", "force": True}).get_json()
+    n3 = client.post("/api/items/note", json={"text": "ccc", "force": True}).get_json()
+
+    res = client.get("/api/items?sort=manual")
+    items = res.get_json()["items"]
+    ids = [i["id"] for i in items]
+    assert ids == [n1["id"], n2["id"], n3["id"]]
+
+
+def test_get_item_order(client: FlaskClient):
+    n1 = client.post("/api/items/note", json={"text": "aaa", "force": True}).get_json()
+    n2 = client.post("/api/items/note", json={"text": "bbb", "force": True}).get_json()
+    n3 = client.post("/api/items/note", json={"text": "ccc", "force": True}).get_json()
+
+    res = client.get("/api/items/order")
+    assert res.status_code == 200
+    assert res.get_json()["orderedIds"] == [n1["id"], n2["id"], n3["id"]]
+
+
+def test_get_item_order_space_filter(client: FlaskClient):
+    s = client.post("/api/spaces", json={"name": "S"}).get_json()
+    n1 = client.post("/api/items/note", json={"text": "in space", "spaceId": s["id"], "force": True}).get_json()
+    n2 = client.post("/api/items/note", json={"text": "no space", "force": True}).get_json()
+
+    # Filter by space
+    res = client.get(f"/api/items/order?space={s['id']}")
+    assert res.get_json()["orderedIds"] == [n1["id"]]
+
+    # Filter unspaced
+    res = client.get("/api/items/order?space=none")
+    assert res.get_json()["orderedIds"] == [n2["id"]]
+
+
+def test_reorder_items(client: FlaskClient):
+    n1 = client.post("/api/items/note", json={"text": "first", "force": True}).get_json()
+    n2 = client.post("/api/items/note", json={"text": "second", "force": True}).get_json()
+    n3 = client.post("/api/items/note", json={"text": "third", "force": True}).get_json()
+
+    # Reverse the order
+    res = client.put(
+        "/api/items/reorder",
+        json={"orderedIds": [n3["id"], n2["id"], n1["id"]]},
+    )
+    assert res.status_code == 200
+
+    items = client.get("/api/items?sort=manual").get_json()["items"]
+    names = [i["name"] for i in items]
+    assert names == ["third", "second", "first"]
+
+
+def test_reorder_items_invalid_ids(client: FlaskClient):
+    client.post("/api/items/note", json={"text": "only", "force": True})
+    res = client.put("/api/items/reorder", json={"orderedIds": [999]})
+    assert res.status_code == 400
+    assert "unknown IDs" in res.get_json()["error"]
+
+
+def test_reorder_items_empty_list(client: FlaskClient):
+    res = client.put("/api/items/reorder", json={"orderedIds": []})
+    assert res.status_code == 400
+
+
+def test_reorder_items_validation(client: FlaskClient):
+    res = client.put("/api/items/reorder", json={"orderedIds": "bad"})
+    assert res.status_code == 400
+
+    res = client.put("/api/items/reorder", json={})
+    assert res.status_code == 400
+
+
+def test_reorder_items_rejects_booleans(client: FlaskClient):
+    res = client.put("/api/items/reorder", json={"orderedIds": [True, False]})
+    assert res.status_code == 400
+
+
+def test_reorder_items_rejects_partial_ids(client: FlaskClient):
+    n1 = client.post("/api/items/note", json={"text": "a", "force": True}).get_json()
+    client.post("/api/items/note", json={"text": "b", "force": True})
+
+    res = client.put("/api/items/reorder", json={"orderedIds": [n1["id"]]})
+    assert res.status_code == 400
+    assert "missing IDs" in res.get_json()["error"]
+
+
+def test_reorder_items_rejects_duplicates(client: FlaskClient):
+    n1 = client.post("/api/items/note", json={"text": "a", "force": True}).get_json()
+    client.post("/api/items/note", json={"text": "b", "force": True})
+
+    res = client.put("/api/items/reorder", json={"orderedIds": [n1["id"], n1["id"]]})
+    assert res.status_code == 400
+    assert "duplicates" in res.get_json()["error"]
+
+
+def test_reorder_pinned_items_sort_first(client: FlaskClient):
+    n1 = client.post("/api/items/note", json={"text": "unpinned", "force": True}).get_json()
+    n2 = client.post("/api/items/note", json={"text": "pinned", "force": True}).get_json()
+    client.patch(f"/api/items/{n2['id']}", json={"pinned": True})
+
+    # Reorder: put unpinned first in the list
+    res = client.put(
+        "/api/items/reorder",
+        json={"orderedIds": [n1["id"], n2["id"]]},
+    )
+    assert res.status_code == 200
+
+    # Pinned item should still appear first when sorting manually
+    items = client.get("/api/items?sort=manual").get_json()["items"]
+    assert items[0]["id"] == n2["id"]
+    assert items[1]["id"] == n1["id"]
