@@ -92,6 +92,7 @@ class Item(db.Model):
     space_id: Optional[int] = db.Column(
         db.Integer, db.ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    position: Optional[int] = db.Column(db.Integer, nullable=True)
 
     space = db.relationship("Space", back_populates="items")
 
@@ -146,6 +147,7 @@ class Item(db.Model):
             "isPinned": self.is_pinned,
             "spaceId": self.space_id,
             "spaceName": self.space.name if self.space is not None else None,
+            "position": self.position,
         }
 
     def _isoformat_utc(self, value: datetime) -> str:

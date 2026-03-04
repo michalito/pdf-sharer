@@ -217,6 +217,47 @@ body::before {
     box-shadow: inset 2px 0 0 var(--accent);
   }
 
+  /* ── Drag-and-drop reorder ─────────────── */
+
+  .drag-idle {
+    transition:
+      box-shadow 200ms ease,
+      border-radius 200ms ease,
+      background 200ms ease;
+  }
+
+  .drag-active {
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--app-panel-strong);
+    box-shadow:
+      0 0 0 2px var(--accent),
+      0 16px 48px rgba(0, 0, 0, 0.2),
+      0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: scale(1.02);
+    transition:
+      transform 180ms cubic-bezier(0.2, 0.9, 0.18, 1),
+      box-shadow 180ms ease,
+      background 180ms ease;
+  }
+
+  .drag-active .item-row {
+    transform: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  .stagger-list.is-reordering > * {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none;
+  }
+
+  .is-dragging .item-row:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
   .stagger-list > * {
     opacity: 0;
     transform: translateY(14px);
@@ -468,13 +509,16 @@ body::before {
   }
 
   .pressable,
-  .item-row {
+  .item-row,
+  .drag-active,
+  .drag-idle {
     transition: none !important;
   }
 
   .pressable:hover,
   .pressable:active,
-  .item-row:hover {
+  .item-row:hover,
+  .drag-active {
     transform: none !important;
   }
 }

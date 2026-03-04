@@ -1,17 +1,38 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   HelpCircle,
   Clock,
   Copy,
   ChevronDown,
+  ChevronUp,
   Download,
   Eye,
   ExternalLink,
   File as FileIcon,
   FolderArchive,
   FolderUp,
+  GripVertical,
   HardDrive,
   Lock,
   Link2,
@@ -51,6 +72,7 @@ import {
   deleteSpace,
   fetchVersion,
   getItem,
+  getItemOrder,
   ItemDto,
   ItemKind,
   ItemState,
@@ -58,6 +80,7 @@ import {
   listItems,
   listSpaces,
   renameSpace,
+  reorderItems,
   reorderSpaces,
   SpaceDto,
   updateItem,
@@ -78,6 +101,7 @@ type KindFilter = "all" | ItemKind;
 type StateFilter = "all" | ItemState;
 
 const sortFieldOptions: Array<{ value: SortField; label: string }> = [
+  { value: "manual", label: "Manual" },
   { value: "created", label: "Date created" },
   { value: "modified", label: "Date modified" },
   { value: "name", label: "Name" },
@@ -193,6 +217,69 @@ function uploadDialogReducer(state: UploadDialogState, action: UploadDialogActio
   }
 }
 
+/** Replace items in `source` that belong to `targetSet` with items from `replacement` (in order). */
+function substituteInOrder(source: number[], targetSet: Set<number>, replacement: number[]): number[] {
+  const result: number[] = [];
+  let idx = 0;
+  for (const id of source) {
+    if (targetSet.has(id)) {
+      result.push(replacement[idx++]);
+    } else {
+      result.push(id);
+    }
+  }
+  return result;
+}
+
+function SortableItemWrapper({
+  id,
+  children,
+}: {
+  id: number;
+  children: (handleProps: React.HTMLAttributes<HTMLElement>, isDragging: boolean) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    position: "relative",
+    zIndex: isDragging ? 999 : 0,
+    isolation: isDragging ? "isolate" : undefined,
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <div className={isDragging ? "drag-active" : "drag-idle"}>
+        {children({ ...listeners }, isDragging)}
+      </div>
+    </div>
+  );
+}
+
+function ItemListDndWrapper({
+  enabled,
+  itemIds,
+  sensors,
+  onDragStart,
+  onDragEnd,
+  children,
+}: {
+  enabled: boolean;
+  itemIds: number[];
+  sensors: ReturnType<typeof useSensors>;
+  onDragStart: (event: DragStartEvent) => void;
+  onDragEnd: (event: DragEndEvent) => void;
+  children: React.ReactNode;
+}) {
+  if (!enabled) return <>{children}</>;
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+      <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+        {children}
+      </SortableContext>
+    </DndContext>
+  );
+}
+
 export default function App() {
   const queryClient = useQueryClient();
   const theme = useTheme();
@@ -205,7 +292,7 @@ export default function App() {
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [stateFilter, setStateFilter] = useState<StateFilter>("active");
   const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>("all");
-  const [sortField, setSortField] = useState<SortField>("created");
+  const [sortField, setSortField] = useState<SortField>("manual");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [spacePickerState, setSpacePickerState] = useState<{
     itemId: number;
@@ -327,6 +414,7 @@ export default function App() {
   });
 
   const spaces = spacesQuery.data ?? [];
+  const spaceQueryParam = spaceFilter === "all" ? undefined : spaceFilter === "none" ? "none" : String(spaceFilter);
 
   const itemsQuery = useQuery({
     queryKey,
@@ -335,7 +423,7 @@ export default function App() {
         q: debouncedSearch || undefined,
         kind: kindFilter === "all" ? undefined : kindFilter,
         state: stateFilter === "all" ? undefined : stateFilter,
-        space: spaceFilter === "all" ? undefined : spaceFilter === "none" ? "none" : String(spaceFilter),
+        space: spaceQueryParam,
         page,
         perPage,
         sort: sortField,
@@ -377,7 +465,9 @@ export default function App() {
       filteredItems.sort((a, b) => {
         if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
         let cmp = 0;
-        if (sortField === "name") {
+        if (sortField === "manual") {
+          cmp = (a.position ?? 0) - (b.position ?? 0);
+        } else if (sortField === "name") {
           cmp = a.name.localeCompare(b.name);
         } else if (sortField === "size") {
           cmp = a.sizeBytes - b.sizeBytes;
@@ -386,7 +476,7 @@ export default function App() {
         } else {
           cmp = a.createdAt.localeCompare(b.createdAt);
         }
-        return sortOrder === "asc" ? cmp : -cmp;
+        return sortField === "manual" ? cmp : sortOrder === "asc" ? cmp : -cmp;
       });
 
       queryClient.setQueryData(queryKey, {
@@ -423,6 +513,31 @@ export default function App() {
       toast.success(res.deleted === 1 ? "Deleted 1 item" : `Deleted ${res.deleted} items`);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Bulk delete failed"),
+  });
+
+  // Drag-and-drop item reordering
+  const isManualSort = sortField === "manual";
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const canReorder = isManualSort && !debouncedSearch && kindFilter === "all";
+  const canDragDrop = canReorder && isReorderMode;
+  const [activeDragId, setActiveDragId] = useState<number | null>(null);
+
+  const handleItemDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDragId(Number(event.active.id));
+  }, []);
+
+  const dndSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const reorderMutation = useMutation({
+    mutationFn: reorderItems,
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to reorder items"),
   });
 
   const createLinkMutation = useMutation({
@@ -776,6 +891,137 @@ export default function App() {
   const items = itemsQuery.data?.items ?? [];
   const pagination = itemsQuery.data?.pagination;
 
+  const fetchAllFilteredIds = useCallback(async (): Promise<number[]> => {
+    // API currently clamps per_page to 200.
+    const perPageLimit = 200;
+    const baseQuery = {
+      q: debouncedSearch || undefined,
+      kind: kindFilter === "all" ? undefined : kindFilter,
+      state: stateFilter === "all" ? undefined : stateFilter,
+      space: spaceQueryParam,
+      sort: "manual" as const,
+      order: "asc" as const,
+      perPage: perPageLimit,
+    };
+
+    const firstPage = await listItems({ ...baseQuery, page: 1 });
+    const allIds = firstPage.items.map((item) => item.id);
+    for (let p = 2; p <= firstPage.pagination.pages; p += 1) {
+      const nextPage = await listItems({ ...baseQuery, page: p });
+      allIds.push(...nextPage.items.map((item) => item.id));
+    }
+    return allIds;
+  }, [debouncedSearch, kindFilter, stateFilter, spaceQueryParam]);
+
+  const handleItemDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      setActiveDragId(null);
+      if (reorderMutation.isPending) return;
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const currentIds = items.map((i) => i.id);
+      const oldIndex = currentIds.indexOf(Number(active.id));
+      const newIndex = currentIds.indexOf(Number(over.id));
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      // Enforce pinned boundary
+      const activeItem = items[oldIndex];
+      const overItem = items[newIndex];
+      if (activeItem.isPinned !== overItem.isPinned) return;
+
+      const newPageOrder = arrayMove(currentIds, oldIndex, newIndex);
+
+      // Optimistic update
+      const prev = queryClient.getQueryData<Awaited<ReturnType<typeof listItems>>>(queryKey);
+      if (prev) {
+        const reorderedItems = newPageOrder.map((id) => prev.items.find((i) => i.id === id)!).filter(Boolean);
+        queryClient.setQueryData(queryKey, { ...prev, items: reorderedItems });
+      }
+
+      try {
+        const { orderedIds: globalOrder } = await getItemOrder();
+
+        let fullNewOrder: number[];
+        if (spaceFilter === "all") {
+          fullNewOrder = substituteInOrder(globalOrder, new Set(currentIds), newPageOrder);
+        } else {
+          const scopeParam = spaceFilter === "none" ? "none" : String(spaceFilter);
+          const { orderedIds: scopedOrder } = await getItemOrder({ space: scopeParam });
+          const newScopedOrder = substituteInOrder(scopedOrder, new Set(currentIds), newPageOrder);
+          fullNewOrder = substituteInOrder(globalOrder, new Set(scopedOrder), newScopedOrder);
+        }
+
+        await reorderMutation.mutateAsync(fullNewOrder);
+      } catch {
+        // Revert optimistic update on error
+        if (prev) queryClient.setQueryData(queryKey, prev);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, queryKey, spaceFilter, queryClient, reorderMutation],
+  );
+
+  const handleMoveToPage = useCallback(
+    async (itemId: number, direction: "next" | "prev") => {
+      if (!pagination || pagination.pages <= 1) return;
+
+      // Optimistic update: remove item from current page
+      const prev = queryClient.getQueryData<Awaited<ReturnType<typeof listItems>>>(queryKey);
+      if (prev) {
+        queryClient.setQueryData(queryKey, {
+          ...prev,
+          items: prev.items.filter((i) => i.id !== itemId),
+        });
+      }
+
+      try {
+        const { orderedIds: globalOrder } = await getItemOrder();
+        let scopedOrder = globalOrder;
+        if (spaceQueryParam) {
+          const { orderedIds } = await getItemOrder({ space: spaceQueryParam });
+          scopedOrder = orderedIds;
+        }
+
+        // Reorder within the currently filtered set so page boundaries align with the UI view.
+        const filteredOrder = await fetchAllFilteredIds();
+        const workingOrder = [...filteredOrder];
+
+        // Remove item and reinsert at target page position
+        const idx = workingOrder.indexOf(itemId);
+        if (idx === -1) {
+          if (prev) queryClient.setQueryData(queryKey, prev);
+          return;
+        }
+        workingOrder.splice(idx, 1);
+
+        let targetIndex: number;
+        if (direction === "next") {
+          targetIndex = page * perPage; // first position of next page
+        } else {
+          targetIndex = (page - 1) * perPage - 1; // last position of previous page
+        }
+        targetIndex = Math.max(0, Math.min(targetIndex, workingOrder.length));
+        workingOrder.splice(targetIndex, 0, itemId);
+
+        const nextScopedOrder = substituteInOrder(
+          scopedOrder,
+          new Set(filteredOrder),
+          workingOrder,
+        );
+        const fullNewOrder = spaceQueryParam
+          ? substituteInOrder(globalOrder, new Set(scopedOrder), nextScopedOrder)
+          : nextScopedOrder;
+
+        await reorderMutation.mutateAsync(fullNewOrder);
+      } catch {
+        if (prev) queryClient.setQueryData(queryKey, prev);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pagination, queryKey, queryClient, reorderMutation, page, spaceQueryParam, fetchAllFilteredIds],
+  );
+
   // Sync local page state when the server clamps to a different page
   // (e.g. user was on page 3, then a filter reduced results to 1 page).
   // pagination.page is the only intentional trigger — including `page`
@@ -969,22 +1215,48 @@ export default function App() {
                 )}
               />
 
-              <button
-                type="button"
-                onClick={() => {
-                  setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
-                  setPage(1);
-                }}
-                className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent bg-[var(--app-hover)] text-[var(--app-text)] outline-none transition-colors hover:bg-[var(--app-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]`}
-                aria-label={sortOrder === "asc" ? "Sort ascending (click to switch to descending)" : "Sort descending (click to switch to ascending)"}
-                title={sortOrder === "asc" ? "Ascending" : "Descending"}
-              >
-                {sortOrder === "asc" ? (
-                  <ArrowUpNarrowWide className="h-4 w-4" />
+              {isManualSort ? (
+                isReorderMode ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsReorderMode(false)}
+                    disabled={reorderMutation.isPending}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-xs font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Exit reorder mode"
+                    title="Click to exit reorder mode"
+                  >
+                    {reorderMutation.isPending ? "Saving..." : "Done"}
+                  </button>
                 ) : (
-                  <ArrowDownWideNarrow className="h-4 w-4" />
-                )}
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsReorderMode(true)}
+                    disabled={!canReorder}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent bg-[var(--app-hover)] text-[var(--app-text)] outline-none transition-colors hover:bg-[var(--app-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Enter reorder mode"
+                    title={!canReorder ? "Clear filters to reorder" : "Reorder items"}
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </button>
+                )
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+                    setPage(1);
+                  }}
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent bg-[var(--app-hover)] text-[var(--app-text)] outline-none transition-colors hover:bg-[var(--app-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]`}
+                  aria-label={sortOrder === "asc" ? "Sort ascending (click to switch to descending)" : "Sort descending (click to switch to ascending)"}
+                  title={sortOrder === "asc" ? "Ascending" : "Descending"}
+                >
+                  {sortOrder === "asc" ? (
+                    <ArrowUpNarrowWide className="h-4 w-4" />
+                  ) : (
+                    <ArrowDownWideNarrow className="h-4 w-4" />
+                  )}
+                </button>
+              )}
 
             </div>
 
@@ -1062,7 +1334,7 @@ export default function App() {
           </section>
         ) : null}
 
-        <section className="surface-panel reveal reveal-d3 overflow-hidden rounded-xl">
+        <section className={`surface-panel reveal reveal-d3 rounded-xl ${canDragDrop ? "" : "overflow-hidden"}`}>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--app-border)] px-4 py-3">
             <div>
               <div className="font-display text-lg font-semibold">Shared items</div>
@@ -1108,7 +1380,14 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="stagger-list divide-y divide-[var(--app-border)]">
+            <ItemListDndWrapper
+              enabled={canDragDrop}
+              itemIds={items.map((i) => i.id)}
+              sensors={dndSensors}
+              onDragStart={handleItemDragStart}
+              onDragEnd={handleItemDragEnd}
+            >
+            <div className={`stagger-list divide-y divide-[var(--app-border)] ${canDragDrop ? "is-reordering" : ""} ${activeDragId ? "is-dragging" : ""}`}>
               {items.map((item) => {
                 const preview = kindPreview(item);
                 const isBinary = item.kind === "file" || item.kind === "folder";
@@ -1116,13 +1395,48 @@ export default function App() {
                 const isLoadingThisNote = notePreviewLoadingItemId === item.id;
                 const requiresUnlock = item.isPasswordProtected && !item.isPasswordUnlocked;
 
-                return (
+                const renderItemRow = (handleProps?: React.HTMLAttributes<HTMLElement>, isDragging?: boolean) => (
                   <div
-                    key={item.id}
-                    className="item-row group flex flex-col gap-3 px-4 py-4 hover:bg-[var(--app-hover)] lg:grid lg:grid-cols-[1fr_auto_auto] lg:items-center lg:gap-4"
+                    className={`item-row group flex flex-col gap-3 px-4 py-4 lg:grid lg:grid-cols-[1fr_auto_auto] lg:items-center lg:gap-4 ${isDragging ? "" : "hover:bg-[var(--app-hover)]"}`}
                   >
                     <div className="min-w-0">
                       <div className="flex items-start gap-3">
+                        {canDragDrop && (
+                          <div
+                            {...handleProps}
+                            className={`mt-2.5 flex shrink-0 items-center transition-colors ${
+                              isDragging
+                                ? "cursor-grabbing text-[var(--accent)]"
+                                : "cursor-grab text-[var(--app-muted)] hover:text-[var(--accent)] active:cursor-grabbing"
+                            }`}
+                          >
+                            <GripVertical className="h-4 w-4" />
+                          </div>
+                        )}
+                        {canDragDrop && !isDragging && pagination && pagination.pages > 1 && (
+                          <div className="mt-1.5 flex shrink-0 flex-col items-center">
+                            <button
+                              type="button"
+                              disabled={!pagination.hasPrev || reorderMutation.isPending}
+                              onClick={() => handleMoveToPage(item.id, "prev")}
+                              className="rounded p-0.5 text-[var(--app-muted)] transition-colors hover:text-[var(--accent)] disabled:pointer-events-none disabled:opacity-30"
+                              aria-label="Move to previous page"
+                              title="Move to previous page"
+                            >
+                              <ChevronUp className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!pagination.hasNext || reorderMutation.isPending}
+                              onClick={() => handleMoveToPage(item.id, "next")}
+                              className="rounded p-0.5 text-[var(--app-muted)] transition-colors hover:text-[var(--accent)] disabled:pointer-events-none disabled:opacity-30"
+                              aria-label="Move to next page"
+                              title="Move to next page"
+                            >
+                              <ChevronDown className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
                         <div className="mt-0.5 flex shrink-0 flex-col items-center gap-1.5">
                           <div className={`relative grid h-10 w-10 place-items-center rounded-md border bg-[var(--app-panel)] text-[var(--accent-cool)] ${item.isPinned ? "border-[var(--accent)]/40" : "border-[var(--app-border)]"}`}>
                             {item.kind === "folder" ? (
@@ -1329,8 +1643,17 @@ export default function App() {
                     </div>
                   </div>
                 );
+
+                return canDragDrop ? (
+                  <SortableItemWrapper key={item.id} id={item.id}>
+                    {(handleProps, isDragging) => renderItemRow(handleProps, isDragging)}
+                  </SortableItemWrapper>
+                ) : (
+                  <div key={item.id}>{renderItemRow()}</div>
+                );
               })}
             </div>
+            </ItemListDndWrapper>
           )}
 
           {spacePickerState && (

@@ -102,6 +102,7 @@ Key patterns:
 - **meta_json column**: Links store `{"url": "..."}`, notes store `{"text": "..."}`, folders store `{"file_count": N, "top_level_dir": "..."}`.
 - **Session unlocks**: Per-item unlock state is tracked in signed Flask session cookies (`app/services/item_access.py`).
 - **Item expiration**: Optional `expires_at` column. Expired items are filtered from all queries and deleted by a throttled `before_request` hook (~60s interval, max 50 per run).
+- **Item position**: Optional `position` column for manual (drag-and-drop) ordering. New items get `max(position)+1`. Reorder endpoint requires an exact permutation of all active item IDs.
 
 ### Frontend
 
@@ -128,7 +129,7 @@ Spaces are named organizational groupings for items (one-to-many, optional). The
 ## Current API Contract
 
 ### Items
-- `GET /api/items` with optional `q`, `kind`, `state`, `space` (ID or `none`), `protected`, `sort` (`name|size|created|modified`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
+- `GET /api/items` with optional `q`, `kind`, `state`, `space` (ID or `none`), `protected`, `sort` (`name|size|created|modified|manual`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
 - `POST /api/items/files` (multipart field `files`, repeatable; optional `password`, `ttl`, `spaceId`)
 - `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`; optional `password`, `ttl`, `spaceId`)
 - `POST /api/items/link` (JSON: `{"url":"https://...","name?":"...","password?":"...","ttl?":"1h|6h|24h|3d|7d|30d","spaceId?":1}`)
@@ -138,6 +139,8 @@ Spaces are named organizational groupings for items (one-to-many, optional). The
 - `PATCH /api/items/<id>` with JSON `{"state?":"active|done|archived|ready_to_delete","spaceId?":1,"pinned?":true}` (at least one field required; bumps `updatedAt`)
 - `GET /api/items/<id>/download`
 - `DELETE /api/items/<id>` only when item state is `ready_to_delete`
+- `GET /api/items/order` with optional `space` (ID or `none`) — returns `{"orderedIds": [...]}`
+- `PUT /api/items/reorder` (JSON: `{"orderedIds": [1, 3, 2, ...]}`) — returns `{"ok": true}`
 - `DELETE /api/items/ready-to-delete` (optional `q`, `kind`, `protected`)
 
 ### Spaces

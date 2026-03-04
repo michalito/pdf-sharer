@@ -111,7 +111,7 @@ def _parse_space_query_param(raw: Optional[str]) -> tuple[Optional[int], Optiona
     return space_id, None
 
 
-_VALID_SORT_FIELDS = {"name", "size", "created", "modified"}
+_VALID_SORT_FIELDS = {"name", "size", "created", "modified", "manual"}
 _VALID_SORT_ORDERS = {"asc", "desc"}
 
 
@@ -406,6 +406,28 @@ def create_note() -> tuple[Response, int]:
     item = service.create_note(text=text_raw, title=title, password=password, space_id=space_id, ttl=ttl, force=force)
     _remember_item_unlock_if_protected(service, item)
     return jsonify(_present_item(service, item)), 201
+
+
+@api.route("/items/order", methods=["GET"])
+def get_item_order() -> Response:
+    service = _get_service()
+    space_id, unspaced = _parse_space_query_param(request.args.get("space"))
+    ids = service.get_item_order(space_id=space_id, unspaced=unspaced)
+    return jsonify({"orderedIds": ids})
+
+
+@api.route("/items/reorder", methods=["PUT"])
+def reorder_items() -> Response:
+    service = _get_service()
+    data = get_json_body()
+    ordered_ids = data.get("orderedIds")
+    if not isinstance(ordered_ids, list) or not all(
+        type(i) is int for i in ordered_ids
+    ):
+        raise ValidationError("'orderedIds' must be an array of integers")
+
+    service.reorder_items(ordered_ids)
+    return jsonify({"ok": True})
 
 
 @api.route("/items/<int:item_id>", methods=["GET"])

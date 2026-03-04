@@ -12,7 +12,14 @@ from app.exceptions import FileOperationError
 from app.services.item_service import ItemService
 
 
-class _FailingCreateRepository:
+class _RepoBase:
+    """Common methods shared by all repository stubs."""
+
+    def get_max_position(self) -> int:
+        return -1
+
+
+class _FailingCreateRepository(_RepoBase):
     """Repository stub that fails on the second create call."""
 
     def __init__(self) -> None:
@@ -40,7 +47,7 @@ class _FailingCreateRepository:
         pass
 
 
-class _FailOnCommitRepository:
+class _FailOnCommitRepository(_RepoBase):
     """Repository stub where create succeeds but commit fails."""
 
     def find_by_content_hash(self, content_hash: str) -> list[object]:
@@ -61,7 +68,7 @@ class _FailOnCommitRepository:
         pass
 
 
-class _FailingFindByHashRepository:
+class _FailingFindByHashRepository(_RepoBase):
     """Repository stub that fails while checking duplicate content."""
 
     def find_by_content_hash(self, content_hash: str) -> list[object]:
