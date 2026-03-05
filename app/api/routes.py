@@ -8,6 +8,9 @@ from typing import Optional
 from flask import Response, current_app, g, jsonify, request, send_file
 
 from app.api import api, get_json_body
+from app.api.helpers import get_client_ip as _get_client_ip
+from app.api.helpers import get_service as _get_service
+from app.api.helpers import get_throttle as _get_throttle
 from app.api.item_presenter import present_item_for_api
 from app.constants import (
     DEFAULT_NOTE_EXCERPT_LENGTH,
@@ -22,7 +25,6 @@ from app.error_handlers import register_error_handlers
 from app.exceptions import AuthenticationError, RateLimitError, ValidationError
 from app.services.item_access import is_item_unlocked, mark_item_unlocked
 from app.services.item_service import ItemService
-from app.services.unlock_throttle import UnlockThrottle
 
 
 logger = logging.getLogger(__name__)
@@ -31,25 +33,12 @@ logger = logging.getLogger(__name__)
 register_error_handlers(api)
 
 
-def _get_service() -> ItemService:
-    return g.item_service
-
-
-def _get_throttle() -> UnlockThrottle:
-    return current_app.config["UNLOCK_THROTTLE"]
-
-
-def _get_client_ip() -> str:
-    return request.remote_addr or "unknown"
-
-
 def _get_note_excerpt_length() -> int:
-    raw_value = current_app.config.get("NOTE_EXCERPT_LENGTH", DEFAULT_NOTE_EXCERPT_LENGTH)
+    raw = current_app.config.get("NOTE_EXCERPT_LENGTH", DEFAULT_NOTE_EXCERPT_LENGTH)
     try:
-        value = int(raw_value)
+        value = int(raw)
     except (TypeError, ValueError):
-        value = DEFAULT_NOTE_EXCERPT_LENGTH
-
+        return DEFAULT_NOTE_EXCERPT_LENGTH
     return max(MIN_NOTE_EXCERPT_LENGTH, min(MAX_NOTE_EXCERPT_LENGTH, value))
 
 

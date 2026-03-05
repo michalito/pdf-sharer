@@ -357,6 +357,20 @@ def test_list_note_excerpt_length_respects_config(app: Flask, client: FlaskClien
     assert len(detail_excerpt) <= 60
 
 
+def test_list_note_excerpt_length_survives_invalid_config(app: Flask, client: FlaskClient):
+    """Regression: invalid runtime override of NOTE_EXCERPT_LENGTH must not cause 500."""
+    text = " ".join(f"word{i}" for i in range(40))
+    create = client.post("/api/items/note", json={"title": "Robust", "text": text})
+    assert create.status_code == 201
+
+    for bad_value in ("abc", None, -5):
+        app.config["NOTE_EXCERPT_LENGTH"] = bad_value
+        resp = client.get("/api/items?kind=note")
+        assert resp.status_code == 200, f"Failed for NOTE_EXCERPT_LENGTH={bad_value!r}"
+        item = resp.get_json()["items"][0]
+        assert isinstance(item["noteExcerpt"], str)
+
+
 def test_password_protected_file_unlock_flow(app: Flask, client: FlaskClient):
     create = client.post(
         "/api/items/files",

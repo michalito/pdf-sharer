@@ -10,8 +10,6 @@ registered before more general ones.
 
 import json
 import logging
-from functools import wraps
-from typing import Callable
 
 from flask import Blueprint, Response, jsonify
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError

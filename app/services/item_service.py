@@ -27,6 +27,7 @@ from app.exceptions import DuplicateDetectedError, FileOperationError, Validatio
 from app.repositories.item_repository import ItemRepository, PaginatedResult, SortField, SortOrder, StorageStats
 from app.utils.content_hash_lock import acquire_content_hash_locks
 from app.utils.hashing import hash_file, hash_string
+from app.utils.validation import validate_reorder_ids
 from app.utils.zip_utils import dedupe_zip_path, sanitize_zip_path
 
 
@@ -182,11 +183,7 @@ class ItemService:
                     if grouped_dupes:
                         raise DuplicateDetectedError("Duplicate content detected", duplicates=grouped_dupes)
 
-                password_hash = (
-                    self.hash_item_password(normalized_password)
-                    if normalized_password is not None
-                    else None
-                )
+                password_hash = self._make_password_hash(normalized_password)
                 created: list[Item] = []
                 next_position = self.repository.get_max_position() + 1
                 try:
@@ -290,11 +287,7 @@ class ItemService:
                     {"file_count": len(files), "top_level_dir": folder_name},
                     separators=(",", ":"),
                 )
-                password_hash = (
-                    self.hash_item_password(normalized_password)
-                    if normalized_password is not None
-                    else None
-                )
+                password_hash = self._make_password_hash(normalized_password)
 
                 next_position = self.repository.get_max_position() + 1
                 try:
@@ -340,11 +333,7 @@ class ItemService:
         display_name = self._normalize_display_name(name) or self._derive_link_display_name(normalized_url)
         stored_name = self._synthetic_stored_name("link")
         meta_json = json.dumps({"url": normalized_url}, separators=(",", ":"))
-        password_hash = (
-            self.hash_item_password(normalized_password)
-            if normalized_password is not None
-            else None
-        )
+        password_hash = self._make_password_hash(normalized_password)
 
         with acquire_content_hash_locks([content_hash]):
             if not skip_dedup:
@@ -393,11 +382,7 @@ class ItemService:
         display_name = self._normalize_note_title(title) or self._derive_note_title(normalized_text)
         stored_name = self._synthetic_stored_name("note")
         meta_json = json.dumps({"text": normalized_text}, separators=(",", ":"))
-        password_hash = (
-            self.hash_item_password(normalized_password)
-            if normalized_password is not None
-            else None
-        )
+        password_hash = self._make_password_hash(normalized_password)
 
         with acquire_content_hash_locks([content_hash]):
             if not skip_dedup:
@@ -479,67 +464,11 @@ class ItemService:
             space_id=space_id,
             unspaced=unspaced,
         )
-        if not items:
-            return 0
-
-        upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
-        stored_names = [item.stored_name for item in items if self._item_has_stored_file(item)]
-
-        try:
-            self.repository.delete_many(items)
-        except SQLAlchemyError as e:
-            logger.error("Failed to bulk delete item records: %s", e, exc_info=True)
-            raise FileOperationError("Failed to delete item records")
-
-        failures = 0
-        for stored_name in stored_names:
-            try:
-                (upload_folder / stored_name).unlink(missing_ok=True)
-            except OSError as e:
-                failures += 1
-                logger.error(
-                    "Failed to delete file %s: %s",
-                    upload_folder / stored_name,
-                    e,
-                    exc_info=True,
-                )
-
-        if failures:
-            logger.warning("Bulk delete completed with %s file deletion failure(s)", failures)
-
-        return len(items)
+        return self._bulk_delete_items(items, label="bulk delete")
 
     def delete_expired_items(self, *, limit: int = 100) -> int:
         expired = self.repository.find_expired(limit=limit)
-        if not expired:
-            return 0
-
-        upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
-        stored_names = [item.stored_name for item in expired if self._item_has_stored_file(item)]
-
-        try:
-            self.repository.delete_many(expired)
-        except SQLAlchemyError as e:
-            logger.error("Failed to delete expired item records: %s", e, exc_info=True)
-            raise FileOperationError("Failed to delete expired item records")
-
-        failures = 0
-        for stored_name in stored_names:
-            try:
-                (upload_folder / stored_name).unlink(missing_ok=True)
-            except OSError as e:
-                failures += 1
-                logger.error(
-                    "Failed to delete expired file %s: %s",
-                    upload_folder / stored_name,
-                    e,
-                    exc_info=True,
-                )
-
-        if failures:
-            logger.warning("Expired cleanup completed with %s file deletion failure(s)", failures)
-
-        return len(expired)
+        return self._bulk_delete_items(expired, label="delete expired")
 
     def update_item(
         self,
@@ -580,25 +509,8 @@ class ItemService:
 
         ordered_ids must be an exact permutation of all active (non-expired) item IDs.
         """
-        if not ordered_ids:
-            raise ValidationError("orderedIds must be a non-empty list")
-
-        if len(ordered_ids) != len(set(ordered_ids)):
-            raise ValidationError("orderedIds must not contain duplicates")
-
         existing_ids = set(self.repository.get_all_active_ids())
-        given_ids = set(ordered_ids)
-        if given_ids != existing_ids:
-            missing = existing_ids - given_ids
-            extra = given_ids - existing_ids
-            parts = []
-            if missing:
-                parts.append(f"missing IDs: {sorted(missing)}")
-            if extra:
-                parts.append(f"unknown IDs: {sorted(extra)}")
-            raise ValidationError(
-                f"orderedIds must be an exact permutation of all active item IDs ({', '.join(parts)})"
-            )
+        validate_reorder_ids(ordered_ids, existing_ids, "active item IDs")
 
         try:
             self.repository.reorder(ordered_ids)
@@ -640,6 +552,11 @@ class ItemService:
     def hash_item_password(self, password: str) -> str:
         return generate_password_hash(password)
 
+    def _make_password_hash(self, normalized_password: Optional[str]) -> Optional[str]:
+        if normalized_password is None:
+            return None
+        return self.hash_item_password(normalized_password)
+
     def verify_item_password(self, item: Item, raw_password: Optional[str]) -> bool:
         if not self.item_requires_password(item):
             return True
@@ -653,10 +570,7 @@ class ItemService:
     def _resolve_expires_at(self, ttl: object | None) -> Optional[datetime]:
         if ttl is None:
             return None
-        if not isinstance(ttl, str):
-            valid = ", ".join(ALLOWED_TTL_PRESETS.keys())
-            raise ValidationError(f"Invalid TTL '{ttl}'. Valid values: {valid}")
-        if ttl not in ALLOWED_TTL_PRESETS:
+        if not isinstance(ttl, str) or ttl not in ALLOWED_TTL_PRESETS:
             valid = ", ".join(ALLOWED_TTL_PRESETS.keys())
             raise ValidationError(f"Invalid TTL '{ttl}'. Valid values: {valid}")
         return datetime.now(timezone.utc) + ALLOWED_TTL_PRESETS[ttl]
@@ -733,6 +647,39 @@ class ItemService:
             "spaceName": None,
             "createdAt": created_at,
         }
+
+    def _bulk_delete_items(self, items: list[Item], *, label: str) -> int:
+        """Delete items from DB and remove their files from disk.
+
+        Returns the number of items deleted.
+        """
+        if not items:
+            return 0
+
+        upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
+        stored_names = [item.stored_name for item in items if self._item_has_stored_file(item)]
+
+        try:
+            self.repository.delete_many(items)
+        except SQLAlchemyError as e:
+            logger.error("Failed to %s item records: %s", label, e, exc_info=True)
+            raise FileOperationError(f"Failed to {label} item records")
+
+        failures = 0
+        for stored_name in stored_names:
+            try:
+                (upload_folder / stored_name).unlink(missing_ok=True)
+            except OSError as e:
+                failures += 1
+                logger.error(
+                    "Failed to %s file %s: %s",
+                    label, upload_folder / stored_name, e, exc_info=True,
+                )
+
+        if failures:
+            logger.warning("%s completed with %s file deletion failure(s)", label.capitalize(), failures)
+
+        return len(items)
 
     def _item_has_stored_file(self, item: Item) -> bool:
         return item.kind in {ItemKind.FILE.value, ItemKind.FOLDER.value}
