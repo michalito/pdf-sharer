@@ -86,6 +86,7 @@ function makeFailingDirectoryDrop(rootName: string): DataTransferItem {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
 
   vi.mocked(api.fetchVersion).mockResolvedValue("dev");
   vi.mocked(api.listItems).mockResolvedValue({
@@ -249,6 +250,139 @@ it("opens and closes the New dropdown", async () => {
   expect(within(newMenu).getByRole("button", { name: "Upload files" })).toBeInTheDocument();
   await user.click(document.body);
   expect(within(newMenu).queryByRole("button", { name: "Upload files" })).not.toBeInTheDocument();
+});
+
+it("uses persisted default sorting for the initial list query", async () => {
+  localStorage.setItem(
+    "saita-settings",
+    JSON.stringify({ defaultSortField: "name", defaultSortOrder: "asc" }),
+  );
+
+  renderApp();
+  await screen.findByText("Shared items");
+  await waitFor(() => {
+    expect(api.listItems).toHaveBeenCalled();
+  });
+
+  const firstQuery = vi.mocked(api.listItems).mock.calls[0]?.[0];
+  expect(firstQuery).toBeDefined();
+  expect(firstQuery?.sort).toBe("name");
+  expect(firstQuery?.order).toBe("asc");
+});
+
+it("uses persisted default state filter and page size for the initial list query", async () => {
+  localStorage.setItem(
+    "saita-settings",
+    JSON.stringify({ defaultStateFilter: "archived", defaultPerPage: 100 }),
+  );
+
+  renderApp();
+  await screen.findByText("Shared items");
+  await waitFor(() => {
+    expect(api.listItems).toHaveBeenCalled();
+  });
+
+  const firstQuery = vi.mocked(api.listItems).mock.calls[0]?.[0];
+  expect(firstQuery).toBeDefined();
+  expect(firstQuery?.state).toBe("archived");
+  expect(firstQuery?.perPage).toBe(100);
+});
+
+it("prefills default auto-delete in upload, link, and note dialogs", async () => {
+  localStorage.setItem(
+    "saita-settings",
+    JSON.stringify({ defaultTtl: "7d" }),
+  );
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("Shared items");
+  const newMenu = screen.getByTestId("new-menu");
+
+  await user.click(within(newMenu).getByRole("button", { name: "New" }));
+  await user.click(within(newMenu).getByRole("button", { name: "Save link" }));
+  const linkDialog = await screen.findByRole("dialog", { name: "Save external link" });
+  expect(within(linkDialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent("7 days");
+  await user.click(within(linkDialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: "Save external link" })).not.toBeInTheDocument();
+  });
+
+  await user.click(within(newMenu).getByRole("button", { name: "New" }));
+  await user.click(within(newMenu).getByRole("button", { name: "Save note" }));
+  const noteDialog = await screen.findByRole("dialog", { name: "Save note" });
+  expect(within(noteDialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent("7 days");
+  await user.click(within(noteDialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: "Save note" })).not.toBeInTheDocument();
+  });
+
+  await user.click(within(newMenu).getByRole("button", { name: "New" }));
+  await user.click(within(newMenu).getByRole("button", { name: "Upload files" }));
+  const pickerInput = document.querySelector('input[type="file"]:not([webkitdirectory])') as HTMLInputElement | null;
+  if (!pickerInput) throw new Error("files input not found");
+  const file = new File(["queued"], "queued.txt", { type: "text/plain" });
+  fireEvent.change(pickerInput, { target: { files: [file] } });
+
+  const uploadDialog = await screen.findByRole("dialog", { name: "Upload files" });
+  expect(within(uploadDialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent("7 days");
+});
+
+it("opens settings from both header and footer entry points", async () => {
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("Shared items");
+  expect(screen.getAllByRole("button", { name: "Settings" })).toHaveLength(2);
+
+  for (const index of [0, 1]) {
+    await user.click(screen.getAllByRole("button", { name: "Settings" })[index]);
+    const panel = await screen.findByRole("dialog", { name: "Settings" });
+    expect(within(panel).getByRole("combobox", { name: "Default sort field" })).toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: "Close" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+    });
+  }
+});
+
+it("applies sort defaults changed in settings after remount", async () => {
+  const user = userEvent.setup();
+  const view = renderApp();
+
+  await screen.findByText("Shared items");
+
+  await user.click(screen.getAllByRole("button", { name: "Settings" })[0]);
+  const panel = await screen.findByRole("dialog", { name: "Settings" });
+
+  await user.click(within(panel).getByRole("combobox", { name: "Default sort field" }));
+  let listbox = await screen.findByRole("listbox");
+  await user.click(within(listbox).getByRole("option", { name: "Name" }));
+
+  await user.click(within(panel).getByRole("combobox", { name: "Default sort order" }));
+  listbox = await screen.findByRole("listbox");
+  await user.click(within(listbox).getByRole("option", { name: "Ascending" }));
+
+  await user.click(within(panel).getByRole("button", { name: "Close" }));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+  });
+
+  const callsBeforeRemount = vi.mocked(api.listItems).mock.calls.length;
+  view.unmount();
+
+  renderApp();
+  await screen.findByText("Shared items");
+  await waitFor(() => {
+    expect(vi.mocked(api.listItems).mock.calls.length).toBeGreaterThan(callsBeforeRemount);
+  });
+
+  const remountQuery = vi.mocked(api.listItems).mock.calls[callsBeforeRemount]?.[0];
+  expect(remountQuery).toBeDefined();
+  expect(remountQuery?.sort).toBe("name");
+  expect(remountQuery?.order).toBe("asc");
 });
 
 it("queues dropped files if a dialog opens before drop extraction resolves", async () => {

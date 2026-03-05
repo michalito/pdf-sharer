@@ -36,13 +36,11 @@ import {
   HardDrive,
   Lock,
   Link2,
-  Moon,
   Pencil,
   Pin,
   Plus,
   Search,
   MessageSquareText,
-  Sun,
   Layers,
   Trash2,
   ArrowUpDown,
@@ -50,6 +48,7 @@ import {
   ArrowDownWideNarrow,
   CircleDot,
   Shapes,
+  SlidersHorizontal,
   Upload,
 } from "lucide-react";
 import ConfirmDialog from "./components/ConfirmDialog";
@@ -57,6 +56,7 @@ import DuplicateDialog from "./components/DuplicateDialog";
 import DropOverlay from "./components/DropOverlay";
 import MarkdownProse from "./components/MarkdownProse";
 import HowItWorksPanel from "./components/HowItWorksPanel";
+import SettingsPanel from "./components/SettingsPanel";
 import StorageDashboard from "./components/StorageDashboard";
 import Select from "./components/Select";
 import SpaceBar, { SpaceFilter } from "./components/SpaceBar";
@@ -96,17 +96,11 @@ import {
 import { formatBytes, formatDateTime, formatTimeRemaining, TTL_PRESETS } from "./lib/format";
 import { useDebouncedValue } from "./lib/useDebouncedValue";
 import { useTheme } from "./lib/useTheme";
+import { getSettingsSnapshot } from "./lib/useSettings";
+import { sortFieldOptions } from "./lib/constants";
 
 type KindFilter = "all" | ItemKind;
 type StateFilter = "all" | ItemState;
-
-const sortFieldOptions: Array<{ value: SortField; label: string }> = [
-  { value: "manual", label: "Manual" },
-  { value: "created", label: "Date created" },
-  { value: "modified", label: "Date modified" },
-  { value: "name", label: "Name" },
-  { value: "size", label: "Size" },
-];
 
 const itemStateOptions: Array<{ value: ItemState; label: string }> = [
   { value: "active", label: "Active" },
@@ -282,7 +276,7 @@ function ItemListDndWrapper({
 
 export default function App() {
   const queryClient = useQueryClient();
-  const theme = useTheme();
+  useTheme();
 
   const filesInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
@@ -290,22 +284,23 @@ export default function App() {
   const [searchText, setSearchText] = useState("");
   const debouncedSearch = useDebouncedValue(searchText.trim(), 250);
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
-  const [stateFilter, setStateFilter] = useState<StateFilter>("active");
+  const [stateFilter, setStateFilter] = useState<StateFilter>(() => getSettingsSnapshot().defaultStateFilter);
   const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>("all");
-  const [sortField, setSortField] = useState<SortField>("manual");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [sortField, setSortField] = useState<SortField>(() => getSettingsSnapshot().defaultSortField);
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => getSettingsSnapshot().defaultSortOrder);
   const [spacePickerState, setSpacePickerState] = useState<{
     itemId: number;
     rect: DOMRect;
   } | null>(null);
   const [page, setPage] = useState(1);
-  const perPage = 50;
+  const [perPage] = useState(() => getSettingsSnapshot().defaultPerPage);
   const [deleteSpaceTarget, setDeleteSpaceTarget] = useState<SpaceDto | null>(null);
 
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const newMenuRef = useRef<HTMLDivElement | null>(null);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isStorageOpen, setIsStorageOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [uploads, setUploads] = useState<UploadTask[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<ItemDto | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
@@ -352,7 +347,8 @@ export default function App() {
     Boolean(unlockTarget) ||
     Boolean(deleteSpaceTarget) ||
     Boolean(duplicateDialog) ||
-    isGuideOpen;
+    isGuideOpen ||
+    isSettingsOpen;
 
   const { isOverWindow } = useFullPageDrop({
     onDrop: ({ files, kind }) => {
@@ -646,7 +642,7 @@ export default function App() {
 
   function openUploadDialog(kind: "files" | "folder", files: File[]) {
     if (files.length === 0) return;
-    setUploadTtl("");
+    setUploadTtl(getSettingsSnapshot().defaultTtl);
     dispatchUploadDialog({ type: "open", kind, files, spaceId: activeSpaceId });
   }
 
@@ -1109,11 +1105,11 @@ export default function App() {
                         Upload folder
                       </button>
                       <div className="my-1 border-t border-[var(--app-border)]" />
-                      <button type="button" onClick={() => { setNewMenuOpen(false); setLinkSpaceId(activeSpaceId); setLinkDialogOpen(true); }} className={newMenuItemClass}>
+                      <button type="button" onClick={() => { setNewMenuOpen(false); setLinkSpaceId(activeSpaceId); setLinkTtl(getSettingsSnapshot().defaultTtl); setLinkDialogOpen(true); }} className={newMenuItemClass}>
                         <Link2 className="h-4 w-4 text-[var(--app-muted)]" />
                         Save link
                       </button>
-                      <button type="button" onClick={() => { setNewMenuOpen(false); setNoteSpaceId(activeSpaceId); setNoteDialogOpen(true); }} className={newMenuItemClass}>
+                      <button type="button" onClick={() => { setNewMenuOpen(false); setNoteSpaceId(activeSpaceId); setNoteTtl(getSettingsSnapshot().defaultTtl); setNoteDialogOpen(true); }} className={newMenuItemClass}>
                         <MessageSquareText className="h-4 w-4 text-[var(--app-muted)]" />
                         Save note
                       </button>
@@ -1123,12 +1119,12 @@ export default function App() {
 
                 <button
                   type="button"
-                  onClick={theme.toggle}
+                  onClick={() => setIsSettingsOpen(true)}
                   className={`inline-flex h-10 w-10 items-center justify-center ${controlButtonClass}`}
-                  aria-label="Toggle theme"
-                  title="Toggle theme"
+                  aria-label="Settings"
+                  title="Settings"
                 >
-                  {theme.isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  <SlidersHorizontal className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -1315,7 +1311,7 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setLinkSpaceId(activeSpaceId); setLinkDialogOpen(true); }}
+                  onClick={() => { setLinkSpaceId(activeSpaceId); setLinkTtl(getSettingsSnapshot().defaultTtl); setLinkDialogOpen(true); }}
                   className={`inline-flex items-center gap-2 ${controlButtonClass}`}
                 >
                   <Link2 className="h-4 w-4" />
@@ -1323,7 +1319,7 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setNoteSpaceId(activeSpaceId); setNoteDialogOpen(true); }}
+                  onClick={() => { setNoteSpaceId(activeSpaceId); setNoteTtl(getSettingsSnapshot().defaultTtl); setNoteDialogOpen(true); }}
                   className={`inline-flex items-center gap-2 ${controlButtonClass}`}
                 >
                   <MessageSquareText className="h-4 w-4" />
@@ -1712,6 +1708,14 @@ export default function App() {
           >
             <HardDrive className="h-3.5 w-3.5" />
             Storage
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="inline-flex items-center gap-1.5 font-medium text-[var(--app-muted)] transition-colors hover:text-[var(--app-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Settings
           </button>
           <button
             type="button"
@@ -2242,6 +2246,7 @@ export default function App() {
       <UploadQueue uploads={uploads} onDismiss={dismissUpload} />
       <StorageDashboard open={isStorageOpen} onClose={() => setIsStorageOpen(false)} />
       <HowItWorksPanel open={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
+      <SettingsPanel open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 }
