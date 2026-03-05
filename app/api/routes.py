@@ -301,6 +301,13 @@ def list_items() -> Response:
         sort=sort,
         order=order,
     )
+    state_counts = service.count_items_by_state(
+        q=q,
+        kind=kind,
+        protected=protected,
+        space_id=space_id,
+        unspaced=unspaced,
+    )
     return jsonify(
         {
             "items": [
@@ -313,6 +320,9 @@ def list_items() -> Response:
                 for item in result.items
             ],
             "pagination": result.to_dict(),
+            "countByState": {
+                s.value: state_counts.get(s.value, 0) for s in ItemState
+            },
         }
     )
 

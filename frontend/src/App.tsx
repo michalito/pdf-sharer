@@ -1029,14 +1029,6 @@ export default function App() {
     }
   }, [pagination?.page]);
 
-  const visibleCounts = useMemo(
-    () => ({
-      active: items.filter((it) => it.state === "active").length,
-      done: items.filter((it) => it.state === "done").length,
-      readyToDelete: items.filter((it) => it.state === "ready_to_delete").length,
-    }),
-    [items],
-  );
 
   const controlClass =
     "h-10 rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 text-sm text-[var(--app-text)] shadow-sm outline-none transition-colors hover:bg-[var(--app-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
@@ -1054,11 +1046,12 @@ export default function App() {
     "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
   const stateSelectClass =
     "relative inline-flex h-8 items-center gap-2 rounded-lg pl-2 pr-8 text-xs font-medium shadow-sm w-[10rem] lg:w-[11.5rem]";
+  const countByState = itemsQuery.data?.countByState;
   const summaryMetrics = [
     { label: "Total", value: pagination?.total ?? 0 },
-    { label: "Active", value: visibleCounts.active },
-    { label: "Done", value: visibleCounts.done },
-    { label: "Ready", value: visibleCounts.readyToDelete },
+    { label: "Active", value: countByState?.active ?? 0 },
+    { label: "Done", value: countByState?.done ?? 0 },
+    { label: "Ready", value: countByState?.ready_to_delete ?? 0 },
   ];
   const showDropzone = !itemsQuery.isLoading && !itemsQuery.error && items.length === 0;
 

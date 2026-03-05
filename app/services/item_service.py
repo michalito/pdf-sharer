@@ -90,6 +90,20 @@ class ItemService:
             order=order,
         )
 
+    def count_items_by_state(
+        self,
+        *,
+        q: Optional[str] = None,
+        kind: Optional[ItemKind] = None,
+        protected: Optional[bool] = None,
+        space_id: Optional[int] = None,
+        unspaced: Optional[bool] = None,
+    ) -> dict[str, int]:
+        return self.repository.count_by_state(
+            q=q, kind=kind, protected=protected,
+            space_id=space_id, unspaced=unspaced,
+        )
+
     def get_item(self, item_id: int) -> Item:
         return self.repository.get_by_id_or_raise(item_id)
 

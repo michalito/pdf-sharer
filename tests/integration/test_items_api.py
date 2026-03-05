@@ -611,6 +611,44 @@ def test_list_items_can_filter_by_protected_flag(client: FlaskClient):
     assert unprotected_payload["items"][0]["id"] == unprotected_id
 
 
+def test_list_items_includes_count_by_state(client: FlaskClient):
+    """countByState reflects totals across all states for the current filters."""
+    r1 = client.post("/api/items/note", json={"text": "note1", "title": "A"})
+    r2 = client.post("/api/items/note", json={"text": "note2", "title": "B"})
+    r3 = client.post("/api/items/note", json={"text": "note3", "title": "C"})
+    assert r1.status_code == 201
+    assert r2.status_code == 201
+    assert r3.status_code == 201
+
+    id2 = r2.get_json()["id"]
+    id3 = r3.get_json()["id"]
+    client.patch(f"/api/items/{id2}", json={"state": "done"})
+    client.patch(f"/api/items/{id3}", json={"state": "ready_to_delete"})
+
+    # Unfiltered: shows breakdown across all states
+    res = client.get("/api/items")
+    data = res.get_json()
+    assert data["countByState"]["active"] == 1
+    assert data["countByState"]["done"] == 1
+    assert data["countByState"]["ready_to_delete"] == 1
+    assert data["countByState"]["archived"] == 0
+
+    # With state filter: pagination.total is filtered but countByState still shows all
+    res = client.get("/api/items?state=active")
+    data = res.get_json()
+    assert data["pagination"]["total"] == 1
+    assert data["countByState"]["active"] == 1
+    assert data["countByState"]["done"] == 1
+    assert data["countByState"]["ready_to_delete"] == 1
+
+    # With search filter: countByState only counts matching items
+    res = client.get("/api/items?q=note1")
+    data = res.get_json()
+    assert data["countByState"]["active"] == 1
+    assert data["countByState"]["done"] == 0
+    assert data["countByState"]["ready_to_delete"] == 0
+
+
 def test_bulk_delete_ready_to_delete_can_filter_by_protected(app: Flask, client: FlaskClient):
     protected = client.post(
         "/api/items/files",

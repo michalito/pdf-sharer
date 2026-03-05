@@ -129,7 +129,7 @@ Spaces are named organizational groupings for items (one-to-many, optional). The
 ## Current API Contract
 
 ### Items
-- `GET /api/items` with optional `q`, `kind`, `state`, `space` (ID or `none`), `protected`, `sort` (`name|size|created|modified|manual`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
+- `GET /api/items` with optional `q`, `kind`, `state`, `space` (ID or `none`), `protected`, `sort` (`name|size|created|modified|manual`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page` — response includes `countByState` (totals by state for the current filters, ignoring the `state` filter)
 - `POST /api/items/files` (multipart field `files`, repeatable; optional `password`, `ttl`, `spaceId`)
 - `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`; optional `password`, `ttl`, `spaceId`)
 - `POST /api/items/link` (JSON: `{"url":"https://...","name?":"...","password?":"...","ttl?":"1h|6h|24h|3d|7d|30d","spaceId?":1}`)

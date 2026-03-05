@@ -64,6 +64,12 @@ function makePagination(total: number) {
   };
 }
 
+function makeCountByState(
+  counts: Partial<Record<api.ItemState, number>> = {},
+): Record<api.ItemState, number> {
+  return { active: 0, done: 0, archived: 0, ready_to_delete: 0, ...counts };
+}
+
 function makeFailingDirectoryDrop(rootName: string): DataTransferItem {
   const dirEntry = {
     isFile: false,
@@ -92,6 +98,7 @@ beforeEach(() => {
   vi.mocked(api.listItems).mockResolvedValue({
     items: [],
     pagination: makePagination(0),
+    countByState: makeCountByState(),
   });
   vi.mocked(api.getItem).mockRejectedValue(new Error("not mocked"));
   vi.mocked(api.createLink).mockResolvedValue({
@@ -587,6 +594,7 @@ it("shows kind-specific actions and loads full note text for preview", async () 
       },
     ],
     pagination: makePagination(3),
+    countByState: makeCountByState({ active: 3 }),
   });
   vi.mocked(api.getItem).mockResolvedValue({
     id: 3,
@@ -635,6 +643,7 @@ it("unlocks a protected note before loading preview", async () => {
       },
     ],
     pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
   });
   vi.mocked(api.getItem).mockResolvedValue({
     id: 7,
@@ -691,6 +700,7 @@ it("updates the space label optimistically after selecting from the picker", asy
       },
     ],
     pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
   });
 
   let resolveUpdate: ((value: api.ItemDto) => void) | null = null;
@@ -760,6 +770,7 @@ it("keeps space picker open while scrolling inside and closes on outside scroll"
       },
     ],
     pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
   });
 
   const user = userEvent.setup();
@@ -820,6 +831,7 @@ it("allows entering reorder mode when filtering by done state", async () => {
         }),
       ],
       pagination: makePagination(1),
+      countByState: makeCountByState({ [state]: 1 }),
     };
   });
 
@@ -840,6 +852,7 @@ it("shows 'Add to space' button when item has no space", async () => {
   vi.mocked(api.listItems).mockResolvedValue({
     items: [makeItem()],
     pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
   });
 
   renderApp();
@@ -853,6 +866,7 @@ it("shows space name label when item has a space", async () => {
   vi.mocked(api.listItems).mockResolvedValue({
     items: [makeItem({ spaceId: 1, spaceName: "Design" })],
     pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
   });
 
   renderApp();
@@ -868,6 +882,7 @@ it("shows a polished icon marker for assigned space and no marker mode controls"
   vi.mocked(api.listItems).mockResolvedValue({
     items: [makeItem({ spaceId: 1, spaceName: "Design" })],
     pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
   });
 
   const user = userEvent.setup();
@@ -891,6 +906,7 @@ it("opens picker, assigns a space, and calls updateItem", async () => {
   vi.mocked(api.listItems).mockResolvedValue({
     items: [makeItem()],
     pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
   });
   vi.mocked(api.updateItem).mockResolvedValue(
     makeItem({ spaceId: 2, spaceName: "Engineering" }),
@@ -920,6 +936,7 @@ it("unassigns a space via the picker", async () => {
   vi.mocked(api.listItems).mockResolvedValue({
     items: [makeItem({ spaceId: 1, spaceName: "Design" })],
     pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
   });
   vi.mocked(api.updateItem).mockResolvedValue(
     makeItem({ spaceId: null, spaceName: null }),
@@ -944,6 +961,7 @@ it("closes picker on Escape", async () => {
   vi.mocked(api.listItems).mockResolvedValue({
     items: [makeItem()],
     pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
   });
 
   const user = userEvent.setup();
@@ -962,6 +980,7 @@ it("rolls back optimistic space assignment on mutation failure", async () => {
   vi.mocked(api.listItems).mockResolvedValue({
     items: [makeItem()],
     pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
   });
 
   let rejectUpdate: ((reason: Error) => void) | null = null;

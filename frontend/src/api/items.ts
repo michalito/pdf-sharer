@@ -49,6 +49,7 @@ export type PaginationDto = {
 export type ListItemsResponse = {
   items: ItemDto[];
   pagination: PaginationDto;
+  countByState: Record<ItemState, number>;
 };
 
 type ApiErrorBody = { error?: string; code?: string; duplicates?: DuplicateInfo[]; retryAfter?: number };

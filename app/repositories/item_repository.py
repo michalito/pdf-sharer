@@ -155,6 +155,25 @@ class ItemRepository:
             has_prev=page > 1,
         )
 
+    def count_by_state(
+        self,
+        *,
+        q: Optional[str] = None,
+        kind: Optional[ItemKind] = None,
+        protected: Optional[bool] = None,
+        space_id: Optional[int] = None,
+        unspaced: Optional[bool] = None,
+    ) -> dict[str, int]:
+        """Count items grouped by state, applying all filters except state."""
+        query = db.session.query(Item.state, func.count(Item.id))
+        query = self._exclude_expired(query)
+        query = self._apply_filters(
+            query, q=q, kind=kind, state=None, protected=protected,
+            space_id=space_id, unspaced=unspaced,
+        )
+        query = query.group_by(Item.state)
+        return {state_val: cnt for state_val, cnt in query.all()}
+
     def get_by_id(self, item_id: int) -> Optional[Item]:
         return db.session.get(Item, item_id)
 
