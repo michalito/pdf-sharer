@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.domain.space import Space
 from app.exceptions import FileOperationError, ValidationError
 from app.repositories.space_repository import SpaceRepository
+from app.utils.validation import validate_reorder_ids
 
 
 logger = logging.getLogger(__name__)
@@ -79,25 +80,8 @@ class SpaceService:
         ``ordered_ids`` must be an exact permutation of all existing space IDs
         (no duplicates, no missing, no extras).
         """
-        if not ordered_ids:
-            raise ValidationError("orderedIds must be a non-empty list")
-
-        if len(ordered_ids) != len(set(ordered_ids)):
-            raise ValidationError("orderedIds must not contain duplicates")
-
         existing_ids = self.repository.get_all_ids()
-        given_ids = set(ordered_ids)
-        if given_ids != existing_ids:
-            missing = existing_ids - given_ids
-            extra = given_ids - existing_ids
-            parts = []
-            if missing:
-                parts.append(f"missing IDs: {sorted(missing)}")
-            if extra:
-                parts.append(f"unknown IDs: {sorted(extra)}")
-            raise ValidationError(
-                f"orderedIds must be an exact permutation of all space IDs ({', '.join(parts)})"
-            )
+        validate_reorder_ids(ordered_ids, existing_ids, "space IDs")
 
         try:
             self.repository.reorder(ordered_ids)

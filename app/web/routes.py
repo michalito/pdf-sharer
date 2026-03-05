@@ -7,7 +7,6 @@ import os
 from flask import (
     Response,
     current_app,
-    g,
     jsonify,
     redirect,
     render_template,
@@ -17,25 +16,15 @@ from flask import (
     url_for,
 )
 
+from app.api.helpers import get_client_ip as _get_client_ip
+from app.api.helpers import get_service as _get_service
+from app.api.helpers import get_throttle as _get_throttle
 from app.domain.item import ItemKind
 from app.exceptions import AppError, ValidationError
 from app.services.item_access import is_item_unlocked, mark_item_unlocked
 from app.services.item_service import ItemService
-from app.services.unlock_throttle import UnlockThrottle
 from app.utils.markdown import render_markdown
 from app.web import web
-
-
-def _get_service() -> ItemService:
-    return g.item_service
-
-
-def _get_throttle() -> UnlockThrottle:
-    return current_app.config["UNLOCK_THROTTLE"]
-
-
-def _get_client_ip() -> str:
-    return request.remote_addr or "unknown"
 
 
 @web.route("/")
