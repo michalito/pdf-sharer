@@ -148,11 +148,11 @@ export default function HowItWorksPanel(props: {
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="grid h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] p-0.5">
-                  <img src="/logo.png" alt="sa\u00edta logo" className="h-full w-full object-contain" />
+                  <img src="/logo.png" alt="saíta logo" className="h-full w-full object-contain" />
                 </div>
                 <div>
                   <h2 id={titleId} className="font-display text-xl font-semibold">
-                    sa\u00edta
+                    saíta
                   </h2>
                   <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--app-muted)]">
                     Internal exchange, zero login
@@ -275,7 +275,7 @@ export default function HowItWorksPanel(props: {
           {/* ── Footer ── */}
           <div className="flex items-center justify-between border-t border-[var(--app-border)]/55 px-5 py-3">
             <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
-              sa\u00edta &middot; internal use
+              saíta &middot; internal use
             </div>
             <button
               type="button"
