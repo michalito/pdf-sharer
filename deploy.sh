@@ -395,6 +395,20 @@ cmd_prune_orphans() {
     docker compose -f "$compose_file" exec web flask prune-orphans "${args[@]}"
 }
 
+cmd_expire_items() {
+    local args=("$@")
+
+    local compose_file
+    compose_file=$(get_running_compose_file)
+
+    if [[ -z "$compose_file" ]]; then
+        die "No running containers. Start with: ./deploy.sh dev or ./deploy.sh prod"
+    fi
+
+    info "Deleting expired items..."
+    docker compose -f "$compose_file" exec web flask expire-items "${args[@]}"
+}
+
 cmd_cleanup() {
     local target="${1:-all}"
 
@@ -473,6 +487,7 @@ Cleanup:
 
 Maintenance:
   prune-orphans [--dry-run]  Delete upload files not referenced in the DB
+  expire-items [--dry-run]   Delete expired TTL items from the DB and upload folder
 
 Examples:
   ./deploy.sh dev                    # Start development (hot-reload)
@@ -507,6 +522,7 @@ main() {
         rebuild)    cmd_rebuild ;;
         cleanup)    shift; cmd_cleanup "$@" ;;
         prune-orphans) shift; cmd_prune_orphans "$@" ;;
+        expire-items) shift; cmd_expire_items "$@" ;;
         status)     cmd_status ;;
         help|--help|-h) cmd_help ;;
         *)          die "Unknown command: $1. Run './deploy.sh help' for usage." ;;

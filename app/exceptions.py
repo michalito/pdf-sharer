@@ -24,6 +24,13 @@ class ValidationError(AppError):
         super().__init__(message, status_code=400)
 
 
+class InvalidJSONError(AppError):
+    """Malformed JSON request body."""
+
+    def __init__(self, message: str = "Invalid JSON in request body"):
+        super().__init__(message, status_code=400)
+
+
 class FileOperationError(AppError):
     """File operation error."""
 
@@ -56,6 +63,6 @@ class RateLimitError(AppError):
 class DuplicateDetectedError(AppError):
     """Content hash matches an existing item."""
 
-    def __init__(self, message: str, duplicates: list[dict]):
+    def __init__(self, message: str, duplicates: list[dict] | None = None):
         super().__init__(message, status_code=409)
         self.duplicates = duplicates

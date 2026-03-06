@@ -39,6 +39,7 @@ Use the deploy script for normal operations:
 ./deploy.sh migrate
 ./deploy.sh migrate create "message"
 ./deploy.sh prune-orphans --dry-run
+./deploy.sh expire-items --dry-run
 ```
 
 Direct local checks (outside Docker) when needed:
@@ -63,6 +64,7 @@ npm --prefix frontend run build
   - `GET /api/items/<id>` returns full `noteText` (and `noteExcerpt`)
 - Deletion workflow is strict: `DELETE /api/items/<id>` only works when item state is `ready_to_delete`.
 - Bulk cleanup exists at `DELETE /api/items/ready-to-delete`.
+- Expired TTL cleanup is operationally scheduled via `flask expire-items` / `./deploy.sh expire-items`; requests do not perform background cleanup.
 - Folder uploads are zipped server-side with zip path sanitization (`app/utils/zip_utils.py`).
 - Every request gets `X-Request-ID` (incoming value reused if provided).
 - `GET /api/health` returns `{"ok": true, "version": "<app-version>"}`.
@@ -88,6 +90,7 @@ npm --prefix frontend run build
 
 - `FLASK_ENV=production` uses `Config.from_env()` and honors `DATABASE_URL`, `UPLOAD_FOLDER`, etc.
 - `SECRET_KEY` is required in production (`Config.from_env()` raises if missing). Keep it stable across restarts, otherwise protected-item unlock sessions are invalidated.
+- `SESSION_COOKIE_SECURE` defaults to `false`; set it explicitly to `true` when serving the app over HTTPS and you want unlock-session cookies to be transport-secure.
 - Any non-production `FLASK_ENV` uses `Config.for_development()`, which currently fixes DB path and upload folder to local defaults.
 - `MAX_CONTENT_LENGTH` default is `2147483648` (2GB).
 - `NOTE_EXCERPT_LENGTH` controls note preview length in `GET /api/items` and is bounded to `40..1000` (default `180`).

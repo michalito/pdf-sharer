@@ -18,6 +18,7 @@ services:
       - DATABASE_URL=${DATABASE_URL:-}
       - MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-2147483648}
       - TRUST_PROXY_HOPS=${TRUST_PROXY_HOPS:-0}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')"]

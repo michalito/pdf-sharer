@@ -45,6 +45,8 @@ Primary workflow uses `./deploy.sh`:
 ./deploy.sh cleanup containers|volumes|images|all
 ./deploy.sh prune-orphans --dry-run
 ./deploy.sh prune-orphans
+./deploy.sh expire-items --dry-run
+./deploy.sh expire-items
 ```
 
 Local checks (outside Docker):
@@ -101,7 +103,7 @@ Key patterns:
 - **Presenter layer**: `item_presenter.present_item_for_api()` wraps `Item.to_dto()` and applies access-policy masking — protected locked items hide `linkUrl`/`noteText`/`noteExcerpt` and expose `isPasswordProtected` + `isPasswordUnlocked`.
 - **meta_json column**: Links store `{"url": "..."}`, notes store `{"text": "..."}`, folders store `{"file_count": N, "top_level_dir": "..."}`.
 - **Session unlocks**: Per-item unlock state is tracked in signed Flask session cookies (`app/services/item_access.py`).
-- **Item expiration**: Optional `expires_at` column. Expired items are filtered from all queries and deleted by a throttled `before_request` hook (~60s interval, max 50 per run).
+- **Item expiration**: Optional `expires_at` column. Expired items are filtered from all queries immediately and are removed by the `flask expire-items` / `./deploy.sh expire-items` maintenance command.
 - **Item position**: Optional `position` column for manual (drag-and-drop) ordering. New items get `max(position)+1`. Reorder endpoint requires an exact permutation of all active item IDs.
 
 ### Frontend
@@ -169,7 +171,7 @@ Note payload behavior:
 - `entrypoint.sh` runs migrations on every container start (zero-touch schema updates).
 - Migration files use manual prefixes (`0001_`, `0002_`) instead of Alembic hex IDs.
 - Service validation limits: display name 255 chars, link URL 2048, note title 120, note text 4000, space name 120.
-- **Item expiration (TTL)**: Items can optionally have an `expires_at` timestamp set at creation time from preset durations (`1h`, `6h`, `24h`, `3d`, `7d`, `30d`). Expired items are permanently deleted (DB row + disk file). Two-layer approach: (1) expired items are filtered from all queries immediately, (2) a throttled `before_request` hook deletes them from DB/disk every ~60s. CLI fallback: `flask expire-items` (with `--dry-run`, `--limit`). TTL is immutable after creation.
+- **Item expiration (TTL)**: Items can optionally have an `expires_at` timestamp set at creation time from preset durations (`1h`, `6h`, `24h`, `3d`, `7d`, `30d`). Expired items are permanently deleted (DB row + disk file). Two-layer approach: (1) expired items are filtered from all queries immediately, (2) scheduled maintenance runs `flask expire-items` / `./deploy.sh expire-items` (with `--dry-run`, `--limit`). TTL is immutable after creation.
 
 ## Testing
 
@@ -185,7 +187,7 @@ Test files:
 - `FLASK_ENV=production` → `Config.from_env()` (reads `DATABASE_URL`, `UPLOAD_FOLDER`, etc.) and **requires** `SECRET_KEY`.
 - Any other `FLASK_ENV` → `Config.for_development()` (local SQLite defaults)
 - Keep `SECRET_KEY` stable across production restarts/deploys to preserve protected-item unlock sessions.
-- Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `TRUST_PROXY_HOPS` (default `0`; set `1` behind one reverse proxy), `APP_VERSION` (health/UI version string; auto-detected from latest git tag by `deploy.sh`, fallback `dev`), `HOST_PORT` (default 5001)
+- Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `TRUST_PROXY_HOPS` (default `0`; set `1` behind one reverse proxy), `SESSION_COOKIE_SECURE` (default `false`; set `true` explicitly for HTTPS-only unlock-session cookies), `APP_VERSION` (health/UI version string; auto-detected from latest git tag by `deploy.sh`, fallback `dev`), `HOST_PORT` (default 5001)
 - `.env.example` documents all production config options.
 
 ## CI/CD

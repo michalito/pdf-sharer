@@ -1,6 +1,5 @@
 """Flask application factory and extensions."""
 
-import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -63,30 +62,6 @@ def _setup_request_handlers(app: Flask) -> None:
             g.space_service = app.config["SPACE_SERVICE_OVERRIDE"]
         else:
             g.space_service = SpaceService(SpaceRepository())
-
-    _expire_check_ts = [0.0]
-    _EXPIRE_CHECK_INTERVAL = 60  # seconds
-
-    @app.before_request
-    def cleanup_expired_items():
-        now = time.monotonic()
-        if now - _expire_check_ts[0] < _EXPIRE_CHECK_INTERVAL:
-            return
-        _expire_check_ts[0] = now
-        try:
-            throttle = app.config.get("UNLOCK_THROTTLE")
-            if throttle:
-                throttle.cleanup()
-        except Exception:
-            app.logger.exception("Unlock throttle cleanup failed")
-        try:
-            g.item_service.delete_expired_items(limit=50)
-        except Exception:
-            app.logger.exception("Expired item cleanup failed")
-            try:
-                db.session.rollback()
-            except Exception:
-                app.logger.exception("Expired item cleanup rollback failed")
 
     @app.after_request
     def add_request_id_header(response):
@@ -162,6 +137,7 @@ def create_app(config: Optional[Config] = None) -> Flask:
     # Import models for migrations
     from app.domain import item  # noqa: F401
     from app.domain import space  # noqa: F401
+    from app.domain import unlock_attempt  # noqa: F401
 
     # Register blueprints
     from app.api import api

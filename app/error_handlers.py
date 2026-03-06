@@ -14,7 +14,7 @@ import logging
 from flask import Blueprint, Response, jsonify
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 
-from app.exceptions import AppError, DuplicateDetectedError, RateLimitError
+from app.exceptions import AppError, DuplicateDetectedError, InvalidJSONError, RateLimitError
 
 
 logger = logging.getLogger(__name__)
@@ -44,11 +44,13 @@ def _create_error_response(
 def handle_duplicate_detected(error: DuplicateDetectedError) -> tuple[Response, int]:
     """Handle duplicate content detection."""
     logger.info(f"Duplicate content detected: {error.message}")
-    return jsonify({
+    payload = {
         "error": error.message,
         "code": "DUPLICATE_CONTENT",
-        "duplicates": error.duplicates,
-    }), 409
+    }
+    if error.duplicates is not None:
+        payload["duplicates"] = error.duplicates
+    return jsonify(payload), 409
 
 
 def handle_rate_limit_error(error: RateLimitError) -> tuple[Response, int]:
@@ -61,6 +63,12 @@ def handle_rate_limit_error(error: RateLimitError) -> tuple[Response, int]:
     })
     response.headers["Retry-After"] = str(int(error.retry_after) + 1)
     return response, 429
+
+
+def handle_invalid_json_error(error: InvalidJSONError) -> tuple[Response, int]:
+    """Handle malformed JSON request bodies."""
+    logger.warning(f"Invalid JSON: {error.message}")
+    return _create_error_response(error.message, 400, "INVALID_JSON")
 
 
 def handle_app_error(error: AppError) -> tuple[Response, int]:
@@ -276,6 +284,7 @@ def register_error_handlers(blueprint: Blueprint) -> None:
     # Application errors (most specific - our own exceptions)
     blueprint.register_error_handler(DuplicateDetectedError, handle_duplicate_detected)
     blueprint.register_error_handler(RateLimitError, handle_rate_limit_error)
+    blueprint.register_error_handler(InvalidJSONError, handle_invalid_json_error)
     blueprint.register_error_handler(AppError, handle_app_error)
     blueprint.register_error_handler(ValueError, handle_value_error)
     blueprint.register_error_handler(400, handle_bad_request)
