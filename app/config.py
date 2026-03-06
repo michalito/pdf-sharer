@@ -56,6 +56,17 @@ def _parse_trust_proxy_hops(raw: str | None) -> int:
     return value
 
 
+def _parse_bool_env(raw: str | None, *, default: bool) -> bool:
+    if raw is None or raw.strip() == "":
+        return default
+    value = raw.strip().lower()
+    if value in ("true", "1", "yes"):
+        return True
+    if value in ("false", "0", "no"):
+        return False
+    raise ValueError("Boolean environment values must be one of: true, false, 1, 0, yes, no")
+
+
 @dataclass(frozen=True)
 class Config:
     """Application configuration."""
@@ -96,7 +107,10 @@ class Config:
         max_content_length = int(os.environ.get("MAX_CONTENT_LENGTH", DEFAULT_MAX_CONTENT_LENGTH))
         note_excerpt_length = _parse_note_excerpt_length(os.environ.get("NOTE_EXCERPT_LENGTH"))
         trust_proxy_hops = _parse_trust_proxy_hops(os.environ.get("TRUST_PROXY_HOPS"))
-        session_cookie_secure = os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in ("true", "1", "yes")
+        session_cookie_secure = _parse_bool_env(
+            os.environ.get("SESSION_COOKIE_SECURE"),
+            default=False,
+        )
 
         return cls(
             SECRET_KEY=secret_key,
@@ -127,7 +141,10 @@ class Config:
             APP_VERSION=os.environ.get("APP_VERSION", "dev"),
             TRUST_PROXY_HOPS=trust_proxy_hops,
             # Disable secure cookies for development (HTTP)
-            SESSION_COOKIE_SECURE=False,
+            SESSION_COOKIE_SECURE=_parse_bool_env(
+                os.environ.get("SESSION_COOKIE_SECURE"),
+                default=False,
+            ),
         )
 
     def to_flask_config(self) -> dict:

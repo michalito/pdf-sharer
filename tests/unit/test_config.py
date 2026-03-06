@@ -39,6 +39,28 @@ def test_from_env_rejects_non_sqlite_database_url(monkeypatch):
         Config.from_env()
 
 
+def test_from_env_defaults_session_cookie_secure_to_false(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.delenv("SESSION_COOKIE_SECURE", raising=False)
+    config = Config.from_env()
+    assert config.SESSION_COOKIE_SECURE is False
+
+
+def test_from_env_honors_explicit_session_cookie_secure_override(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
+    config = Config.from_env()
+    assert config.SESSION_COOKIE_SECURE is False
+
+
+@pytest.mark.parametrize("raw", ["banana", "truthy", "2"])
+def test_from_env_rejects_invalid_session_cookie_secure(monkeypatch, raw: str):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", raw)
+    with pytest.raises(ValueError, match="Boolean environment values"):
+        Config.from_env()
+
+
 def test_from_env_defaults_trust_proxy_hops_to_zero(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "test-secret")
     monkeypatch.delenv("TRUST_PROXY_HOPS", raising=False)

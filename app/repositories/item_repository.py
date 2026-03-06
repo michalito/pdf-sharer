@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Generic, Literal, Optional, TypeVar
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import joinedload
 
 from app import db
 from app.constants import DEFAULT_PAGE, DEFAULT_PER_PAGE, MAX_PER_PAGE
 from app.domain.item import Item, ItemKind, ItemState
 from app.domain.space import Space
+from app.domain.unlock_attempt import UnlockAttempt
 from app.exceptions import NotFoundError
 
 
@@ -272,12 +273,20 @@ class ItemRepository:
         return item
 
     def delete(self, item: Item) -> None:
+        db.session.query(UnlockAttempt).filter(UnlockAttempt.item_id == item.id).delete(
+            synchronize_session=False,
+        )
         db.session.delete(item)
         db.session.commit()
 
     def delete_many(self, items: list[Item]) -> None:
-        for item in items:
-            db.session.delete(item)
+        ids = [item.id for item in items]
+        if not ids:
+            return
+        db.session.query(UnlockAttempt).filter(UnlockAttempt.item_id.in_(ids)).delete(
+            synchronize_session=False,
+        )
+        db.session.query(Item).filter(Item.id.in_(ids)).delete(synchronize_session=False)
         db.session.commit()
 
     def get_all_active_ids(
@@ -297,10 +306,18 @@ class ItemRepository:
 
     def reorder(self, ordered_ids: list[int]) -> None:
         """Set positions based on the order of IDs in the list."""
-        for position, item_id in enumerate(ordered_ids):
-            db.session.query(Item).filter(Item.id == item_id).update(
-                {"position": position}
-            )
+        if not ordered_ids:
+            return
+        position_by_id = {item_id: position for position, item_id in enumerate(ordered_ids)}
+        db.session.query(Item).filter(Item.id.in_(ordered_ids)).update(
+            {
+                "position": case(
+                    *((Item.id == item_id, position) for item_id, position in position_by_id.items()),
+                    else_=Item.position,
+                )
+            },
+            synchronize_session=False,
+        )
         db.session.commit()
 
     def get_max_position(self) -> int:

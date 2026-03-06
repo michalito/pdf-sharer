@@ -9,6 +9,7 @@ from werkzeug.datastructures import MultiDict
 
 from app import create_app, db
 from app.domain.item import Item
+from app.domain.unlock_attempt import UnlockAttempt
 
 
 def _assert_password_flags(payload: dict, *, protected: bool, unlocked: bool):
@@ -308,6 +309,17 @@ def test_json_routes_reject_non_object_body(client: FlaskClient):
     res = client.post("/api/items/link", json="just a string")
     assert res.status_code == 400
     assert "JSON object" in res.get_json()["error"]
+
+
+def test_json_routes_reject_malformed_json(client: FlaskClient):
+    res = client.post(
+        "/api/items/link",
+        data='{"url":',
+        content_type="application/json",
+    )
+    assert res.status_code == 400
+    assert res.get_json()["code"] == "INVALID_JSON"
+    assert "Invalid JSON" in res.get_json()["error"]
 
 
 def test_search_matches_note_body_text(client: FlaskClient):
@@ -860,38 +872,15 @@ def test_invalid_ttl_rejected(app: Flask, client: FlaskClient):
         assert res.status_code == 400
 
 
-def test_cleanup_expired_items_failure_does_not_poison_request_session(app: Flask, client: FlaskClient):
-    """Cleanup errors should roll back DB session so request processing can continue."""
-    from app.repositories.item_repository import ItemRepository
+def test_requests_do_not_run_expired_item_cleanup(app: Flask, client: FlaskClient):
+    """Normal requests should not trigger opportunistic expired-item cleanup."""
     from app.services.item_service import ItemService
 
-    class FailingCleanupService(ItemService):
+    class GuardedCleanupService(ItemService):
         def delete_expired_items(self, *, limit: int = 100) -> int:
-            duplicate = "cleanup-duplicate.txt"
-            db.session.add(
-                Item(
-                    stored_name=duplicate,
-                    display_name="first",
-                    kind="file",
-                    state="active",
-                    mime_type="text/plain",
-                    size_bytes=1,
-                )
-            )
-            db.session.add(
-                Item(
-                    stored_name=duplicate,
-                    display_name="second",
-                    kind="file",
-                    state="active",
-                    mime_type="text/plain",
-                    size_bytes=1,
-                )
-            )
-            db.session.commit()
-            return 0
+            raise AssertionError("delete_expired_items should not be called during normal requests")
 
-    app.config["ITEM_SERVICE_OVERRIDE"] = FailingCleanupService(ItemRepository())
+    app.config["ITEM_SERVICE_OVERRIDE"] = GuardedCleanupService()
 
     res = client.get("/api/items")
     assert res.status_code == 200
@@ -1191,6 +1180,20 @@ def test_create_link_duplicate_returns_409(client: FlaskClient):
     assert body["duplicates"][0]["id"] == first["id"]
 
 
+def test_create_link_duplicate_to_protected_item_is_generic_409(client: FlaskClient):
+    res1 = client.post(
+        "/api/items/link",
+        json={"url": "https://example.com/protected-link", "password": "supersecret"},
+    )
+    assert res1.status_code == 201
+
+    res2 = client.post("/api/items/link", json={"url": "https://example.com/protected-link"})
+    assert res2.status_code == 409
+    body = res2.get_json()
+    assert body["code"] == "DUPLICATE_CONTENT"
+    assert "duplicates" not in body
+
+
 def test_create_link_duplicate_with_force(client: FlaskClient):
     """force=true bypasses link duplicate check."""
     res1 = client.post("/api/items/link", json={"url": "https://example.com/dup"})
@@ -1231,6 +1234,20 @@ def test_create_note_duplicate_returns_409(client: FlaskClient):
     body = res2.get_json()
     assert body["code"] == "DUPLICATE_CONTENT"
     assert body["duplicates"][0]["id"] == first["id"]
+
+
+def test_create_note_duplicate_to_protected_item_is_generic_409(client: FlaskClient):
+    res1 = client.post(
+        "/api/items/note",
+        json={"text": "protected note text", "password": "supersecret"},
+    )
+    assert res1.status_code == 201
+
+    res2 = client.post("/api/items/note", json={"text": "protected note text"})
+    assert res2.status_code == 409
+    body = res2.get_json()
+    assert body["code"] == "DUPLICATE_CONTENT"
+    assert "duplicates" not in body
 
 
 def test_create_note_duplicate_with_force(client: FlaskClient):
@@ -1319,6 +1336,55 @@ def test_duplicate_includes_all_states(client: FlaskClient):
     res2 = client.post("/api/items/files", data={"files": [(io.BytesIO(content), "b.txt")]}, content_type="multipart/form-data")
     assert res2.status_code == 409
     assert res2.get_json()["duplicates"][0]["existingItems"][0]["state"] == "archived"
+
+
+def test_upload_file_duplicate_to_protected_item_is_generic_409(client: FlaskClient):
+    res1 = client.post(
+        "/api/items/files",
+        data={
+            "files": [(io.BytesIO(b"protected file content"), "a.txt")],
+            "password": "supersecret",
+        },
+        content_type="multipart/form-data",
+    )
+    assert res1.status_code == 201
+
+    res2 = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(b"protected file content"), "b.txt")]},
+        content_type="multipart/form-data",
+    )
+    assert res2.status_code == 409
+    body = res2.get_json()
+    assert body["code"] == "DUPLICATE_CONTENT"
+    assert "duplicates" not in body
+
+
+def test_duplicate_mixed_protected_and_unprotected_existing_items_is_generic_409(client: FlaskClient):
+    content = b"mixed duplicate content"
+    first = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(content), "protected.txt")], "password": "supersecret"},
+        content_type="multipart/form-data",
+    )
+    assert first.status_code == 201
+
+    second = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(content), "plain.txt")], "force": "true"},
+        content_type="multipart/form-data",
+    )
+    assert second.status_code == 201
+
+    third = client.post(
+        "/api/items/files",
+        data={"files": [(io.BytesIO(content), "new.txt")]},
+        content_type="multipart/form-data",
+    )
+    assert third.status_code == 409
+    body = third.get_json()
+    assert body["code"] == "DUPLICATE_CONTENT"
+    assert "duplicates" not in body
 
 
 def test_multi_file_partial_duplicate(client: FlaskClient):
@@ -1551,6 +1617,30 @@ def test_unlock_rate_limit_scoped_per_item(app: Flask, client: FlaskClient):
 
     res2 = other.post(f"/api/items/{id2}/unlock", json={"password": "password2x"})
     assert res2.status_code == 204
+
+
+def test_delete_item_cleans_unlock_attempts(app: Flask, client: FlaskClient):
+    create = client.post(
+        "/api/items/link",
+        json={"url": "https://example.com/delete-throttle", "password": "supersecret"},
+    )
+    item_id = create.get_json()["id"]
+
+    other = app.test_client()
+    res = other.post(f"/api/items/{item_id}/unlock", json={"password": "wrongpass1"})
+    assert res.status_code == 401
+
+    with app.app_context():
+        assert UnlockAttempt.query.filter_by(item_id=item_id).count() == 1
+
+    patch = client.patch(f"/api/items/{item_id}", json={"state": "ready_to_delete"})
+    assert patch.status_code == 200
+
+    delete = client.delete(f"/api/items/{item_id}")
+    assert delete.status_code == 204
+
+    with app.app_context():
+        assert UnlockAttempt.query.filter_by(item_id=item_id).count() == 0
 
 
 def test_web_unlock_rate_limited(app: Flask, client: FlaskClient):

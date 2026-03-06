@@ -190,10 +190,12 @@ class ItemService:
             with acquire_content_hash_locks(content_hashes):
                 if not skip_dedup:
                     try:
-                        grouped_dupes = self._collect_upload_file_duplicates(saved)
+                        grouped_dupes, has_protected_existing = self._collect_upload_file_duplicates(saved)
                     except SQLAlchemyError as e:
                         logger.error("Database error checking file duplicates: %s", e, exc_info=True)
                         raise FileOperationError("Failed to check duplicate content")
+                    if has_protected_existing:
+                        raise DuplicateDetectedError("Duplicate content detected")
                     if grouped_dupes:
                         raise DuplicateDetectedError("Duplicate content detected", duplicates=grouped_dupes)
 
@@ -290,11 +292,7 @@ class ItemService:
                         logger.error("Database error checking folder duplicates: %s", e, exc_info=True)
                         raise FileOperationError("Failed to check duplicate content")
 
-                    if existing:
-                        raise DuplicateDetectedError(
-                            "Duplicate content detected",
-                            duplicates=[self._format_duplicate_info(item) for item in existing],
-                        )
+                    self._check_duplicate_for_existing(existing)
 
                 size_bytes = zip_path.stat().st_size
                 meta_json = json.dumps(
@@ -352,11 +350,7 @@ class ItemService:
         with acquire_content_hash_locks([content_hash]):
             if not skip_dedup:
                 existing = self.repository.find_by_content_hash(content_hash)
-                if existing:
-                    raise DuplicateDetectedError(
-                        "Duplicate content detected",
-                        duplicates=[self._format_duplicate_info(item) for item in existing],
-                    )
+                self._check_duplicate_for_existing(existing)
             next_position = self.repository.get_max_position() + 1
             try:
                 return self.repository.create(
@@ -401,11 +395,7 @@ class ItemService:
         with acquire_content_hash_locks([content_hash]):
             if not skip_dedup:
                 existing = self.repository.find_by_content_hash(content_hash)
-                if existing:
-                    raise DuplicateDetectedError(
-                        "Duplicate content detected",
-                        duplicates=[self._format_duplicate_info(item) for item in existing],
-                    )
+                self._check_duplicate_for_existing(existing)
             next_position = self.repository.get_max_position() + 1
             try:
                 return self.repository.create(
@@ -611,7 +601,23 @@ class ItemService:
             "createdAt": created.astimezone(timezone.utc).isoformat(),
         }
 
-    def _collect_upload_file_duplicates(self, saved: list[SavedUploadFile]) -> list[dict]:
+    def _check_duplicate_for_existing(self, existing: list[Item]) -> None:
+        if not existing:
+            return
+        duplicates = self._duplicate_payload_for_existing(existing)
+        if duplicates is None:
+            raise DuplicateDetectedError("Duplicate content detected")
+        if duplicates:
+            raise DuplicateDetectedError("Duplicate content detected", duplicates=duplicates)
+
+    def _duplicate_payload_for_existing(self, existing: list[Item]) -> list[dict] | None:
+        if not existing:
+            return []
+        if any(self.item_requires_password(item) for item in existing):
+            return None
+        return [self._format_duplicate_info(item) for item in existing]
+
+    def _collect_upload_file_duplicates(self, saved: list[SavedUploadFile]) -> tuple[list[dict], bool]:
         """Collect duplicate details for file uploads.
 
         Detects:
@@ -622,18 +628,19 @@ class ItemService:
         existing_by_hash: dict[str, list[Item]] = {}
         first_seen_by_hash: dict[str, tuple[int, str]] = {}
         batch_created_at = datetime.now(timezone.utc).isoformat()
-
         for idx, (_, _, display_name, content_hash, _, _) in enumerate(saved):
             existing = existing_by_hash.get(content_hash)
             if existing is None:
                 existing = self.repository.find_by_content_hash(content_hash)
                 existing_by_hash[content_hash] = existing
 
+            existing_items = self._duplicate_payload_for_existing(existing)
+            if existing_items is None:
+                return [], True
+
             first_seen = first_seen_by_hash.get(content_hash)
             if first_seen is None:
                 first_seen_by_hash[content_hash] = (idx, display_name)
-
-            existing_items = [self._format_duplicate_info(item) for item in existing]
             if first_seen is not None:
                 first_idx, first_name = first_seen
                 existing_items = [
@@ -648,7 +655,7 @@ class ItemService:
                     "existingItems": existing_items,
                 })
 
-        return grouped_dupes
+        return grouped_dupes, False
 
     def _format_in_batch_duplicate_info(self, file_index: int, file_name: str, *, created_at: str) -> dict:
         """Represent an earlier file in the same request as an existing duplicate."""

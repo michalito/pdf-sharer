@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 
 from app import db
 from app.domain.item import Item
@@ -64,10 +64,18 @@ class SpaceRepository:
 
     def reorder(self, ordered_ids: list[int]) -> None:
         """Set positions based on the order of IDs in the list."""
-        for position, space_id in enumerate(ordered_ids):
-            db.session.query(Space).filter(Space.id == space_id).update(
-                {"position": position}
-            )
+        if not ordered_ids:
+            return
+        position_by_id = {space_id: position for position, space_id in enumerate(ordered_ids)}
+        db.session.query(Space).filter(Space.id.in_(ordered_ids)).update(
+            {
+                "position": case(
+                    *((Space.id == space_id, position) for space_id, position in position_by_id.items()),
+                    else_=Space.position,
+                )
+            },
+            synchronize_session=False,
+        )
         db.session.commit()
 
     def delete(self, space: Space) -> None:

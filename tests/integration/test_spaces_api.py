@@ -43,6 +43,17 @@ def test_create_space_rejects_non_object_json(client: FlaskClient):
     assert "JSON object" in res.get_json()["error"]
 
 
+def test_space_routes_reject_malformed_json(client: FlaskClient):
+    res = client.post(
+        "/api/spaces",
+        data='{"name":',
+        content_type="application/json",
+    )
+    assert res.status_code == 400
+    assert res.get_json()["code"] == "INVALID_JSON"
+    assert "Invalid JSON" in res.get_json()["error"]
+
+
 def test_rename_space_rejects_non_object_json(client: FlaskClient):
     space = client.post("/api/spaces", json={"name": "Test"}).get_json()
     res = client.patch(f"/api/spaces/{space['id']}", json=[1])
