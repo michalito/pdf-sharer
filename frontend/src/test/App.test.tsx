@@ -5,6 +5,8 @@ import toast from "react-hot-toast";
 import App from "../App";
 import * as api from "../api/items";
 
+const itemsContentRenderTracker = vi.hoisted(() => ({ count: 0 }));
+
 vi.mock("react-hot-toast", () => {
   const fn = vi.fn();
   return {
@@ -12,6 +14,36 @@ vi.mock("react-hot-toast", () => {
       success: vi.fn(),
       error: vi.fn(),
     }),
+  };
+});
+
+vi.mock("../components/ItemsContent", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  const actual = await vi.importActual<typeof import("../components/ItemsContent")>("../components/ItemsContent");
+
+  return {
+    __esModule: true,
+    default: React.memo(
+      (props: any) => {
+        itemsContentRenderTracker.count += 1;
+        return React.createElement(actual.default, props);
+      },
+      (prev: any, next: any) =>
+        prev.items === next.items &&
+        prev.spaces === next.spaces &&
+        prev.pagination === next.pagination &&
+        prev.countByState === next.countByState &&
+        prev.isLoading === next.isLoading &&
+        prev.isFetching === next.isFetching &&
+        prev.errorMessage === next.errorMessage &&
+        prev.canDragDrop === next.canDragDrop &&
+        prev.reorderPending === next.reorderPending &&
+        prev.activeDragId === next.activeDragId &&
+        prev.updatingItemId === next.updatingItemId &&
+        prev.bulkDeletePending === next.bulkDeletePending &&
+        prev.showBulkDeleteButton === next.showBulkDeleteButton &&
+        prev.spacePickerState === next.spacePickerState,
+    ),
   };
 });
 
@@ -93,6 +125,7 @@ function makeFailingDirectoryDrop(rootName: string): DataTransferItem {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  itemsContentRenderTracker.count = 0;
 
   vi.mocked(api.fetchVersion).mockResolvedValue("dev");
   vi.mocked(api.listItems).mockResolvedValue({
@@ -203,11 +236,14 @@ it("submits the save-link dialog", async () => {
   await user.click(within(dialog).getByRole("button", { name: "Save link" }));
 
   await waitFor(() => {
-    expect(api.createLink).toHaveBeenCalledWith({
-      url: "https://example.com/new",
-      name: "Engineering Docs",
-      password: "safepass1",
-    });
+    expect(api.createLink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://example.com/new",
+        name: "Engineering Docs",
+        password: "safepass1",
+      }),
+      expect.anything(),
+    );
   });
 });
 
@@ -228,12 +264,64 @@ it("submits the save-note dialog", async () => {
   await user.click(within(dialog).getByRole("button", { name: "Save note" }));
 
   await waitFor(() => {
-    expect(api.createNote).toHaveBeenCalledWith({
-      title: "Retro",
-      text: "Ship links and notes this week.",
-      password: "notespass",
-    });
+    expect(api.createNote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Retro",
+        text: "Ship links and notes this week.",
+        password: "notespass",
+      }),
+      expect.anything(),
+    );
   });
+});
+
+it("does not re-render items content when opening and typing in the note dialog", async () => {
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [
+      {
+        id: 5,
+        name: "report.pdf",
+        kind: "file",
+        state: "active",
+        mimeType: "application/pdf",
+        sizeBytes: 42,
+        createdAt: "2026-02-27T00:00:00+00:00",
+        updatedAt: "2026-02-27T00:00:00+00:00",
+        expiresAt: null,
+        linkUrl: null,
+        noteText: null,
+        noteExcerpt: null,
+        contentHash: null,
+        isPasswordProtected: false,
+        isPasswordUnlocked: true,
+        isPinned: false,
+        spaceId: null,
+        spaceName: null,
+        position: 1,
+      },
+    ],
+    pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
+  });
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("report.pdf");
+  const initialRenderCount = itemsContentRenderTracker.count;
+  const newMenu = screen.getByTestId("new-menu");
+
+  await user.click(within(newMenu).getByRole("button", { name: "New" }));
+  expect(itemsContentRenderTracker.count).toBe(initialRenderCount);
+
+  await user.click(within(newMenu).getByRole("button", { name: "Save note" }));
+  const dialog = await screen.findByRole("dialog", { name: "Save note" });
+  expect(itemsContentRenderTracker.count).toBe(initialRenderCount);
+
+  await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Weekly");
+  await user.type(within(dialog).getByPlaceholderText("Write a note... (supports markdown)"), "Dialog-local state only.");
+
+  expect(itemsContentRenderTracker.count).toBe(initialRenderCount);
 });
 
 it("opens and closes the New dropdown", async () => {

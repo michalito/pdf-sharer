@@ -1,127 +1,89 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
-  closestCenter,
-  DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import {
-  HelpCircle,
-  Clock,
-  Copy,
-  ChevronDown,
-  ChevronUp,
-  Download,
-  Eye,
-  ExternalLink,
-  File as FileIcon,
-  FolderArchive,
-  FolderUp,
-  GripVertical,
-  HardDrive,
-  Lock,
-  Link2,
-  Pencil,
-  Pin,
-  Plus,
-  Search,
-  MessageSquareText,
-  Layers,
-  Trash2,
+  ArrowDownWideNarrow,
   ArrowUpDown,
   ArrowUpNarrowWide,
-  ArrowDownWideNarrow,
+  ChevronDown,
   CircleDot,
+  GripVertical,
+  HardDrive,
+  HelpCircle,
+  Link2,
+  MessageSquareText,
+  Plus,
+  Search,
   Shapes,
   SlidersHorizontal,
+  Trash2,
   Upload,
+  FolderUp,
 } from "lucide-react";
 import ConfirmDialog from "./components/ConfirmDialog";
 import DuplicateDialog from "./components/DuplicateDialog";
 import DropOverlay from "./components/DropOverlay";
-import MarkdownProse from "./components/MarkdownProse";
-import HowItWorksPanel from "./components/HowItWorksPanel";
-import SettingsPanel from "./components/SettingsPanel";
-import StorageDashboard from "./components/StorageDashboard";
+const HowItWorksPanel = lazy(() => import("./components/HowItWorksPanel"));
+import ItemsContent from "./components/ItemsContent";
 import Select from "./components/Select";
-import SpaceBar, { SpaceFilter } from "./components/SpaceBar";
-import SpacePicker from "./components/SpacePicker";
-import UploadQueue, { UploadTask } from "./components/UploadQueue";
-import { useFullPageDrop } from "./lib/useFullPageDrop";
+const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
+import SpaceBar, { type SpaceFilter } from "./components/SpaceBar";
+const StorageDashboard = lazy(() => import("./components/StorageDashboard"));
+import UploadQueue, { type UploadTask } from "./components/UploadQueue";
+import LinkDialog from "./components/dialogs/LinkDialog";
+import NoteDialog from "./components/dialogs/NoteDialog";
+import NotePreviewDialog from "./components/dialogs/NotePreviewDialog";
+import UploadDialog, { type UploadDialogRequest } from "./components/dialogs/UploadDialog";
+import UnlockDialog, { type UnlockDialogTarget } from "./components/dialogs/UnlockDialog";
 import {
-  createLink,
-  createNote,
-  createSpace,
-  deleteItem,
-  deleteReadyToDelete,
-  deleteSpace,
+  DuplicateContentError,
+  type DuplicateInfo,
   fetchVersion,
-  getItem,
   getItemOrder,
-  ItemDto,
-  ItemKind,
-  ItemState,
-  TtlPreset,
+  type ItemDto,
+  type ItemKind,
   listItems,
   listSpaces,
-  renameSpace,
   reorderItems,
   reorderSpaces,
-  SpaceDto,
+  createSpace,
+  renameSpace,
+  deleteSpace,
+  type SpaceDto,
+  type ItemState,
+  type SortField,
+  type SortOrder,
+  type TtlPreset,
   updateItem,
-  SortField,
-  SortOrder,
-  DuplicateContentError,
-  DuplicateInfo,
-  RateLimitError,
-  unlockItem,
+  deleteItem,
+  deleteReadyToDelete,
   uploadFiles,
   uploadFolder,
 } from "./api/items";
-import { formatBytes, formatDateTime, formatTimeRemaining, TTL_PRESETS } from "./lib/format";
+import { sortFieldOptions } from "./lib/constants";
 import { useDebouncedValue } from "./lib/useDebouncedValue";
+import { useFullPageDrop } from "./lib/useFullPageDrop";
 import { useTheme } from "./lib/useTheme";
 import { getSettingsSnapshot } from "./lib/useSettings";
-import { sortFieldOptions } from "./lib/constants";
 
 type KindFilter = "all" | ItemKind;
 type StateFilter = "all" | ItemState;
 
-const itemStateOptions: Array<{ value: ItemState; label: string }> = [
-  { value: "active", label: "Active" },
+const kindFilterOptions: Array<{ value: KindFilter; label: string; divider?: boolean }> = [
+  { value: "all", label: "All items" },
+  { value: "file", label: "Files only", divider: true },
+  { value: "folder", label: "Folders only" },
+  { value: "link", label: "Links only" },
+  { value: "note", label: "Notes only" },
+];
+
+const stateFilterSelectOptions: Array<{ value: StateFilter; label: string; divider?: boolean }> = [
+  { value: "all", label: "All statuses" },
+  { value: "active", label: "Active", divider: true },
   { value: "done", label: "Done" },
   { value: "archived", label: "Archived" },
   { value: "ready_to_delete", label: "Ready to delete" },
 ];
-
-const stateChipClass: Record<ItemState, string> = {
-  active: "border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text)]",
-  done: "border border-emerald-600/30 bg-[var(--app-panel)] text-[var(--app-text)]",
-  archived: "border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-muted)]",
-  ready_to_delete: "border border-rose-600/35 bg-[var(--app-panel)] text-[var(--app-text)]",
-};
-
-const stateDotClass: Record<ItemState, string> = {
-  active: "bg-[var(--accent)]",
-  done: "bg-[var(--success)]",
-  archived: "bg-[var(--app-muted)]",
-  ready_to_delete: "bg-[var(--danger)]",
-};
 
 function uuid(): string {
   return globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
@@ -133,145 +95,17 @@ function inferFolderName(files: File[]): string {
   return rel.split("/")[0] || "folder";
 }
 
-function kindPreview(item: ItemDto): string | null {
-  if (item.isPasswordProtected && !item.isPasswordUnlocked && (item.kind === "link" || item.kind === "note")) {
-    return "Protected content - unlock required";
-  }
-  if (item.kind === "link" && item.linkUrl) return item.linkUrl;
-  if (item.kind === "note") return item.noteExcerpt;
-  return null;
-}
-
-type PasswordValidationResult =
-  | { ok: true; password: string | undefined }
-  | { ok: false; message: string };
-
-function validateOptionalPassword(passwordRaw: string, confirmRaw: string): PasswordValidationResult {
-  const password = passwordRaw.trim();
-  const confirm = confirmRaw.trim();
-
-  if (!password && !confirm) return { ok: true, password: undefined };
-  if (password.length < 8 || password.length > 128) {
-    return { ok: false, message: "Password must be 8-128 characters." };
-  }
-  if (password !== confirm) {
-    return { ok: false, message: "Password and confirmation must match." };
-  }
-  return { ok: true, password };
-}
-
-type UploadDialogKind = "files" | "folder";
-
-type UploadDialogState = {
-  open: boolean;
-  kind: UploadDialogKind;
-  files: File[];
-  password: string;
-  passwordConfirm: string;
-  spaceId: number | undefined;
-};
-
-type UploadDialogAction =
-  | { type: "open"; kind: UploadDialogKind; files: File[]; spaceId: number | undefined }
-  | { type: "close" }
-  | { type: "set_password"; value: string }
-  | { type: "set_password_confirm"; value: string }
-  | { type: "set_space_id"; value: number | undefined };
-
-const initialUploadDialogState: UploadDialogState = {
-  open: false,
-  kind: "files",
-  files: [],
-  password: "",
-  passwordConfirm: "",
-  spaceId: undefined,
-};
-
-function uploadDialogReducer(state: UploadDialogState, action: UploadDialogAction): UploadDialogState {
-  switch (action.type) {
-    case "open":
-      return {
-        open: true,
-        kind: action.kind,
-        files: action.files,
-        password: "",
-        passwordConfirm: "",
-        spaceId: action.spaceId,
-      };
-    case "close":
-      return initialUploadDialogState;
-    case "set_password":
-      return { ...state, password: action.value };
-    case "set_password_confirm":
-      return { ...state, passwordConfirm: action.value };
-    case "set_space_id":
-      return { ...state, spaceId: action.value };
-    default:
-      return state;
-  }
-}
-
-/** Replace items in `source` that belong to `targetSet` with items from `replacement` (in order). */
 function substituteInOrder(source: number[], targetSet: Set<number>, replacement: number[]): number[] {
   const result: number[] = [];
-  let idx = 0;
+  let index = 0;
   for (const id of source) {
     if (targetSet.has(id)) {
-      result.push(replacement[idx++]);
+      result.push(replacement[index++]);
     } else {
       result.push(id);
     }
   }
   return result;
-}
-
-function SortableItemWrapper({
-  id,
-  children,
-}: {
-  id: number;
-  children: (handleProps: React.HTMLAttributes<HTMLElement>, isDragging: boolean) => React.ReactNode;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style: React.CSSProperties = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-    position: "relative",
-    zIndex: isDragging ? 999 : 0,
-    isolation: isDragging ? "isolate" : undefined,
-  };
-  return (
-    <div ref={setNodeRef} style={style} {...attributes}>
-      <div className={isDragging ? "drag-active" : "drag-idle"}>
-        {children({ ...listeners }, isDragging)}
-      </div>
-    </div>
-  );
-}
-
-function ItemListDndWrapper({
-  enabled,
-  itemIds,
-  sensors,
-  onDragStart,
-  onDragEnd,
-  children,
-}: {
-  enabled: boolean;
-  itemIds: number[];
-  sensors: ReturnType<typeof useSensors>;
-  onDragStart: (event: DragStartEvent) => void;
-  onDragEnd: (event: DragEndEvent) => void;
-  children: React.ReactNode;
-}) {
-  if (!enabled) return <>{children}</>;
-  return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-      <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-        {children}
-      </SortableContext>
-    </DndContext>
-  );
 }
 
 export default function App() {
@@ -280,6 +114,7 @@ export default function App() {
 
   const filesInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
+  const newMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [searchText, setSearchText] = useState("");
   const debouncedSearch = useDebouncedValue(searchText.trim(), 250);
@@ -288,48 +123,23 @@ export default function App() {
   const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>("all");
   const [sortField, setSortField] = useState<SortField>(() => getSettingsSnapshot().defaultSortField);
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => getSettingsSnapshot().defaultSortOrder);
-  const [spacePickerState, setSpacePickerState] = useState<{
-    itemId: number;
-    rect: DOMRect;
-  } | null>(null);
   const [page, setPage] = useState(1);
   const [perPage] = useState(() => getSettingsSnapshot().defaultPerPage);
-  const [deleteSpaceTarget, setDeleteSpaceTarget] = useState<SpaceDto | null>(null);
 
+  const [spacePickerState, setSpacePickerState] = useState<{ itemId: number; rect: DOMRect; spaceId: number | null } | null>(null);
+  const [deleteSpaceTarget, setDeleteSpaceTarget] = useState<SpaceDto | null>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
-  const newMenuRef = useRef<HTMLDivElement | null>(null);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isStorageOpen, setIsStorageOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [uploads, setUploads] = useState<UploadTask[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<ItemDto | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [linkDialogRequest, setLinkDialogRequest] = useState<{ initialSpaceId?: number; defaultTtl: TtlPreset | "" } | null>(null);
+  const [noteDialogRequest, setNoteDialogRequest] = useState<{ initialSpaceId?: number; defaultTtl: TtlPreset | "" } | null>(null);
+  const [uploadDialogRequest, setUploadDialogRequest] = useState<UploadDialogRequest | null>(null);
   const [notePreviewItem, setNotePreviewItem] = useState<ItemDto | null>(null);
-  const [notePreviewLoadingItemId, setNotePreviewLoadingItemId] = useState<number | null>(null);
-  const notePreviewFetchInFlightRef = useRef(false);
-  const [linkUrl, setLinkUrl] = useState("");
-  const [linkName, setLinkName] = useState("");
-  const [linkPassword, setLinkPassword] = useState("");
-  const [linkPasswordConfirm, setLinkPasswordConfirm] = useState("");
-  const [noteTitle, setNoteTitle] = useState("");
-  const [noteText, setNoteText] = useState("");
-  const [noteEditTab, setNoteEditTab] = useState<"write" | "preview">("write");
-  const [notePreviewShowRaw, setNotePreviewShowRaw] = useState(false);
-  const [notePassword, setNotePassword] = useState("");
-  const [notePasswordConfirm, setNotePasswordConfirm] = useState("");
-  const [uploadDialog, dispatchUploadDialog] = useReducer(uploadDialogReducer, initialUploadDialogState);
-  const [linkSpaceId, setLinkSpaceId] = useState<number | undefined>(undefined);
-  const [noteSpaceId, setNoteSpaceId] = useState<number | undefined>(undefined);
-  const [uploadTtl, setUploadTtl] = useState<TtlPreset | "">("");
-  const [linkTtl, setLinkTtl] = useState<TtlPreset | "">("");
-  const [noteTtl, setNoteTtl] = useState<TtlPreset | "">("");
-  const [unlockTarget, setUnlockTarget] = useState<{ item: ItemDto; action: "download" | "link" | "note" } | null>(
-    null,
-  );
-  const [unlockPassword, setUnlockPassword] = useState("");
-  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [unlockTarget, setUnlockTarget] = useState<UnlockDialogTarget | null>(null);
   const [queuedDrops, setQueuedDrops] = useState<Array<{ files: File[]; kind: "files" | "folder" }>>([]);
   const [duplicateDialog, setDuplicateDialog] = useState<{
     duplicates: DuplicateInfo[];
@@ -337,18 +147,47 @@ export default function App() {
     cancelFn?: () => void;
   } | null>(null);
 
+  const activeSpaceId = typeof spaceFilter === "number" ? spaceFilter : undefined;
+
   const anyDialogOpen =
     Boolean(deleteTarget) ||
     bulkDeleteOpen ||
-    uploadDialog.open ||
-    linkDialogOpen ||
-    noteDialogOpen ||
+    Boolean(uploadDialogRequest) ||
+    Boolean(linkDialogRequest) ||
+    Boolean(noteDialogRequest) ||
     Boolean(notePreviewItem) ||
     Boolean(unlockTarget) ||
     Boolean(deleteSpaceTarget) ||
     Boolean(duplicateDialog) ||
     isGuideOpen ||
     isSettingsOpen;
+
+  const openLinkDialog = useCallback(() => {
+    setLinkDialogRequest({
+      initialSpaceId: activeSpaceId,
+      defaultTtl: getSettingsSnapshot().defaultTtl,
+    });
+  }, [activeSpaceId]);
+
+  const openNoteDialog = useCallback(() => {
+    setNoteDialogRequest({
+      initialSpaceId: activeSpaceId,
+      defaultTtl: getSettingsSnapshot().defaultTtl,
+    });
+  }, [activeSpaceId]);
+
+  const openUploadDialog = useCallback(
+    (kind: "files" | "folder", files: File[]) => {
+      if (files.length === 0) return;
+      setUploadDialogRequest({
+        kind,
+        files,
+        initialSpaceId: activeSpaceId,
+        defaultTtl: getSettingsSnapshot().defaultTtl,
+      });
+    },
+    [activeSpaceId],
+  );
 
   const { isOverWindow } = useFullPageDrop({
     onDrop: ({ files, kind }) => {
@@ -369,18 +208,21 @@ export default function App() {
     const [next, ...rest] = queuedDrops;
     setQueuedDrops(rest);
     openUploadDialog(next.kind, next.files);
-  }, [anyDialogOpen, queuedDrops]);
+  }, [anyDialogOpen, openUploadDialog, queuedDrops]);
 
   useEffect(() => {
     if (!newMenuOpen) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) {
+
+    function handleClickOutside(event: MouseEvent) {
+      if (newMenuRef.current && !newMenuRef.current.contains(event.target as Node)) {
         setNewMenuOpen(false);
       }
     }
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === "Escape") setNewMenuOpen(false);
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setNewMenuOpen(false);
     }
+
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleEscape);
     return () => {
@@ -407,6 +249,7 @@ export default function App() {
   const spacesQuery = useQuery({
     queryKey: ["spaces"],
     queryFn: listSpaces,
+    staleTime: 30_000,
   });
 
   const spaces = spacesQuery.data ?? [];
@@ -425,7 +268,12 @@ export default function App() {
         sort: sortField,
         order: sortOrder,
       }),
+    staleTime: 10_000,
   });
+
+  const items = itemsQuery.data?.items ?? [];
+  const pagination = itemsQuery.data?.pagination;
+  const countByState = itemsQuery.data?.countByState;
 
   const updateItemMutation = useMutation({
     mutationFn: async (vars: { id: number; state?: ItemState; spaceId?: number | null; pinned?: boolean }) =>
@@ -436,28 +284,26 @@ export default function App() {
       const prev = queryClient.getQueryData<Awaited<ReturnType<typeof listItems>>>(queryKey);
       if (!prev) return { prev };
 
-      const nextItems = prev.items.map((it) => {
-        if (it.id !== vars.id) return it;
-        const updated = { ...it };
+      const nextItems = prev.items.map((item) => {
+        if (item.id !== vars.id) return item;
+        const updated = { ...item };
         if (vars.state !== undefined) updated.state = vars.state;
         if (vars.pinned !== undefined) updated.isPinned = vars.pinned;
         if (vars.spaceId !== undefined) {
           updated.spaceId = vars.spaceId;
-          updated.spaceName =
-            spaces.find((s) => s.id === vars.spaceId)?.name ?? null;
+          updated.spaceName = spaces.find((space) => space.id === vars.spaceId)?.name ?? null;
         }
         return updated;
       });
 
-      const filteredItems = nextItems.filter((it) => {
-        if (stateFilter !== "all" && it.state !== stateFilter) return false;
-        if (spaceFilter === "none" && it.spaceId != null) return false;
-        if (typeof spaceFilter === "number" && it.spaceId !== spaceFilter) return false;
-        if (kindFilter !== "all" && it.kind !== kindFilter) return false;
+      const filteredItems = nextItems.filter((item) => {
+        if (stateFilter !== "all" && item.state !== stateFilter) return false;
+        if (spaceFilter === "none" && item.spaceId != null) return false;
+        if (typeof spaceFilter === "number" && item.spaceId !== spaceFilter) return false;
+        if (kindFilter !== "all" && item.kind !== kindFilter) return false;
         return true;
       });
 
-      // Re-sort: pinned first, then by active sort field
       filteredItems.sort((a, b) => {
         if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
         let cmp = 0;
@@ -511,57 +357,6 @@ export default function App() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Bulk delete failed"),
   });
 
-  // Drag-and-drop item reordering
-  const isManualSort = sortField === "manual";
-  const [isReorderMode, setIsReorderMode] = useState(false);
-  const canReorder = isManualSort && !debouncedSearch && kindFilter === "all";
-  const canDragDrop = canReorder && isReorderMode;
-  const [activeDragId, setActiveDragId] = useState<number | null>(null);
-
-  const handleItemDragStart = useCallback((event: DragStartEvent) => {
-    setActiveDragId(Number(event.active.id));
-  }, []);
-
-  const dndSensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
-  const reorderMutation = useMutation({
-    mutationFn: reorderItems,
-    onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
-    },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to reorder items"),
-  });
-
-  const createLinkMutation = useMutation({
-    mutationFn: async (vars: { url: string; name?: string; password?: string; spaceId?: number; ttl?: TtlPreset; force?: boolean }) => createLink(vars),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
-      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
-      toast.success("Link saved");
-    },
-    onError: (e) => {
-      if (e instanceof DuplicateContentError) return; // handled in handleCreateLink
-      toast.error(e instanceof Error ? e.message : "Failed to save link");
-    },
-  });
-
-  const createNoteMutation = useMutation({
-    mutationFn: async (vars: { text: string; title?: string; password?: string; spaceId?: number; ttl?: TtlPreset; force?: boolean }) => createNote(vars),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
-      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
-      toast.success("Note saved");
-    },
-    onError: (e) => {
-      if (e instanceof DuplicateContentError) return; // handled in handleCreateNote
-      toast.error(e instanceof Error ? e.message : "Failed to save note");
-    },
-  });
-
   const createSpaceMutation = useMutation({
     mutationFn: async (name: string) => createSpace(name),
     onSuccess: async () => {
@@ -603,210 +398,126 @@ export default function App() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to delete space"),
   });
 
+  const isManualSort = sortField === "manual";
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const canReorder = isManualSort && !debouncedSearch && kindFilter === "all";
+  const canDragDrop = canReorder && isReorderMode;
+  const [activeDragId, setActiveDragId] = useState<number | null>(null);
+
+  const handleItemDragStart = useCallback((event: { active: { id: string | number } }) => {
+    setActiveDragId(Number(event.active.id));
+  }, []);
+
+  const reorderMutation = useMutation({
+    mutationFn: reorderItems,
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to reorder items"),
+  });
+
   async function runUpload<T>(task: UploadTask, fn: (onProgress: (pct: number) => void) => Promise<T>): Promise<T> {
     setUploads((prev) => [task, ...prev].slice(0, 8));
 
     const setProgress = (pct: number) => {
-      setUploads((prev) => prev.map((u) => (u.id === task.id ? { ...u, progress: pct } : u)));
+      setUploads((prev) => prev.map((upload) => (upload.id === task.id ? { ...upload, progress: pct } : upload)));
     };
 
     try {
       const result = await fn(setProgress);
-      setUploads((prev) => prev.map((u) => (u.id === task.id ? { ...u, progress: 100, status: "done" } : u)));
+      setUploads((prev) => prev.map((upload) => (upload.id === task.id ? { ...upload, progress: 100, status: "done" } : upload)));
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       return result;
     } catch (e) {
       const isDuplicate = e instanceof DuplicateContentError;
       setUploads((prev) =>
-        prev.map((u) => (u.id === task.id ? { ...u, status: isDuplicate ? "duplicate" : "error", progress: isDuplicate ? 50 : u.progress } : u)),
+        prev.map((upload) =>
+          upload.id === task.id
+            ? { ...upload, status: isDuplicate ? "duplicate" : "error", progress: isDuplicate ? 50 : upload.progress }
+            : upload,
+        ),
       );
       throw e;
     }
   }
 
-  function dismissUpload(id: string) {
-    setUploads((prev) => prev.filter((u) => u.id !== id));
-  }
+  const dismissUpload = useCallback((id: string) => {
+    setUploads((prev) => prev.filter((upload) => upload.id !== id));
+  }, []);
 
-  function openFilesPicker() {
-    filesInputRef.current?.click();
-  }
+  const handleUploadFiles = useCallback(
+    async (files: File[], password?: string, spaceId?: number, ttl?: TtlPreset, force?: boolean) => {
+      if (files.length === 0) return;
+      const label = files.length === 1 ? `Uploading ${files[0].name}` : `Uploading ${files.length} files`;
+      const task: UploadTask = { id: uuid(), label, progress: 0, status: "uploading" };
 
-  function openFolderPicker() {
-    const el = folderInputRef.current;
-    if (!el) return;
-    el.setAttribute("webkitdirectory", "");
-    el.setAttribute("directory", "");
-    el.click();
-  }
-
-  function openUploadDialog(kind: "files" | "folder", files: File[]) {
-    if (files.length === 0) return;
-    setUploadTtl(getSettingsSnapshot().defaultTtl);
-    dispatchUploadDialog({ type: "open", kind, files, spaceId: activeSpaceId });
-  }
-
-  const activeSpaceId = typeof spaceFilter === "number" ? spaceFilter : undefined;
-
-  async function handleUploadFiles(files: File[], password?: string, spaceId?: number, ttl?: TtlPreset, force?: boolean) {
-    if (files.length === 0) return;
-    const label = files.length === 1 ? `Uploading ${files[0].name}` : `Uploading ${files.length} files`;
-    const task: UploadTask = { id: uuid(), label, progress: 0, status: "uploading" };
-
-    try {
-      const created = await runUpload(task, (onProgress) => uploadFiles(files, { onProgress, password, spaceId, ttl, force }));
-      toast.success(created.length === 1 ? "Uploaded" : `Uploaded ${created.length} files`);
-    } catch (e) {
-      if (e instanceof DuplicateContentError) {
-        setDuplicateDialog({
-          duplicates: e.duplicates,
-          retryFn: async () => {
-            dismissUpload(task.id);
-            await handleUploadFiles(files, password, spaceId, ttl, true);
-          },
-          cancelFn: () => {
-            setUploads((prev) => prev.map((u) => (u.id === task.id ? { ...u, status: "cancelled", progress: 50 } : u)));
-            toast("Upload cancelled");
-          },
-        });
-        return;
+      try {
+        const created = await runUpload(task, (onProgress) => uploadFiles(files, { onProgress, password, spaceId, ttl, force }));
+        toast.success(created.length === 1 ? "Uploaded" : `Uploaded ${created.length} files`);
+      } catch (e) {
+        if (e instanceof DuplicateContentError) {
+          setDuplicateDialog({
+            duplicates: e.duplicates,
+            retryFn: async () => {
+              dismissUpload(task.id);
+              await handleUploadFiles(files, password, spaceId, ttl, true);
+            },
+            cancelFn: () => {
+              setUploads((prev) => prev.map((upload) => (upload.id === task.id ? { ...upload, status: "cancelled", progress: 50 } : upload)));
+              toast("Upload cancelled");
+            },
+          });
+          return;
+        }
+        toast.error(e instanceof Error ? e.message : "Upload failed");
       }
-      toast.error(e instanceof Error ? e.message : "Upload failed");
-    }
-  }
+    },
+    [dismissUpload],
+  );
 
-  async function handleUploadFolder(files: File[], password?: string, spaceId?: number, ttl?: TtlPreset, force?: boolean) {
-    if (files.length === 0) return;
-    const folderName = inferFolderName(files);
-    const task: UploadTask = { id: uuid(), label: `Uploading folder "${folderName}"`, progress: 0, status: "uploading" };
+  const handleUploadFolder = useCallback(
+    async (files: File[], password?: string, spaceId?: number, ttl?: TtlPreset, force?: boolean) => {
+      if (files.length === 0) return;
+      const folderName = inferFolderName(files);
+      const task: UploadTask = { id: uuid(), label: `Uploading folder "${folderName}"`, progress: 0, status: "uploading" };
 
-    try {
-      await runUpload(task, (onProgress) => uploadFolder(files, { onProgress, password, spaceId, ttl, force }));
-      toast.success(`Uploaded folder "${folderName}"`);
-    } catch (e) {
-      if (e instanceof DuplicateContentError) {
-        setDuplicateDialog({
-          duplicates: e.duplicates,
-          retryFn: async () => {
-            dismissUpload(task.id);
-            await handleUploadFolder(files, password, spaceId, ttl, true);
-          },
-          cancelFn: () => {
-            setUploads((prev) => prev.map((u) => (u.id === task.id ? { ...u, status: "cancelled", progress: 50 } : u)));
-            toast("Folder upload cancelled");
-          },
-        });
-        return;
+      try {
+        await runUpload(task, (onProgress) => uploadFolder(files, { onProgress, password, spaceId, ttl, force }));
+        toast.success(`Uploaded folder "${folderName}"`);
+      } catch (e) {
+        if (e instanceof DuplicateContentError) {
+          setDuplicateDialog({
+            duplicates: e.duplicates,
+            retryFn: async () => {
+              dismissUpload(task.id);
+              await handleUploadFolder(files, password, spaceId, ttl, true);
+            },
+            cancelFn: () => {
+              setUploads((prev) => prev.map((upload) => (upload.id === task.id ? { ...upload, status: "cancelled", progress: 50 } : upload)));
+              toast("Folder upload cancelled");
+            },
+          });
+          return;
+        }
+        toast.error(e instanceof Error ? e.message : "Folder upload failed");
       }
-      toast.error(e instanceof Error ? e.message : "Folder upload failed");
-    }
-  }
+    },
+    [dismissUpload],
+  );
 
-  async function handleConfirmUploadDialog() {
-    if (uploadDialog.files.length === 0) return;
-
-    const validation = validateOptionalPassword(uploadDialog.password, uploadDialog.passwordConfirm);
-    if (!validation.ok) {
-      toast.error(validation.message);
-      return;
-    }
-
-    const files = uploadDialog.files;
-    const kind = uploadDialog.kind;
-    const spaceId = uploadDialog.spaceId;
-    const ttl = uploadTtl || undefined;
-
-    dispatchUploadDialog({ type: "close" });
-    setUploadTtl("");
-
-    if (kind === "files") {
-      await handleUploadFiles(files, validation.password, spaceId, ttl);
-    } else {
-      await handleUploadFolder(files, validation.password, spaceId, ttl);
-    }
-    await queryClient.invalidateQueries({ queryKey: ["spaces"] });
-  }
-
-  async function handleCreateLink(force?: boolean) {
-    const url = linkUrl.trim();
-    if (!url || createLinkMutation.isPending) return;
-
-    const validation = validateOptionalPassword(linkPassword, linkPasswordConfirm);
-    if (!validation.ok) {
-      toast.error(validation.message);
-      return;
-    }
-
-    try {
-      await createLinkMutation.mutateAsync({
-        url,
-        name: linkName.trim() || undefined,
-        password: validation.password,
-        spaceId: linkSpaceId,
-        ttl: linkTtl || undefined,
-        force,
-      });
-      setLinkDialogOpen(false);
-      setLinkUrl("");
-      setLinkName("");
-      setLinkPassword("");
-      setLinkPasswordConfirm("");
-      setLinkSpaceId(undefined);
-      setLinkTtl("");
-    } catch (e) {
-      if (e instanceof DuplicateContentError) {
-        setLinkDialogOpen(false);
-        setDuplicateDialog({
-          duplicates: e.duplicates,
-          retryFn: () => handleCreateLink(true),
-        });
-        return;
+  const handleDialogUploadStart = useCallback(
+    async (payload: { files: File[]; kind: "files" | "folder"; password?: string; spaceId?: number; ttl?: TtlPreset }) => {
+      if (payload.kind === "files") {
+        await handleUploadFiles(payload.files, payload.password, payload.spaceId, payload.ttl);
+      } else {
+        await handleUploadFolder(payload.files, payload.password, payload.spaceId, payload.ttl);
       }
-      // Other errors handled by mutation onError.
-    }
-  }
+      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+    },
+    [handleUploadFiles, handleUploadFolder, queryClient],
+  );
 
-  async function handleCreateNote(force?: boolean) {
-    const text = noteText.trim();
-    if (!text || createNoteMutation.isPending) return;
-
-    const validation = validateOptionalPassword(notePassword, notePasswordConfirm);
-    if (!validation.ok) {
-      toast.error(validation.message);
-      return;
-    }
-
-    try {
-      await createNoteMutation.mutateAsync({
-        text,
-        title: noteTitle.trim() || undefined,
-        password: validation.password,
-        spaceId: noteSpaceId,
-        ttl: noteTtl || undefined,
-        force,
-      });
-      setNoteDialogOpen(false);
-      setNoteTitle("");
-      setNoteText("");
-      setNoteEditTab("write");
-      setNotePassword("");
-      setNotePasswordConfirm("");
-      setNoteTtl("");
-      setNoteSpaceId(undefined);
-    } catch (e) {
-      if (e instanceof DuplicateContentError) {
-        setNoteDialogOpen(false);
-        setDuplicateDialog({
-          duplicates: e.duplicates,
-          retryFn: () => handleCreateNote(true),
-        });
-        return;
-      }
-      // Other errors handled by mutation onError.
-    }
-  }
-
-  async function copyLink(id: number) {
+  const copyLink = useCallback(async (id: number) => {
     const url = `${window.location.origin}/d/${id}`;
     try {
       await navigator.clipboard.writeText(url);
@@ -814,81 +525,32 @@ export default function App() {
     } catch {
       window.prompt("Copy link:", url);
     }
-  }
+  }, []);
 
-  function download(id: number) {
-    window.location.assign(`/api/items/${id}/download`);
-  }
-
-  function openSharedLink(id: number) {
-    window.location.assign(`/d/${id}`);
-  }
-
-  async function performItemAction(item: ItemDto, action: "download" | "link" | "note") {
+  const performItemAction = useCallback((item: ItemDto, action: "download" | "link" | "note") => {
     if (action === "download") {
-      download(item.id);
+      window.location.assign(`/api/items/${item.id}/download`);
       return;
     }
     if (action === "link") {
-      openSharedLink(item.id);
+      window.location.assign(`/d/${item.id}`);
       return;
     }
-    await openNotePreview(item.id);
-  }
+    setNotePreviewItem(item);
+  }, []);
 
-  function requestUnlockThenAction(item: ItemDto, action: "download" | "link" | "note") {
-    setUnlockTarget({ item, action });
-    setUnlockPassword("");
-  }
-
-  async function handleUnlockTarget() {
-    if (!unlockTarget || isUnlocking) return;
-    const password = unlockPassword.trim();
-    if (!password) {
-      toast.error("Password is required.");
-      return;
-    }
-
-    setIsUnlocking(true);
-    try {
-      await unlockItem(unlockTarget.item.id, password);
-      await queryClient.invalidateQueries({ queryKey: ["items"] });
-      const unlockedItem = await getItem(unlockTarget.item.id);
-      setUnlockTarget(null);
-      setUnlockPassword("");
-      await performItemAction(unlockedItem, unlockTarget.action);
-    } catch (e) {
-      if (e instanceof RateLimitError) {
-        toast.error(`Too many attempts. Please wait ${Math.ceil(e.retryAfter)} seconds.`);
-      } else {
-        toast.error(e instanceof Error ? e.message : "Failed to unlock item");
+  const handleItemAction = useCallback(
+    (item: ItemDto, action: "download" | "link" | "note") => {
+      if (item.isPasswordProtected && !item.isPasswordUnlocked) {
+        setUnlockTarget({ item, action });
+        return;
       }
-    } finally {
-      setIsUnlocking(false);
-    }
-  }
-
-  async function openNotePreview(itemId: number) {
-    if (notePreviewFetchInFlightRef.current) return;
-    notePreviewFetchInFlightRef.current = true;
-    setNotePreviewLoadingItemId(itemId);
-
-    try {
-      const detail = await getItem(itemId);
-      setNotePreviewItem(detail);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load note");
-    } finally {
-      notePreviewFetchInFlightRef.current = false;
-      setNotePreviewLoadingItemId(null);
-    }
-  }
-
-  const items = itemsQuery.data?.items ?? [];
-  const pagination = itemsQuery.data?.pagination;
+      performItemAction(item, action);
+    },
+    [performItemAction],
+  );
 
   const fetchAllFilteredIds = useCallback(async (): Promise<number[]> => {
-    // API currently clamps per_page to 200.
     const perPageLimit = 200;
     const baseQuery = {
       q: debouncedSearch || undefined,
@@ -902,36 +564,36 @@ export default function App() {
 
     const firstPage = await listItems({ ...baseQuery, page: 1 });
     const allIds = firstPage.items.map((item) => item.id);
-    for (let p = 2; p <= firstPage.pagination.pages; p += 1) {
-      const nextPage = await listItems({ ...baseQuery, page: p });
+    for (let currentPage = 2; currentPage <= firstPage.pagination.pages; currentPage += 1) {
+      const nextPage = await listItems({ ...baseQuery, page: currentPage });
       allIds.push(...nextPage.items.map((item) => item.id));
     }
     return allIds;
   }, [debouncedSearch, kindFilter, stateFilter, spaceQueryParam]);
 
   const handleItemDragEnd = useCallback(
-    async (event: DragEndEvent) => {
+    async (event: { active: { id: string | number }; over: { id: string | number } | null }) => {
       setActiveDragId(null);
       if (reorderMutation.isPending) return;
       const { active, over } = event;
       if (!over || active.id === over.id) return;
 
-      const currentIds = items.map((i) => i.id);
+      const currentIds = items.map((item) => item.id);
       const oldIndex = currentIds.indexOf(Number(active.id));
       const newIndex = currentIds.indexOf(Number(over.id));
       if (oldIndex === -1 || newIndex === -1) return;
 
-      // Enforce pinned boundary
       const activeItem = items[oldIndex];
       const overItem = items[newIndex];
       if (activeItem.isPinned !== overItem.isPinned) return;
 
-      const newPageOrder = arrayMove(currentIds, oldIndex, newIndex);
+      const newPageOrder = [...currentIds];
+      const [moved] = newPageOrder.splice(oldIndex, 1);
+      newPageOrder.splice(newIndex, 0, moved);
 
-      // Optimistic update
       const prev = queryClient.getQueryData<Awaited<ReturnType<typeof listItems>>>(queryKey);
       if (prev) {
-        const reorderedItems = newPageOrder.map((id) => prev.items.find((i) => i.id === id)!).filter(Boolean);
+        const reorderedItems = newPageOrder.map((id) => prev.items.find((item) => item.id === id)!).filter(Boolean);
         queryClient.setQueryData(queryKey, { ...prev, items: reorderedItems });
       }
 
@@ -950,24 +612,21 @@ export default function App() {
 
         await reorderMutation.mutateAsync(fullNewOrder);
       } catch {
-        // Revert optimistic update on error
         if (prev) queryClient.setQueryData(queryKey, prev);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, queryKey, spaceFilter, queryClient, reorderMutation],
+    [items, queryClient, queryKey, reorderMutation, spaceFilter],
   );
 
   const handleMoveToPage = useCallback(
     async (itemId: number, direction: "next" | "prev") => {
       if (!pagination || pagination.pages <= 1) return;
 
-      // Optimistic update: remove item from current page
       const prev = queryClient.getQueryData<Awaited<ReturnType<typeof listItems>>>(queryKey);
       if (prev) {
         queryClient.setQueryData(queryKey, {
           ...prev,
-          items: prev.items.filter((i) => i.id !== itemId),
+          items: prev.items.filter((item) => item.id !== itemId),
         });
       }
 
@@ -979,32 +638,26 @@ export default function App() {
           scopedOrder = orderedIds;
         }
 
-        // Reorder within the currently filtered set so page boundaries align with the UI view.
         const filteredOrder = await fetchAllFilteredIds();
         const workingOrder = [...filteredOrder];
-
-        // Remove item and reinsert at target page position
-        const idx = workingOrder.indexOf(itemId);
-        if (idx === -1) {
+        const index = workingOrder.indexOf(itemId);
+        if (index === -1) {
           if (prev) queryClient.setQueryData(queryKey, prev);
           return;
         }
-        workingOrder.splice(idx, 1);
+
+        workingOrder.splice(index, 1);
 
         let targetIndex: number;
         if (direction === "next") {
-          targetIndex = page * perPage; // first position of next page
+          targetIndex = page * perPage;
         } else {
-          targetIndex = (page - 1) * perPage - 1; // last position of previous page
+          targetIndex = (page - 1) * perPage - 1;
         }
         targetIndex = Math.max(0, Math.min(targetIndex, workingOrder.length));
         workingOrder.splice(targetIndex, 0, itemId);
 
-        const nextScopedOrder = substituteInOrder(
-          scopedOrder,
-          new Set(filteredOrder),
-          workingOrder,
-        );
+        const nextScopedOrder = substituteInOrder(scopedOrder, new Set(filteredOrder), workingOrder);
         const fullNewOrder = spaceQueryParam
           ? substituteInOrder(globalOrder, new Set(scopedOrder), nextScopedOrder)
           : nextScopedOrder;
@@ -1014,21 +667,98 @@ export default function App() {
         if (prev) queryClient.setQueryData(queryKey, prev);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pagination, queryKey, queryClient, reorderMutation, page, spaceQueryParam, fetchAllFilteredIds],
+    [fetchAllFilteredIds, page, pagination, perPage, queryClient, queryKey, reorderMutation, spaceQueryParam],
   );
 
-  // Sync local page state when the server clamps to a different page
-  // (e.g. user was on page 3, then a filter reduced results to 1 page).
-  // pagination.page is the only intentional trigger — including `page`
-  // would create a render loop (setPage → effect → setPage).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (pagination && pagination.page !== page) {
       setPage(pagination.page);
     }
-  }, [pagination?.page]);
+  }, [page, pagination?.page]);
 
+  const openFilesPicker = useCallback(() => {
+    filesInputRef.current?.click();
+  }, []);
+
+  const openFolderPicker = useCallback(() => {
+    const element = folderInputRef.current;
+    if (!element) return;
+    element.setAttribute("webkitdirectory", "");
+    element.setAttribute("directory", "");
+    element.click();
+  }, []);
+
+  const handleToggleSpacePicker = useCallback(
+    (itemId: number, rect: DOMRect, spaceId: number | null) => {
+      setSpacePickerState((current) => (current?.itemId === itemId ? null : { itemId, rect, spaceId }));
+    },
+    [],
+  );
+
+  const handleUpdateItemState = useCallback(
+    (itemId: number, nextState: ItemState) => {
+      updateItemMutation.mutate({ id: itemId, state: nextState });
+    },
+    [updateItemMutation],
+  );
+
+  const handleTogglePin = useCallback(
+    (itemId: number, nextPinned: boolean) => {
+      updateItemMutation.mutate({ id: itemId, pinned: nextPinned });
+    },
+    [updateItemMutation],
+  );
+
+  const handleSelectSpace = useCallback(
+    (itemId: number, nextSpaceId: number | null) => {
+      updateItemMutation.mutate({ id: itemId, spaceId: nextSpaceId });
+    },
+    [updateItemMutation],
+  );
+
+  const openBulkDeleteDialog = useCallback(() => {
+    setBulkDeleteOpen(true);
+  }, []);
+
+  const closeSpacePicker = useCallback(() => {
+    setSpacePickerState(null);
+  }, []);
+
+  const copyLinkForItemsContent = useCallback(
+    (id: number) => {
+      void copyLink(id);
+    },
+    [copyLink],
+  );
+
+  const goToPreviousPage = useCallback(() => {
+    setPage((current) => Math.max(1, current - 1));
+  }, []);
+
+  const goToNextPage = useCallback(() => {
+    setPage((current) => current + 1);
+  }, []);
+
+  const handleKindFilterChange = useCallback((value: KindFilter | "") => {
+    setKindFilter((value || "all") as KindFilter);
+    setPage(1);
+  }, []);
+
+  const handleStateFilterChange = useCallback((value: StateFilter | "") => {
+    setStateFilter((value || "all") as StateFilter);
+    setPage(1);
+  }, []);
+
+  const handleSortFieldChange = useCallback((value: SortField | "") => {
+    if (!value) return;
+    setSortField(value as SortField);
+    setPage(1);
+  }, []);
+
+  const handleSpaceFilterChange = useCallback((filter: SpaceFilter) => {
+    setSpaceFilter(filter);
+    setPage(1);
+  }, []);
 
   const controlClass =
     "h-10 rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 text-sm text-[var(--app-text)] shadow-sm outline-none transition-colors hover:bg-[var(--app-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
@@ -1037,23 +767,10 @@ export default function App() {
     "h-9 rounded-lg border border-transparent bg-[var(--app-hover)] pl-3.5 pr-9 text-xs font-medium text-[var(--app-text)] outline-none transition-colors hover:bg-[var(--app-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
   const newMenuItemClass =
     "flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)]";
-  const rowActionBaseClass =
-    "pressable inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
-  const rowActionPrimaryClass = `${rowActionBaseClass} row-action-primary text-[var(--accent)] focus-visible:outline-[var(--accent)]`;
-  const rowActionNeutralClass = `${rowActionBaseClass} border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text)] hover:bg-[var(--app-hover)] focus-visible:outline-[var(--accent)]`;
-  const rowActionDangerClass = `${rowActionBaseClass} row-action-danger text-rose-700 focus-visible:outline-rose-600 dark:text-rose-200`;
-  const dialogFieldClass =
-    "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
-  const stateSelectClass =
-    "relative inline-flex h-8 items-center gap-2 rounded-lg pl-2 pr-8 text-xs font-medium shadow-sm w-[10rem] lg:w-[11.5rem]";
-  const countByState = itemsQuery.data?.countByState;
-  const summaryMetrics = [
-    { label: "Total", value: pagination?.total ?? 0 },
-    { label: "Active", value: countByState?.active ?? 0 },
-    { label: "Done", value: countByState?.done ?? 0 },
-    { label: "Ready", value: countByState?.ready_to_delete ?? 0 },
-  ];
-  const showDropzone = !itemsQuery.isLoading && !itemsQuery.error && items.length === 0;
+
+  const itemsErrorMessage =
+    itemsQuery.error instanceof Error ? itemsQuery.error.message : itemsQuery.error ? "Failed to load items" : undefined;
+  const updatingItemId = updateItemMutation.isPending ? (updateItemMutation.variables?.id ?? null) : null;
 
   return (
     <div className="relative flex min-h-screen flex-col text-[var(--app-text)]">
@@ -1061,7 +778,7 @@ export default function App() {
         <div className="mx-auto max-w-6xl px-4 py-4 reveal reveal-d1">
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
+              <div className="flex min-w-0 items-center gap-3">
                 <div className="grid h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] p-0.5">
                   <img src="/logo.png" alt="saíta logo" className="h-full w-full object-contain" />
                 </div>
@@ -1087,27 +804,55 @@ export default function App() {
                     <ChevronDown className={`h-3.5 w-3.5 transition-transform ${newMenuOpen ? "rotate-180" : ""}`} />
                   </button>
 
-                  {newMenuOpen && (
+                  {newMenuOpen ? (
                     <div className="absolute right-0 top-full z-40 mt-1.5 w-48 overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] py-1 shadow-lg">
-                      <button type="button" onClick={() => { setNewMenuOpen(false); openFilesPicker(); }} className={newMenuItemClass}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewMenuOpen(false);
+                          openFilesPicker();
+                        }}
+                        className={newMenuItemClass}
+                      >
                         <Upload className="h-4 w-4 text-[var(--app-muted)]" />
                         Upload files
                       </button>
-                      <button type="button" onClick={() => { setNewMenuOpen(false); openFolderPicker(); }} className={newMenuItemClass}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewMenuOpen(false);
+                          openFolderPicker();
+                        }}
+                        className={newMenuItemClass}
+                      >
                         <FolderUp className="h-4 w-4 text-[var(--app-muted)]" />
                         Upload folder
                       </button>
                       <div className="my-1 border-t border-[var(--app-border)]" />
-                      <button type="button" onClick={() => { setNewMenuOpen(false); setLinkSpaceId(activeSpaceId); setLinkTtl(getSettingsSnapshot().defaultTtl); setLinkDialogOpen(true); }} className={newMenuItemClass}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewMenuOpen(false);
+                          openLinkDialog();
+                        }}
+                        className={newMenuItemClass}
+                      >
                         <Link2 className="h-4 w-4 text-[var(--app-muted)]" />
                         Save link
                       </button>
-                      <button type="button" onClick={() => { setNewMenuOpen(false); setNoteSpaceId(activeSpaceId); setNoteTtl(getSettingsSnapshot().defaultTtl); setNoteDialogOpen(true); }} className={newMenuItemClass}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewMenuOpen(false);
+                          openNoteDialog();
+                        }}
+                        className={newMenuItemClass}
+                      >
                         <MessageSquareText className="h-4 w-4 text-[var(--app-muted)]" />
                         Save note
                       </button>
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
                 <button
@@ -1138,17 +883,8 @@ export default function App() {
 
               <Select
                 value={kindFilter}
-                onChange={(v) => {
-                  setKindFilter((v || "all") as KindFilter);
-                  setPage(1);
-                }}
-                options={[
-                  { value: "all", label: "All items" },
-                  { value: "file", label: "Files only", divider: true },
-                  { value: "folder", label: "Folders only" },
-                  { value: "link", label: "Links only" },
-                  { value: "note", label: "Notes only" },
-                ]}
+                onChange={handleKindFilterChange}
+                options={kindFilterOptions}
                 className={`w-full ${filterSelectClass}`}
                 aria-label="Filter by kind"
                 renderTrigger={(label) => (
@@ -1162,17 +898,8 @@ export default function App() {
 
               <Select
                 value={stateFilter}
-                onChange={(v) => {
-                  setStateFilter((v || "all") as StateFilter);
-                  setPage(1);
-                }}
-                options={[
-                  { value: "all", label: "All statuses" },
-                  { value: "active", label: "Active", divider: true },
-                  { value: "done", label: "Done" },
-                  { value: "archived", label: "Archived" },
-                  { value: "ready_to_delete", label: "Ready to delete" },
-                ]}
+                onChange={handleStateFilterChange}
+                options={stateFilterSelectOptions}
                 className={`w-full ${filterSelectClass}`}
                 aria-label="Filter by status"
                 renderTrigger={(label) => (
@@ -1186,12 +913,7 @@ export default function App() {
 
               <Select<SortField>
                 value={sortField}
-                onChange={(v) => {
-                  if (v) {
-                    setSortField(v as SortField);
-                    setPage(1);
-                  }
-                }}
+                onChange={handleSortFieldChange}
                 options={sortFieldOptions}
                 className={`w-full ${filterSelectClass}`}
                 aria-label="Sort by"
@@ -1235,463 +957,68 @@ export default function App() {
                     setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
                     setPage(1);
                   }}
-                  className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent bg-[var(--app-hover)] text-[var(--app-text)] outline-none transition-colors hover:bg-[var(--app-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]`}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent bg-[var(--app-hover)] text-[var(--app-text)] outline-none transition-colors hover:bg-[var(--app-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
                   aria-label={sortOrder === "asc" ? "Sort ascending (click to switch to descending)" : "Sort descending (click to switch to ascending)"}
                   title={sortOrder === "asc" ? "Ascending" : "Descending"}
                 >
-                  {sortOrder === "asc" ? (
-                    <ArrowUpNarrowWide className="h-4 w-4" />
-                  ) : (
-                    <ArrowDownWideNarrow className="h-4 w-4" />
-                  )}
+                  {sortOrder === "asc" ? <ArrowUpNarrowWide className="h-4 w-4" /> : <ArrowDownWideNarrow className="h-4 w-4" />}
                 </button>
               )}
-
             </div>
 
             <SpaceBar
               spaces={spaces}
               activeFilter={spaceFilter}
-              onFilterChange={(f) => {
-                setSpaceFilter(f);
-                setPage(1);
-              }}
+              onFilterChange={handleSpaceFilterChange}
               onCreateSpace={(name) => createSpaceMutation.mutate(name)}
               onRenameSpace={(id, name) => renameSpaceMutation.mutate({ id, name })}
               onDeleteSpace={(id) => {
-                const s = spaces.find((sp) => sp.id === id);
-                if (s) setDeleteSpaceTarget(s);
+                const target = spaces.find((space) => space.id === id);
+                if (target) setDeleteSpaceTarget(target);
               }}
-              onReorderSpaces={(orderedIds) =>
-                reorderSpacesMutation.mutateAsync(orderedIds)
-              }
+              onReorderSpaces={(orderedIds) => reorderSpacesMutation.mutateAsync(orderedIds)}
               isCreating={createSpaceMutation.isPending}
             />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 px-4 pt-6">
-        {showDropzone ? (
-          <section
-            className="surface-panel reveal reveal-d2 rounded-xl border-2 border-dashed border-[var(--app-border-strong)] p-6"
-          >
-            <div className="flex flex-col items-center gap-3 text-center">
-              <div className="grid h-14 w-14 place-items-center rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--accent-strong)]">
-                <Upload className="h-6 w-6" />
-              </div>
-              <div className="font-display text-xl font-semibold">Drop files here to share instantly</div>
-              <p className="max-w-2xl text-sm text-[var(--app-muted)]">
-                Any file type is supported. Folder uploads are zipped automatically. You can also save quick links and
-                short notes.
-              </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={openFilesPicker}
-                  className="pressable inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--accent)] px-4 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-                >
-                  <Upload className="h-4 w-4" />
-                  Choose files
-                </button>
-                <button
-                  type="button"
-                  onClick={openFolderPicker}
-                  className={`inline-flex items-center gap-2 ${controlButtonClass}`}
-                >
-                  <FolderUp className="h-4 w-4" />
-                  Choose folder
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setLinkSpaceId(activeSpaceId); setLinkTtl(getSettingsSnapshot().defaultTtl); setLinkDialogOpen(true); }}
-                  className={`inline-flex items-center gap-2 ${controlButtonClass}`}
-                >
-                  <Link2 className="h-4 w-4" />
-                  Save link
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setNoteSpaceId(activeSpaceId); setNoteTtl(getSettingsSnapshot().defaultTtl); setNoteDialogOpen(true); }}
-                  className={`inline-flex items-center gap-2 ${controlButtonClass}`}
-                >
-                  <MessageSquareText className="h-4 w-4" />
-                  Save note
-                </button>
-              </div>
-            </div>
-          </section>
-        ) : null}
+      <ItemsContent
+        items={items}
+        spaces={spaces}
+        pagination={pagination}
+        countByState={countByState}
+        isLoading={itemsQuery.isLoading}
+        isFetching={itemsQuery.isFetching}
+        errorMessage={itemsErrorMessage}
+        canDragDrop={canDragDrop}
+        reorderPending={reorderMutation.isPending}
+        activeDragId={activeDragId}
+        updatingItemId={updatingItemId}
+        bulkDeletePending={bulkDeleteMutation.isPending}
+        showBulkDeleteButton={stateFilter === "ready_to_delete" && (pagination?.total ?? 0) > 0}
+        spacePickerState={spacePickerState}
+        onOpenFilesPicker={openFilesPicker}
+        onOpenFolderPicker={openFolderPicker}
+        onOpenLinkDialog={openLinkDialog}
+        onOpenNoteDialog={openNoteDialog}
+        onOpenBulkDelete={openBulkDeleteDialog}
+        onItemDragStart={handleItemDragStart}
+        onItemDragEnd={handleItemDragEnd}
+        onMoveToPage={handleMoveToPage}
+        onUpdateItemState={handleUpdateItemState}
+        onTogglePin={handleTogglePin}
+        onToggleSpacePicker={handleToggleSpacePicker}
+        onSelectSpace={handleSelectSpace}
+        onCloseSpacePicker={closeSpacePicker}
+        onItemAction={handleItemAction}
+        onCopyLink={copyLinkForItemsContent}
+        onDeleteItem={setDeleteTarget}
+        onPrevPage={goToPreviousPage}
+        onNextPage={goToNextPage}
+      />
 
-        <section className={`surface-panel reveal reveal-d3 rounded-xl ${canDragDrop ? "" : "overflow-hidden"}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--app-border)] px-4 py-3">
-            <div>
-              <div className="font-display text-lg font-semibold">Shared items</div>
-              <div className="text-xs text-[var(--app-muted)]">
-                {itemsQuery.isFetching ? "Refreshing..." : "Always available from direct link"}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-[var(--app-muted)]">
-                {summaryMetrics.map((m, i) => (
-                  <span key={m.label}>
-                    {i > 0 && <span className="mx-1.5 opacity-40">&middot;</span>}
-                    {m.label}<span className="ml-1 tabular-nums font-medium text-[var(--app-text)]/75">{m.value}</span>
-                  </span>
-                ))}
-              </span>
-              {stateFilter === "ready_to_delete" && (pagination?.total ?? 0) > 0 ? (
-                <button
-                  type="button"
-                  disabled={bulkDeleteMutation.isPending}
-                  onClick={() => setBulkDeleteOpen(true)}
-                  className="pressable inline-flex h-9 items-center gap-2 rounded-lg border border-rose-600/40 bg-rose-600/10 px-3 font-semibold text-rose-700 transition-colors hover:bg-rose-600/20 disabled:cursor-not-allowed disabled:opacity-60 dark:text-rose-200"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete all ({pagination?.total})
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          {itemsQuery.isLoading ? (
-            <div className="px-4 py-8 text-sm text-[var(--app-muted)]">Loading items...</div>
-          ) : itemsQuery.error ? (
-            <div className="px-4 py-8 text-sm text-rose-700 dark:text-rose-200">
-              {itemsQuery.error instanceof Error ? itemsQuery.error.message : "Failed to load items"}
-            </div>
-          ) : items.length === 0 ? (
-            <div className="px-4 py-10 text-center">
-              <div className="font-display text-lg font-semibold">No items found</div>
-              <div className="mt-1 text-sm text-[var(--app-muted)]">
-                Upload a file/folder, save a link, or write a note to create your first shareable item.
-              </div>
-            </div>
-          ) : (
-            <ItemListDndWrapper
-              enabled={canDragDrop}
-              itemIds={items.map((i) => i.id)}
-              sensors={dndSensors}
-              onDragStart={handleItemDragStart}
-              onDragEnd={handleItemDragEnd}
-            >
-            <div className={`stagger-list divide-y divide-[var(--app-border)] ${canDragDrop ? "is-reordering" : ""} ${activeDragId ? "is-dragging" : ""}`}>
-              {items.map((item) => {
-                const preview = kindPreview(item);
-                const isBinary = item.kind === "file" || item.kind === "folder";
-                const isNotePreviewLoading = notePreviewLoadingItemId !== null;
-                const isLoadingThisNote = notePreviewLoadingItemId === item.id;
-                const requiresUnlock = item.isPasswordProtected && !item.isPasswordUnlocked;
-
-                const renderItemRow = (handleProps?: React.HTMLAttributes<HTMLElement>, isDragging?: boolean) => (
-                  <div
-                    className={`item-row group flex flex-col gap-3 px-4 py-4 lg:grid lg:grid-cols-[1fr_auto_auto] lg:items-center lg:gap-4 ${isDragging ? "" : "hover:bg-[var(--app-hover)]"}`}
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-start gap-3">
-                        {canDragDrop && (
-                          <div
-                            {...handleProps}
-                            className={`mt-2.5 flex shrink-0 items-center transition-colors ${
-                              isDragging
-                                ? "cursor-grabbing text-[var(--accent)]"
-                                : "cursor-grab text-[var(--app-muted)] hover:text-[var(--accent)] active:cursor-grabbing"
-                            }`}
-                          >
-                            <GripVertical className="h-4 w-4" />
-                          </div>
-                        )}
-                        {canDragDrop && !isDragging && pagination && pagination.pages > 1 && (
-                          <div className="mt-1.5 flex shrink-0 flex-col items-center">
-                            <button
-                              type="button"
-                              disabled={!pagination.hasPrev || reorderMutation.isPending}
-                              onClick={() => handleMoveToPage(item.id, "prev")}
-                              className="rounded p-0.5 text-[var(--app-muted)] transition-colors hover:text-[var(--accent)] disabled:pointer-events-none disabled:opacity-30"
-                              aria-label="Move to previous page"
-                              title="Move to previous page"
-                            >
-                              <ChevronUp className="h-3 w-3" />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!pagination.hasNext || reorderMutation.isPending}
-                              onClick={() => handleMoveToPage(item.id, "next")}
-                              className="rounded p-0.5 text-[var(--app-muted)] transition-colors hover:text-[var(--accent)] disabled:pointer-events-none disabled:opacity-30"
-                              aria-label="Move to next page"
-                              title="Move to next page"
-                            >
-                              <ChevronDown className="h-3 w-3" />
-                            </button>
-                          </div>
-                        )}
-                        <div className="mt-0.5 flex shrink-0 flex-col items-center gap-1.5">
-                          <div className={`relative grid h-10 w-10 place-items-center rounded-md border bg-[var(--app-panel)] text-[var(--accent-cool)] ${item.isPinned ? "border-[var(--accent)]/40" : "border-[var(--app-border)]"}`}>
-                            {item.kind === "folder" ? (
-                              <FolderArchive className="h-4 w-4" />
-                            ) : item.kind === "link" ? (
-                              <Link2 className="h-4 w-4" />
-                            ) : item.kind === "note" ? (
-                              <MessageSquareText className="h-4 w-4" />
-                            ) : (
-                              <FileIcon className="h-4 w-4" />
-                            )}
-                            {item.isPasswordProtected ? (
-                              <Lock
-                                className={`absolute -right-1 -bottom-1 h-3 w-3 ${item.isPasswordUnlocked ? "text-[var(--app-muted)]" : "text-[var(--danger)]"}`}
-                                aria-label={item.isPasswordUnlocked ? "Unlocked" : "Protected"}
-                              />
-                            ) : null}
-                          </div>
-                          {item.expiresAt && (
-                            <span className="inline-flex items-center gap-0.5 whitespace-nowrap text-[10px] font-medium text-amber-600 dark:text-amber-400" title={`Expires ${new Date(item.expiresAt).toLocaleString()}`}>
-                              <Clock className="h-2.5 w-2.5" />
-                              {formatTimeRemaining(item.expiresAt)}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="min-w-0">
-                          <div className="truncate font-semibold" title={item.name}>
-                            {item.name}
-                          </div>
-                          {preview ? <div className="mt-0.5 truncate text-xs text-[var(--app-muted)]">{preview}</div> : null}
-                          <div className="mt-2.5 flex flex-col gap-1 text-xs text-[var(--app-muted)]">
-                            <div className="flex items-center gap-2">
-                              <Select<ItemState>
-                                value={item.state}
-                                onChange={(v) => {
-                                  if (v) updateItemMutation.mutate({ id: item.id, state: v as ItemState });
-                                }}
-                                options={itemStateOptions}
-                                disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
-                                className={`${stateSelectClass} ${stateChipClass[item.state]}`}
-                                aria-label="Set status"
-                                renderTrigger={(label) => (
-                                  <>
-                                    <span className={`h-2 w-2 shrink-0 rounded-[2px] ${stateDotClass[item.state]}`} />
-                                    <span className="truncate text-xs font-semibold">{label}</span>
-                                    <ChevronDown className="absolute right-2 h-3.5 w-3.5 opacity-70" />
-                                  </>
-                                )}
-                                renderOption={(option, isSelected) => (
-                                  <>
-                                    <span className={`h-2 w-2 shrink-0 rounded-[2px] ${stateDotClass[option.value]}`} />
-                                    <span className={isSelected ? "font-semibold" : ""}>{option.label}</span>
-                                  </>
-                                )}
-                              />
-
-                              {spaces.length > 0 ? (
-                                item.spaceId ? (
-                                  <button
-                                    type="button"
-                                    disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
-                                    onClick={(e) => {
-                                      if (spacePickerState?.itemId === item.id) {
-                                        setSpacePickerState(null);
-                                      } else {
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        setSpacePickerState({ itemId: item.id, rect });
-                                      }
-                                    }}
-                                    className="inline-flex max-w-[14rem] items-center gap-1.5 rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] px-1.5 py-1 text-xs font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-70"
-                                    aria-label="Change space"
-                                    title={`Space: ${item.spaceName}`}
-                                  >
-                                    <Layers className="h-3 w-3 shrink-0 text-[var(--accent-cool)]" />
-                                    <span className="max-w-[12rem] truncate">{item.spaceName}</span>
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
-                                    onClick={(e) => {
-                                      if (spacePickerState?.itemId === item.id) {
-                                        setSpacePickerState(null);
-                                      } else {
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        setSpacePickerState({ itemId: item.id, rect });
-                                      }
-                                    }}
-                                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--app-muted)] opacity-0 transition-all hover:bg-[var(--app-hover)] group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] max-lg:opacity-100 disabled:cursor-not-allowed disabled:opacity-70"
-                                    aria-label="Add to space"
-                                    title="Add to space"
-                                  >
-                                    <Plus className="h-3 w-3" />
-                                    <span>Add to space</span>
-                                  </button>
-                                )
-                              ) : null}
-                            </div>
-
-                            <span className="inline-flex items-center gap-2 whitespace-nowrap lg:hidden">
-                              <span className="font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
-                              <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
-                              <span className="font-mono text-[11px]">{formatDateTime(item.createdAt)}</span>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="hidden items-center gap-2.5 whitespace-nowrap text-xs text-[var(--app-muted)] lg:flex">
-                      <span className="w-[5rem] text-right font-mono text-[11px]">{formatBytes(item.sizeBytes)}</span>
-                      <span className="text-[10px] text-[var(--app-border)]">&middot;</span>
-                      <span className="w-[10rem] font-mono text-[11px]">{formatDateTime(item.createdAt)}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2 lg:min-w-[14rem] lg:justify-end">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateItemMutation.mutate({ id: item.id, pinned: !item.isPinned })
-                        }
-                        disabled={updateItemMutation.isPending && updateItemMutation.variables?.id === item.id}
-                        className={`pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 ${
-                          item.isPinned
-                            ? "border-[var(--accent)]/30 bg-[var(--accent)]/10 text-[var(--accent)]"
-                            : "border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-muted)] opacity-0 hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] group-hover:opacity-100 focus-visible:opacity-100 max-lg:opacity-100"
-                        }`}
-                        aria-label={item.isPinned ? "Unpin" : "Pin to top"}
-                        title={item.isPinned ? "Unpin" : "Pin to top"}
-                      >
-                        <Pin className={`h-3.5 w-3.5${item.isPinned ? " fill-current" : ""}`} />
-                      </button>
-
-                      {isBinary ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (requiresUnlock) {
-                              requestUnlockThenAction(item, "download");
-                              return;
-                            }
-                            void performItemAction(item, "download");
-                          }}
-                          className={`${rowActionPrimaryClass} flex-1 justify-center lg:flex-initial`}
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          Download
-                        </button>
-                      ) : item.kind === "link" ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (requiresUnlock) {
-                              requestUnlockThenAction(item, "link");
-                              return;
-                            }
-                            void performItemAction(item, "link");
-                          }}
-                          className={`${rowActionPrimaryClass} flex-1 justify-center lg:flex-initial`}
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          Open link
-                        </button>
-                      ) : item.kind === "note" ? (
-                        <button
-                          type="button"
-                          disabled={isNotePreviewLoading}
-                          onClick={() => {
-                            if (requiresUnlock) {
-                              requestUnlockThenAction(item, "note");
-                              return;
-                            }
-                            void performItemAction(item, "note");
-                          }}
-                          className={`${rowActionPrimaryClass} flex-1 justify-center lg:flex-initial`}
-                        >
-                          <MessageSquareText className="h-3.5 w-3.5" />
-                          {isLoadingThisNote ? "Opening..." : isNotePreviewLoading ? "Please wait..." : "View note"}
-                        </button>
-                      ) : null}
-
-                      <button
-                        type="button"
-                        onClick={() => void copyLink(item.id)}
-                        className="pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-muted)] transition-colors hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-                        aria-label="Copy link"
-                        title="Copy link"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-
-                      {item.state === "ready_to_delete" ? (
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(item)}
-                          className="row-action-danger pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border text-rose-700 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 dark:text-rose-200"
-                          aria-label="Delete"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-
-                return canDragDrop ? (
-                  <SortableItemWrapper key={item.id} id={item.id}>
-                    {(handleProps, isDragging) => renderItemRow(handleProps, isDragging)}
-                  </SortableItemWrapper>
-                ) : (
-                  <div key={item.id}>{renderItemRow()}</div>
-                );
-              })}
-            </div>
-            </ItemListDndWrapper>
-          )}
-
-          {spacePickerState && (
-            <SpacePicker
-              anchorRect={spacePickerState.rect}
-              spaces={spaces}
-              currentSpaceId={
-                items.find((i) => i.id === spacePickerState.itemId)?.spaceId ??
-                null
-              }
-              onSelect={(spaceId) => {
-                updateItemMutation.mutate({
-                  id: spacePickerState.itemId,
-                  spaceId,
-                });
-              }}
-              onClose={() => setSpacePickerState(null)}
-            />
-          )}
-
-          {pagination ? (
-            <div className="flex items-center justify-between gap-3 border-t border-[var(--app-border)] px-4 py-3">
-              <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--app-muted)]">
-                Page {pagination.page} / {pagination.pages}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={!pagination.hasPrev}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className={`${controlButtonClass} disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  Prev
-                </button>
-                <button
-                  type="button"
-                  disabled={!pagination.hasNext}
-                  onClick={() => setPage((p) => p + 1)}
-                  className={`${controlButtonClass} disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </section>
-      </main>
-
-      <footer className="mx-auto mt-8 mb-4 flex w-full max-w-6xl items-center justify-between gap-3 border-t border-[var(--app-border)]/50 px-4 pt-4 text-[11px] text-[var(--app-muted)]">
+      <footer className="mx-auto mb-4 mt-8 flex w-full max-w-6xl items-center justify-between gap-3 border-t border-[var(--app-border)]/50 px-4 pt-4 text-[11px] text-[var(--app-muted)]">
         <div className="font-mono uppercase tracking-[0.08em]">saíta{versionQuery.data ? ` · v${versionQuery.data}` : ""} · Internal use</div>
         <div className="flex items-center gap-3">
           <button
@@ -1785,415 +1112,52 @@ export default function App() {
         }}
       />
 
-      <ConfirmDialog
-        open={uploadDialog.open}
-        title={uploadDialog.kind === "files" ? "Upload files" : "Upload folder"}
-        description={
-          uploadDialog.kind === "files"
-            ? `Selected ${uploadDialog.files.length} file(s). Optional password protects all uploaded files.`
-            : `Selected ${uploadDialog.files.length} file(s) from a folder. Optional password protects the folder archive.`
+      <UploadDialog
+        request={uploadDialogRequest}
+        spaces={spaces}
+        onClose={() => setUploadDialogRequest(null)}
+        onStartUpload={handleDialogUploadStart}
+      />
+
+      <LinkDialog
+        open={Boolean(linkDialogRequest)}
+        spaces={spaces}
+        initialSpaceId={linkDialogRequest?.initialSpaceId}
+        defaultTtl={linkDialogRequest?.defaultTtl ?? ""}
+        onClose={() => setLinkDialogRequest(null)}
+        onSuccess={() => setLinkDialogRequest(null)}
+        onDuplicate={({ duplicates, retry }) =>
+          setDuplicateDialog({
+            duplicates,
+            retryFn: retry,
+          })
         }
-        confirmLabel="Start upload"
-        cancelLabel="Cancel"
-        formMode
-        onCancel={() => {
-          dispatchUploadDialog({ type: "close" });
-          setUploadTtl("");
+      />
+
+      <NoteDialog
+        open={Boolean(noteDialogRequest)}
+        spaces={spaces}
+        initialSpaceId={noteDialogRequest?.initialSpaceId}
+        defaultTtl={noteDialogRequest?.defaultTtl ?? ""}
+        onClose={() => setNoteDialogRequest(null)}
+        onSuccess={() => setNoteDialogRequest(null)}
+        onDuplicate={({ duplicates, retry }) =>
+          setDuplicateDialog({
+            duplicates,
+            retryFn: retry,
+          })
+        }
+      />
+
+      <UnlockDialog
+        target={unlockTarget}
+        onClose={() => setUnlockTarget(null)}
+        onUnlocked={async (item, action) => {
+          await performItemAction(item, action);
         }}
-        onConfirm={() => {
-          void handleConfirmUploadDialog();
-        }}
-      >
-        {spaces.length > 0 ? (
-          <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-            Space (optional)
-            <Select
-              value={uploadDialog.spaceId != null ? String(uploadDialog.spaceId) : ""}
-              onChange={(v) => dispatchUploadDialog({ type: "set_space_id", value: v ? Number(v) : undefined })}
-              options={spaces.map((s) => ({ value: String(s.id), label: s.name }))}
-              placeholder="—"
-              className={`${dialogFieldClass} mt-1`}
-              aria-label="Space"
-            />
-          </label>
-        ) : null}
+      />
 
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Auto-delete after (optional)
-          <Select
-            value={uploadTtl}
-            onChange={(v) => setUploadTtl(v as TtlPreset | "")}
-            options={TTL_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
-            placeholder="Never"
-            className={`${dialogFieldClass} mt-1`}
-            aria-label="Auto-delete after"
-          />
-        </label>
-
-        {uploadTtl && (
-          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-            This item will be <strong>permanently deleted</strong> after{" "}
-            {TTL_PRESETS.find((p) => p.value === uploadTtl)?.label}. This cannot be undone.
-          </div>
-        )}
-
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Password (optional)
-          <input
-            type="password"
-            value={uploadDialog.password}
-            onChange={(e) => dispatchUploadDialog({ type: "set_password", value: e.target.value })}
-            placeholder="8-128 characters"
-            className={dialogFieldClass}
-            autoFocus
-            autoComplete="new-password"
-          />
-        </label>
-
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Confirm password
-          <input
-            type="password"
-            value={uploadDialog.passwordConfirm}
-            onChange={(e) => dispatchUploadDialog({ type: "set_password_confirm", value: e.target.value })}
-            placeholder="Repeat password"
-            className={dialogFieldClass}
-            autoComplete="new-password"
-          />
-        </label>
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        open={Boolean(unlockTarget)}
-        title="Unlock protected item"
-        description={unlockTarget ? `Enter the password for “${unlockTarget.item.name}”.` : undefined}
-        confirmLabel={isUnlocking ? "Unlocking..." : "Unlock"}
-        cancelLabel="Cancel"
-        confirmDisabled={isUnlocking}
-        formMode
-        onCancel={() => {
-          if (isUnlocking) return;
-          setUnlockTarget(null);
-          setUnlockPassword("");
-        }}
-        onConfirm={() => {
-          void handleUnlockTarget();
-        }}
-      >
-        <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Password
-          <input
-            type="password"
-            value={unlockPassword}
-            onChange={(e) => setUnlockPassword(e.target.value)}
-            placeholder="Enter password"
-            className={dialogFieldClass}
-            autoFocus
-            autoComplete="current-password"
-          />
-        </label>
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        open={linkDialogOpen}
-        title="Save external link"
-        description="Store a URL as a shareable item in the same workflow as files."
-        confirmLabel={createLinkMutation.isPending ? "Saving..." : "Save link"}
-        cancelLabel="Cancel"
-        confirmDisabled={!linkUrl.trim() || createLinkMutation.isPending}
-        formMode
-        onCancel={() => {
-          if (createLinkMutation.isPending) return;
-          setLinkDialogOpen(false);
-          setLinkPassword("");
-          setLinkPasswordConfirm("");
-          setLinkSpaceId(undefined);
-          setLinkTtl("");
-        }}
-        onConfirm={() => {
-          void handleCreateLink();
-        }}
-      >
-        <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          URL
-          <input
-            value={linkUrl}
-            onChange={(e) => setLinkUrl(e.target.value)}
-            placeholder="https://example.com/docs"
-            className={dialogFieldClass}
-            autoFocus
-          />
-        </label>
-
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Label (optional)
-          <input
-            value={linkName}
-            onChange={(e) => setLinkName(e.target.value)}
-            placeholder="Team docs"
-            className={dialogFieldClass}
-          />
-        </label>
-
-        {spaces.length > 0 ? (
-          <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-            Space (optional)
-            <Select
-              value={linkSpaceId != null ? String(linkSpaceId) : ""}
-              onChange={(v) => setLinkSpaceId(v ? Number(v) : undefined)}
-              options={spaces.map((s) => ({ value: String(s.id), label: s.name }))}
-              placeholder="—"
-              className={`${dialogFieldClass} mt-1`}
-              aria-label="Space"
-            />
-          </label>
-        ) : null}
-
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Auto-delete after (optional)
-          <Select
-            value={linkTtl}
-            onChange={(v) => setLinkTtl(v as TtlPreset | "")}
-            options={TTL_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
-            placeholder="Never"
-            className={`${dialogFieldClass} mt-1`}
-            aria-label="Auto-delete after"
-          />
-        </label>
-
-        {linkTtl && (
-          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-            This item will be <strong>permanently deleted</strong> after{" "}
-            {TTL_PRESETS.find((p) => p.value === linkTtl)?.label}. This cannot be undone.
-          </div>
-        )}
-
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Password (optional)
-          <input
-            type="password"
-            value={linkPassword}
-            onChange={(e) => setLinkPassword(e.target.value)}
-            placeholder="8-128 characters"
-            className={dialogFieldClass}
-            autoComplete="new-password"
-          />
-        </label>
-
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Confirm password
-          <input
-            type="password"
-            value={linkPasswordConfirm}
-            onChange={(e) => setLinkPasswordConfirm(e.target.value)}
-            placeholder="Repeat password"
-            className={dialogFieldClass}
-            autoComplete="new-password"
-          />
-        </label>
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        open={noteDialogOpen}
-        title="Save note"
-        description="Write a short note and share it with a stable /d/<id> link."
-        confirmLabel={createNoteMutation.isPending ? "Saving..." : "Save note"}
-        cancelLabel="Cancel"
-        confirmDisabled={!noteText.trim() || createNoteMutation.isPending}
-        formMode
-        onCancel={() => {
-          if (createNoteMutation.isPending) return;
-          setNoteDialogOpen(false);
-          setNoteEditTab("write");
-          setNotePassword("");
-          setNotePasswordConfirm("");
-          setNoteSpaceId(undefined);
-          setNoteTtl("");
-        }}
-        onConfirm={() => {
-          void handleCreateNote();
-        }}
-      >
-        <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Title (optional)
-          <input
-            value={noteTitle}
-            onChange={(e) => setNoteTitle(e.target.value)}
-            placeholder="Meeting summary"
-            className={dialogFieldClass}
-            autoFocus
-          />
-        </label>
-
-        <div className="mt-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-              Note
-            </span>
-            <div className="inline-flex overflow-hidden rounded-md border border-[var(--app-border)]">
-              <button
-                type="button"
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium transition-colors ${
-                  noteEditTab === "write"
-                    ? "bg-[var(--accent-soft)] text-[var(--accent)]"
-                    : "bg-[var(--app-panel)] text-[var(--app-muted)] hover:bg-[var(--app-hover)]"
-                }`}
-                onClick={() => setNoteEditTab("write")}
-              >
-                <Pencil className="h-3 w-3" />
-                Write
-              </button>
-              <button
-                type="button"
-                className={`inline-flex items-center gap-1.5 border-l border-[var(--app-border)] px-2.5 py-1 text-xs font-medium transition-colors ${
-                  noteEditTab === "preview"
-                    ? "bg-[var(--accent-soft)] text-[var(--accent)]"
-                    : "bg-[var(--app-panel)] text-[var(--app-muted)] hover:bg-[var(--app-hover)]"
-                }`}
-                onClick={() => setNoteEditTab("preview")}
-              >
-                <Eye className="h-3 w-3" />
-                Preview
-              </button>
-            </div>
-          </div>
-
-          {noteEditTab === "write" ? (
-            <textarea
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-                if (!(e.metaKey || e.ctrlKey)) return;
-                e.preventDefault();
-                void handleCreateNote();
-              }}
-              placeholder="Write a note... (supports markdown)"
-              rows={6}
-              className={`${dialogFieldClass} resize-y`}
-            />
-          ) : (
-            <div className="mt-1 min-h-[9.5rem] max-h-[20rem] overflow-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-2">
-              {noteText.trim() ? (
-                <MarkdownProse content={noteText} />
-              ) : (
-                <p className="text-sm italic text-[var(--app-muted)]">Nothing to preview</p>
-              )}
-            </div>
-          )}
-
-          {noteEditTab === "write" && (
-            <p className="mt-1 text-[11px] text-[var(--app-muted)]">
-              Supports <strong>markdown</strong>: headings, bold, italic, lists, links, code, and tables.
-            </p>
-          )}
-        </div>
-
-        {spaces.length > 0 ? (
-          <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-            Space (optional)
-            <Select
-              value={noteSpaceId != null ? String(noteSpaceId) : ""}
-              onChange={(v) => setNoteSpaceId(v ? Number(v) : undefined)}
-              options={spaces.map((s) => ({ value: String(s.id), label: s.name }))}
-              placeholder="—"
-              className={`${dialogFieldClass} mt-1`}
-              aria-label="Space"
-            />
-          </label>
-        ) : null}
-
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Auto-delete after (optional)
-          <Select
-            value={noteTtl}
-            onChange={(v) => setNoteTtl(v as TtlPreset | "")}
-            options={TTL_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
-            placeholder="Never"
-            className={`${dialogFieldClass} mt-1`}
-            aria-label="Auto-delete after"
-          />
-        </label>
-
-        {noteTtl && (
-          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-            This item will be <strong>permanently deleted</strong> after{" "}
-            {TTL_PRESETS.find((p) => p.value === noteTtl)?.label}. This cannot be undone.
-          </div>
-        )}
-
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Password (optional)
-          <input
-            type="password"
-            value={notePassword}
-            onChange={(e) => setNotePassword(e.target.value)}
-            placeholder="8-128 characters"
-            className={dialogFieldClass}
-            autoComplete="new-password"
-          />
-        </label>
-
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Confirm password
-          <input
-            type="password"
-            value={notePasswordConfirm}
-            onChange={(e) => setNotePasswordConfirm(e.target.value)}
-            placeholder="Repeat password"
-            className={dialogFieldClass}
-            autoComplete="new-password"
-          />
-        </label>
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        open={Boolean(notePreviewItem)}
-        title={notePreviewItem?.name || "Note"}
-        description={notePreviewItem ? `Created ${formatDateTime(notePreviewItem.createdAt)}` : undefined}
-        confirmLabel="Copy share link"
-        cancelLabel="Close"
-        size="lg"
-        onCancel={() => {
-          setNotePreviewItem(null);
-          setNotePreviewShowRaw(false);
-        }}
-        onConfirm={() => {
-          if (!notePreviewItem) return;
-          void copyLink(notePreviewItem.id);
-          setNotePreviewItem(null);
-          setNotePreviewShowRaw(false);
-        }}
-      >
-        <div className="mt-3 flex justify-end">
-          <button
-            type="button"
-            onClick={() => setNotePreviewShowRaw((v) => !v)}
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--app-muted)] transition-colors hover:bg-[var(--app-hover)] hover:text-[var(--app-text)]"
-          >
-            {notePreviewShowRaw ? (
-              <>
-                <Eye className="h-3 w-3" />
-                Rendered
-              </>
-            ) : (
-              <>
-                <Pencil className="h-3 w-3" />
-                Source
-              </>
-            )}
-          </button>
-        </div>
-        <div className="mt-1 max-h-[45vh] overflow-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-2">
-          {notePreviewShowRaw ? (
-            <pre className="text-sm leading-relaxed whitespace-pre-wrap">{notePreviewItem?.noteText || "(empty)"}</pre>
-          ) : notePreviewItem?.noteText ? (
-            <MarkdownProse content={notePreviewItem.noteText} />
-          ) : (
-            <span className="text-sm text-[var(--app-muted)]">(empty)</span>
-          )}
-        </div>
-      </ConfirmDialog>
+      <NotePreviewDialog item={notePreviewItem} onClose={() => setNotePreviewItem(null)} />
 
       <ConfirmDialog
         open={Boolean(deleteSpaceTarget)}
@@ -2237,9 +1201,15 @@ export default function App() {
 
       <DropOverlay visible={isOverWindow} />
       <UploadQueue uploads={uploads} onDismiss={dismissUpload} />
-      <StorageDashboard open={isStorageOpen} onClose={() => setIsStorageOpen(false)} />
-      <HowItWorksPanel open={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
-      <SettingsPanel open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <Suspense fallback={null}>
+        <StorageDashboard open={isStorageOpen} onClose={() => setIsStorageOpen(false)} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <HowItWorksPanel open={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <SettingsPanel open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      </Suspense>
     </div>
   );
 }

@@ -61,6 +61,15 @@ export default defineConfig(({ command }) => {
     build: {
       outDir: "dist",
       emptyOutDir: true,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            "vendor-query": ["@tanstack/react-query"],
+            "vendor-dnd": ["@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/utilities"],
+            "vendor-markdown": ["react-markdown", "remark-gfm"],
+          },
+        },
+      },
     },
     test: {
       environment: "jsdom",
