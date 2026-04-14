@@ -52,7 +52,7 @@ def public_download(item_id: int) -> Response:
     service = _get_service()
     item = service.get_item(item_id)
 
-    if service.item_requires_password(item) and not is_item_unlocked(item.id):
+    if service.item_requires_password(item) and not is_item_unlocked(item):
         return _render_password_prompt(item)
 
     return _serve_public_item(service, item)
@@ -92,7 +92,7 @@ def unlock_public_item(item_id: int) -> Response:
         )
 
     throttle.record_success(client_ip, item.id)
-    mark_item_unlocked(item.id)
+    mark_item_unlocked(item)
     return redirect(url_for("web.public_download", item_id=item_id), code=302)
 
 

@@ -1,9 +1,13 @@
 """Integration tests for Spaces API."""
 
 import io
+from datetime import datetime, timedelta, timezone
 
 from flask import Flask
 from flask.testing import FlaskClient
+
+from app import db
+from app.domain.item import Item
 
 
 def test_list_spaces_empty(client: FlaskClient):
@@ -93,11 +97,71 @@ def test_list_spaces_with_item_counts(client: FlaskClient):
     assert spaces[0]["itemCount"] == 1
 
 
+def test_list_spaces_excludes_expired_items_from_counts(app: Flask, client: FlaskClient):
+    space = client.post("/api/spaces", json={"name": "Docs"}).get_json()
+
+    with app.app_context():
+        db.session.add(
+            Item(
+                stored_name="expired-doc.txt",
+                display_name="expired-doc.txt",
+                kind="file",
+                state="active",
+                mime_type="text/plain",
+                size_bytes=5,
+                space_id=space["id"],
+                expires_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            )
+        )
+        db.session.commit()
+
+    res = client.get("/api/spaces")
+    spaces = res.get_json()
+    assert len(spaces) == 1
+    assert spaces[0]["itemCount"] == 0
+
+
 def test_rename_space(client: FlaskClient):
     space = client.post("/api/spaces", json={"name": "Old name"}).get_json()
     res = client.patch(f"/api/spaces/{space['id']}", json={"name": "New name"})
     assert res.status_code == 200
     assert res.get_json()["name"] == "New name"
+
+
+def test_rename_space_returns_active_item_count(app: Flask, client: FlaskClient):
+    space = client.post("/api/spaces", json={"name": "Docs"}).get_json()
+
+    with app.app_context():
+        db.session.add_all(
+            [
+                Item(
+                    stored_name="active-doc.txt",
+                    display_name="active-doc.txt",
+                    kind="file",
+                    state="active",
+                    mime_type="text/plain",
+                    size_bytes=5,
+                    space_id=space["id"],
+                ),
+                Item(
+                    stored_name="expired-doc-rename.txt",
+                    display_name="expired-doc-rename.txt",
+                    kind="file",
+                    state="active",
+                    mime_type="text/plain",
+                    size_bytes=5,
+                    space_id=space["id"],
+                    expires_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+                ),
+            ]
+        )
+        db.session.commit()
+
+    res = client.patch(f"/api/spaces/{space['id']}", json={"name": "Renamed docs"})
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["name"] == "Renamed docs"
+    assert data["itemCount"] == 1
 
 
 def test_rename_space_duplicate(client: FlaskClient):

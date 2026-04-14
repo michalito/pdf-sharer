@@ -342,6 +342,7 @@ export default function App() {
     mutationFn: async (id: number) => deleteItem(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
+      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
       toast.success("Deleted");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Delete failed"),
@@ -352,6 +353,7 @@ export default function App() {
     onSuccess: async (res) => {
       setPage(1);
       await queryClient.invalidateQueries({ queryKey: ["items"] });
+      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
       toast.success(res.deleted === 1 ? "Deleted 1 item" : `Deleted ${res.deleted} items`);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Bulk delete failed"),

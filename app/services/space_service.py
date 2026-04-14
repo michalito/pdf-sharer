@@ -32,6 +32,9 @@ class SpaceService:
     def get_space(self, space_id: int) -> Space:
         return self.repository.get_by_id_or_raise(space_id)
 
+    def get_active_item_count(self, space_id: int) -> int:
+        return self.repository.count_active_items(space_id)
+
     def create_space(self, name: str) -> Space:
         normalized, display = self._normalize_name(name)
         existing = self.repository.get_by_normalized_name(normalized)

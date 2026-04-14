@@ -175,12 +175,12 @@ def _parse_bool_query_param(raw: Optional[str], *, field: str) -> Optional[bool]
 def _is_item_unlocked_for_session(service: ItemService, item) -> bool:
     if not service.item_requires_password(item):
         return True
-    return is_item_unlocked(item.id)
+    return is_item_unlocked(item)
 
 
 def _remember_item_unlock_if_protected(service: ItemService, item) -> None:
     if service.item_requires_password(item):
-        mark_item_unlocked(item.id)
+        mark_item_unlocked(item)
 
 
 def _present_item(
@@ -440,7 +440,7 @@ def get_item(item_id: int) -> Response:
 def download_item(item_id: int) -> Response:
     service = _get_service()
     item = service.get_item(item_id)
-    if service.item_requires_password(item) and not is_item_unlocked(item.id):
+    if service.item_requires_password(item) and not is_item_unlocked(item):
         raise AuthenticationError("Password required for this item")
 
     file_path = service.get_item_path(item)
@@ -459,7 +459,7 @@ def unlock_item(item_id: int) -> tuple[str, int]:
     service = _get_service()
     item = service.get_item(item_id)
 
-    if not service.item_requires_password(item) or is_item_unlocked(item.id):
+    if not service.item_requires_password(item) or is_item_unlocked(item):
         return "", 204
 
     throttle = _get_throttle()
@@ -481,7 +481,7 @@ def unlock_item(item_id: int) -> tuple[str, int]:
         raise AuthenticationError("Invalid password")
 
     throttle.record_success(client_ip, item.id)
-    mark_item_unlocked(item.id)
+    mark_item_unlocked(item)
     return "", 204
 
 

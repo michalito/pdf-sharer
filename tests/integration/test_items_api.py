@@ -1536,6 +1536,44 @@ def test_locked_protected_item_hides_content_hash(app: Flask, client: FlaskClien
     assert detail["contentHash"] is None
 
 
+def test_deleted_item_unlock_state_does_not_apply_to_reused_item_id(app: Flask, client: FlaskClient):
+    create_first = client.post(
+        "/api/items/files",
+        data={"files": (io.BytesIO(b"first"), "first.txt"), "password": "password1"},
+        content_type="multipart/form-data",
+    )
+    assert create_first.status_code == 201
+    first_item = create_first.get_json()[0]
+    assert first_item["isPasswordUnlocked"] is True
+
+    manager = app.test_client()
+    patch_first = manager.patch(f"/api/items/{first_item['id']}", json={"state": "ready_to_delete"})
+    assert patch_first.status_code == 200
+    delete_first = manager.delete(f"/api/items/{first_item['id']}")
+    assert delete_first.status_code == 204
+
+    create_second = manager.post(
+        "/api/items/files",
+        data={"files": (io.BytesIO(b"second"), "second.txt"), "password": "password2"},
+        content_type="multipart/form-data",
+    )
+    assert create_second.status_code == 201
+    second_item = create_second.get_json()[0]
+    assert second_item["id"] == first_item["id"]
+
+    detail = client.get(f"/api/items/{second_item['id']}")
+    assert detail.status_code == 200
+    assert detail.get_json()["isPasswordUnlocked"] is False
+
+    download = client.get(f"/api/items/{second_item['id']}/download")
+    assert download.status_code == 401
+
+    public = client.get(f"/d/{second_item['id']}")
+    assert public.status_code == 200
+    assert b"Password required" in public.data
+    assert b"second.txt" in public.data
+
+
 # --- Unlock throttle / brute-force protection ---
 
 

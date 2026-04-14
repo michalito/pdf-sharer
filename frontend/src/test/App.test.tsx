@@ -886,6 +886,17 @@ const twoSpaces: import("../api/items").SpaceDto[] = [
   { id: 2, name: "Engineering", createdAt: "2026-02-28T00:00:00+00:00", itemCount: 5 },
 ];
 
+function makeSpace(overrides: Partial<import("../api/items").SpaceDto> = {}): import("../api/items").SpaceDto {
+  return {
+    id: 1,
+    name: "Design",
+    createdAt: "2026-02-28T00:00:00+00:00",
+    itemCount: 2,
+    position: 0,
+    ...overrides,
+  };
+}
+
 function makeItem(overrides: Partial<import("../api/items").ItemDto> = {}): import("../api/items").ItemDto {
   return {
     id: 1,
@@ -906,6 +917,121 @@ function makeItem(overrides: Partial<import("../api/items").ItemDto> = {}): impo
     ...overrides,
   };
 }
+
+it("refetches spaces after deleting a ready-to-delete item", async () => {
+  vi.mocked(api.listSpaces)
+    .mockResolvedValueOnce([makeSpace({ itemCount: 2 })])
+    .mockResolvedValueOnce([makeSpace({ itemCount: 1 })]);
+  vi.mocked(api.listItems)
+    .mockResolvedValueOnce({
+      items: [
+        makeItem({
+          id: 51,
+          name: "obsolete.pdf",
+          state: "ready_to_delete",
+          spaceId: 1,
+          spaceName: "Design",
+        }),
+      ],
+      pagination: makePagination(1),
+      countByState: makeCountByState({ ready_to_delete: 1 }),
+    })
+    .mockResolvedValueOnce({
+      items: [],
+      pagination: makePagination(0),
+      countByState: makeCountByState(),
+    });
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("obsolete.pdf");
+  const designChip = screen.getByRole("button", { name: /Design/ });
+  expect(designChip).toHaveTextContent("2");
+
+  await user.click(screen.getByRole("button", { name: "Delete" }));
+  const dialog = await screen.findByRole("dialog", { name: "Delete item?" });
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+  await waitFor(() => {
+    expect(api.deleteItem).toHaveBeenCalledWith(51);
+  });
+  await waitFor(() => {
+    expect(api.listSpaces).toHaveBeenCalledTimes(2);
+  });
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /Design/ })).toHaveTextContent("1");
+  });
+});
+
+it("refetches spaces after bulk deleting ready-to-delete items", async () => {
+  vi.mocked(api.listSpaces)
+    .mockResolvedValueOnce([makeSpace({ itemCount: 2 })])
+    .mockResolvedValueOnce([makeSpace({ itemCount: 1 })]);
+
+  let readyToDeleteCalls = 0;
+  vi.mocked(api.listItems).mockImplementation(async (params) => {
+    if (params.state === "ready_to_delete") {
+      readyToDeleteCalls += 1;
+      if (readyToDeleteCalls === 1) {
+        return {
+          items: [
+            makeItem({
+              id: 61,
+              name: "trash.txt",
+              state: "ready_to_delete",
+              spaceId: 1,
+              spaceName: "Design",
+            }),
+          ],
+          pagination: makePagination(1),
+          countByState: makeCountByState({ ready_to_delete: 1 }),
+        };
+      }
+      return {
+        items: [],
+        pagination: makePagination(0),
+        countByState: makeCountByState(),
+      };
+    }
+
+    return {
+      items: [],
+      pagination: makePagination(0),
+      countByState: makeCountByState({ ready_to_delete: 1 }),
+    };
+  });
+  vi.mocked(api.deleteReadyToDelete).mockResolvedValue({ deleted: 1 });
+
+  const user = userEvent.setup();
+  renderApp();
+
+  const designChip = await screen.findByRole("button", { name: /Design/ });
+  expect(designChip).toHaveTextContent("2");
+
+  await user.click(screen.getByRole("combobox", { name: "Filter by status" }));
+  const listbox = await screen.findByRole("listbox");
+  await user.click(within(listbox).getByRole("option", { name: "Ready to delete" }));
+
+  await screen.findByText("trash.txt");
+  await user.click(screen.getByRole("button", { name: /Delete all/ }));
+  const dialog = await screen.findByRole("dialog", { name: "Delete all ready-to-delete items?" });
+  await user.click(within(dialog).getByRole("button", { name: "Delete all" }));
+
+  await waitFor(() => {
+    expect(api.deleteReadyToDelete).toHaveBeenCalledWith({
+      q: undefined,
+      kind: undefined,
+      space: undefined,
+    });
+  });
+  await waitFor(() => {
+    expect(api.listSpaces).toHaveBeenCalledTimes(2);
+  });
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /Design/ })).toHaveTextContent("1");
+  });
+});
 
 it("allows entering reorder mode when filtering by done state", async () => {
   vi.mocked(api.listItems).mockImplementation(async (params) => {
