@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import case, func
+from sqlalchemy import and_, case, func, or_
 
 from app import db
 from app.domain.item import Item
@@ -15,16 +16,34 @@ from app.exceptions import NotFoundError
 class SpaceRepository:
     """Repository for Space data access operations."""
 
+    def _active_item_join_condition(self):
+        now = datetime.now(timezone.utc)
+        return and_(
+            Item.space_id == Space.id,
+            or_(Item.expires_at.is_(None), Item.expires_at > now),
+        )
+
     def get_all(self) -> list[tuple[Space, int]]:
         """Return all spaces ordered by position (then name as tiebreaker) with item counts."""
         results = (
             db.session.query(Space, func.count(Item.id))
-            .outerjoin(Item, Item.space_id == Space.id)
+            .outerjoin(Item, self._active_item_join_condition())
             .group_by(Space.id)
             .order_by(Space.position.asc(), Space.normalized_name)
             .all()
         )
         return results
+
+    def count_active_items(self, space_id: int) -> int:
+        result = (
+            db.session.query(func.count(Item.id))
+            .filter(
+                Item.space_id == space_id,
+                or_(Item.expires_at.is_(None), Item.expires_at > datetime.now(timezone.utc)),
+            )
+            .scalar()
+        )
+        return int(result or 0)
 
     def get_by_id(self, space_id: int) -> Optional[Space]:
         return db.session.get(Space, space_id)

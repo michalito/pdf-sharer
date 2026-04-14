@@ -34,7 +34,7 @@ def create_space() -> tuple[Response, int]:
         raise ValidationError("Missing 'name' field in request body")
 
     space = service.create_space(name)
-    return jsonify(space.to_dto()), 201
+    return jsonify(space.to_dto(item_count=0)), 201
 
 
 @api.route("/spaces/reorder", methods=["PUT"])
@@ -60,7 +60,7 @@ def rename_space(space_id: int) -> Response:
         raise ValidationError("Missing 'name' field in request body")
 
     space = service.rename_space(space_id, name)
-    return jsonify(space.to_dto())
+    return jsonify(space.to_dto(item_count=service.get_active_item_count(space.id)))
 
 
 @api.route("/spaces/<int:space_id>", methods=["DELETE"])

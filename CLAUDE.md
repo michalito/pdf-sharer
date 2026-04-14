@@ -179,7 +179,7 @@ Backend fixtures (`tests/conftest.py`): `app` creates a full Flask app with in-m
 
 Test files:
 - `tests/integration/`: `test_items_api.py`, `test_spaces_api.py`, `test_storage_api.py`, `test_cli.py`
-- `tests/unit/`: `test_zip_utils.py`, `test_item_presenter.py`, `test_markdown.py`, `test_config.py`
+- `tests/unit/`: `test_zip_utils.py`, `test_item_presenter.py`, `test_markdown.py`, `test_config.py`, `test_item_access.py`
 - `frontend/src/test/`: `App.test.tsx`, `StorageDashboard.test.tsx`, `MarkdownProse.test.tsx` (Vitest + jsdom + Testing Library, API mocked via `vi.mock()`)
 
 ## Configuration
