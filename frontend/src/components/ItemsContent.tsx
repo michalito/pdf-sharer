@@ -185,11 +185,11 @@ const ItemRow = memo(function ItemRow({
       className={`item-row group flex flex-col gap-3 px-4 py-4 lg:grid lg:grid-cols-[1fr_auto_auto] lg:items-center lg:gap-4 ${isDragging ? "" : "hover:bg-[var(--app-hover)]"}`}
     >
       <div className="min-w-0">
-        <div className="flex items-start gap-3">
+        <div className="flex items-center gap-3">
           {canDragDrop ? (
             <div
               {...handleProps}
-              className={`mt-2.5 flex shrink-0 items-center transition-colors ${
+              className={`flex shrink-0 items-center transition-colors ${
                 isDragging
                   ? "cursor-grabbing text-[var(--accent)]"
                   : "cursor-grab text-[var(--app-muted)] hover:text-[var(--accent)] active:cursor-grabbing"
@@ -199,7 +199,7 @@ const ItemRow = memo(function ItemRow({
             </div>
           ) : null}
           {canDragDrop && !isDragging && pagination && pagination.pages > 1 ? (
-            <div className="mt-1.5 flex shrink-0 flex-col items-center">
+            <div className="flex shrink-0 flex-col items-center">
               <button
                 type="button"
                 disabled={!pagination.hasPrev || reorderPending}
@@ -223,7 +223,7 @@ const ItemRow = memo(function ItemRow({
             </div>
           ) : null}
 
-          <div className="mt-0.5 flex shrink-0 flex-col items-center gap-1.5">
+          <div className="relative shrink-0">
             <div
               className={`relative grid h-10 w-10 place-items-center rounded-md border bg-[var(--app-panel)] text-[var(--accent-cool)] ${
                 item.isPinned ? "border-[var(--accent)]/40" : "border-[var(--app-border)]"
@@ -249,7 +249,7 @@ const ItemRow = memo(function ItemRow({
             </div>
             {item.expiresAt ? (
               <span
-                className="inline-flex items-center gap-0.5 whitespace-nowrap text-[10px] font-medium text-amber-600 dark:text-amber-400"
+                className="absolute top-full mt-1 left-1/2 -translate-x-1/2 inline-flex items-center gap-0.5 whitespace-nowrap text-[10px] font-medium text-amber-600 dark:text-amber-400"
                 title={`Expires ${new Date(item.expiresAt).toLocaleString()}`}
               >
                 <Clock className="h-2.5 w-2.5" />
