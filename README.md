@@ -86,6 +86,16 @@ Duplicate detection is content-hash based across all item kinds (file/folder/lin
 - `./deploy.sh expire-items --dry-run` previews expired TTL items without deleting them.
 - In production, schedule `./deploy.sh expire-items` from cron/systemd/your container scheduler instead of relying on request traffic for cleanup.
 
+## Releases
+
+Create and push the next semantic version tag with:
+
+```bash
+./scripts/release-tag.sh
+```
+
+The script uses the latest reachable git tag on the current branch as its base version, asks whether to bump `major`, `minor`, or `patch`, then creates and pushes an annotated `vX.Y.Z` tag to `origin`. Pushing that tag triggers the existing GitHub Actions image/release workflow.
+
 ## Upgrading from the old PDF-only app
 
 This is a breaking rewrite (new schema, new UI, no auth). Remove old Docker volumes before deploying:
