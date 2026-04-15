@@ -141,6 +141,9 @@ cmd_dev() {
             sleep 2
             docker compose -f docker-compose.dev.yaml exec web flask db upgrade
 
+            # Seed sample data (idempotent — skips if data already exists)
+            docker compose -f docker-compose.dev.yaml exec web flask seed
+
             echo ""
             success "Frontend: http://localhost:5173"
             success "API:      http://localhost:${HOST_PORT:-$DEFAULT_PORT}/api/health"
@@ -409,6 +412,20 @@ cmd_expire_items() {
     docker compose -f "$compose_file" exec web flask expire-items "${args[@]}"
 }
 
+cmd_seed() {
+    local args=("$@")
+
+    local compose_file
+    compose_file=$(get_running_compose_file)
+
+    if [[ -z "$compose_file" ]]; then
+        die "No running containers. Start with: ./deploy.sh dev or ./deploy.sh prod"
+    fi
+
+    info "Seeding sample data..."
+    docker compose -f "$compose_file" exec web flask seed "${args[@]}"
+}
+
 cmd_cleanup() {
     local target="${1:-all}"
 
@@ -486,6 +503,7 @@ Cleanup:
                       Targets: containers, volumes, images, all (default)
 
 Maintenance:
+  seed [--force]             Seed database with sample data (dev only, idempotent)
   prune-orphans [--dry-run]  Delete upload files not referenced in the DB
   expire-items [--dry-run]   Delete expired TTL items from the DB and upload folder
 
@@ -521,6 +539,7 @@ main() {
         shell)      cmd_shell ;;
         rebuild)    cmd_rebuild ;;
         cleanup)    shift; cmd_cleanup "$@" ;;
+        seed)       shift; cmd_seed "$@" ;;
         prune-orphans) shift; cmd_prune_orphans "$@" ;;
         expire-items) shift; cmd_expire_items "$@" ;;
         status)     cmd_status ;;
