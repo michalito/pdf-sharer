@@ -1,11 +1,34 @@
 import pytest
 
 from app.config import (
+    DEFAULT_MAX_NOTE_TEXT_LENGTH,
     DEFAULT_NOTE_EXCERPT_LENGTH,
     MAX_NOTE_EXCERPT_LENGTH,
     MIN_NOTE_EXCERPT_LENGTH,
     Config,
 )
+
+
+def test_max_note_text_length_defaults_when_env_missing(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.delenv("MAX_NOTE_TEXT_LENGTH", raising=False)
+    config = Config.from_env()
+    assert config.MAX_NOTE_TEXT_LENGTH == DEFAULT_MAX_NOTE_TEXT_LENGTH
+
+
+@pytest.mark.parametrize("raw", ["", "banana", "0", "-1"])
+def test_max_note_text_length_defaults_for_invalid_values(monkeypatch, raw: str):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("MAX_NOTE_TEXT_LENGTH", raw)
+    config = Config.from_env()
+    assert config.MAX_NOTE_TEXT_LENGTH == DEFAULT_MAX_NOTE_TEXT_LENGTH
+
+
+def test_max_note_text_length_accepts_positive_integer(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("MAX_NOTE_TEXT_LENGTH", "123456")
+    config = Config.from_env()
+    assert config.MAX_NOTE_TEXT_LENGTH == 123456
 
 
 def test_note_excerpt_length_defaults_when_env_missing(monkeypatch):

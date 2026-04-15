@@ -12,11 +12,16 @@ import { validateOptionalPassword } from "./password";
 const dialogFieldClass =
   "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
 
+function countCodePoints(value: string): number {
+  return Array.from(value).length;
+}
+
 export default function NoteDialog({
   open,
   spaces,
   initialSpaceId,
   defaultTtl,
+  maxNoteTextChars,
   onClose,
   onSuccess,
   onDuplicate,
@@ -25,6 +30,7 @@ export default function NoteDialog({
   spaces: SpaceDto[];
   initialSpaceId?: number;
   defaultTtl: TtlPreset | "";
+  maxNoteTextChars: number;
   onClose: () => void;
   onSuccess: () => void;
   onDuplicate: (payload: { duplicates: DuplicateInfo[]; retry: () => Promise<void> }) => void;
@@ -55,10 +61,12 @@ export default function NoteDialog({
   const createNoteMutation = useMutation({
     mutationFn: createNote,
   });
+  const trimmedText = text.trim();
+  const trimmedTextLength = countCodePoints(trimmedText);
+  const noteTextTooLong = trimmedTextLength > maxNoteTextChars;
 
   async function handleSubmit(force = false) {
-    const trimmedText = text.trim();
-    if (!trimmedText || createNoteMutation.isPending) return;
+    if (!trimmedText || noteTextTooLong || createNoteMutation.isPending) return;
 
     const validation = validateOptionalPassword(password, passwordConfirm);
     if (!validation.ok) {
@@ -96,10 +104,10 @@ export default function NoteDialog({
     <ConfirmDialog
       open={open}
       title="Save note"
-      description="Write a short note and share it with a stable /d/<id> link."
+      description="Write a note and share it with a stable /d/<id> link."
       confirmLabel={createNoteMutation.isPending ? "Saving..." : "Save note"}
       cancelLabel="Cancel"
-      confirmDisabled={!text.trim() || createNoteMutation.isPending}
+      confirmDisabled={!trimmedText || noteTextTooLong || createNoteMutation.isPending}
       formMode
       onCancel={() => {
         if (createNoteMutation.isPending) return;
@@ -163,6 +171,7 @@ export default function NoteDialog({
             }}
             placeholder="Write a note... (supports markdown)"
             rows={6}
+            aria-invalid={noteTextTooLong}
             className={`${dialogFieldClass} resize-y`}
           />
         ) : (
@@ -177,9 +186,21 @@ export default function NoteDialog({
           </div>
         )}
 
-        {editTab === "write" ? (
-          <p className="mt-1 text-[11px] text-[var(--app-muted)]">
+        <div className="mt-1 flex items-start justify-between gap-3 text-[11px]">
+          <p className="text-[var(--app-muted)]">
             Supports <strong>markdown</strong>: headings, bold, italic, lists, links, code, and tables.
+          </p>
+          <p
+            className={`shrink-0 whitespace-nowrap ${
+              noteTextTooLong ? "text-red-600 dark:text-red-300" : "text-[var(--app-muted)]"
+            }`}
+          >
+            {trimmedTextLength} / {maxNoteTextChars} characters
+          </p>
+        </div>
+        {noteTextTooLong ? (
+          <p className="mt-1 text-[11px] text-red-600 dark:text-red-300">
+            Note is too long. Maximum length is {maxNoteTextChars} characters.
           </p>
         ) : null}
       </div>

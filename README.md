@@ -1,13 +1,13 @@
 # saíta
 
-saíta is an internal web application for sharing **any type of file**, **zip archives**, **folders** (zipped by the server), **external links**, and **small notes**. It is designed for deployment on a trusted internal network and intentionally has **no authentication**.
+saíta is an internal web application for sharing **any type of file**, **zip archives**, **folders** (zipped by the server), **external links**, and **notes**. It is designed for deployment on a trusted internal network and intentionally has **no authentication**.
 
 ## Features
 
 - Upload any file type
 - Upload folders (the server zips them into a single downloadable `.zip`)
 - Save external URLs as shareable link items
-- Save short text notes as shareable note items
+- Save text notes as shareable note items
 - Optional per-item password protection for files, folders, links, and notes
 - Drag-and-drop upload for files
 - Direct internal share links (`/d/<id>`) with “Copy Link”
@@ -46,6 +46,7 @@ Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh pr
 | `DATABASE_URL` | SQLite connection string (SQLite is the only supported DB backend currently) | SQLite at `instance/saita.db` |
 | `UPLOAD_FOLDER` | File storage directory | `uploads/` |
 | `MAX_CONTENT_LENGTH` | Max upload size in bytes | 2147483648 (2GB) |
+| `MAX_NOTE_TEXT_LENGTH` | Max note body length in characters | 100000 |
 | `NOTE_EXCERPT_LENGTH` | Max note preview length in list responses (bounded 40..1000) | 180 |
 | `APP_VERSION` | Version string exposed by `GET /api/health` and shown in the UI footer. `deploy.sh` auto-detects from latest git tag when unset. | Latest git tag (fallback `dev`) |
 | `HOST_PORT` | Docker host port | 5001 |
@@ -56,7 +57,7 @@ Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh pr
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/health` | Health check (`{"ok": true, "version": "<app-version>"}`) |
+| `GET` | `/api/health` | Health check (`{"ok": true, "version": "<app-version>", "limits": {"noteTextMaxChars": 100000}}`) |
 | `GET` | `/api/storage` | Storage overview (`{disk, items: {totalCount, totalSizeBytes, countByKind, sizeByKind, countByState, sizeByState}, spaceStats: [{spaceId, spaceName, itemCount, sizeBytes}], largestItems}`) |
 | `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&protected=true\|false&sort=name\|size\|created\|modified&order=asc\|desc&page=1&per_page=50`; `q` matches names and unprotected note body text; note items include `noteExcerpt`, not full `noteText`; includes `contentHash`; default sort: `created` desc) |
 | `POST` | `/api/items/files` | Upload files (multipart/form-data, field `files` repeatable; optional `password`, `space_id`, `ttl`, `force`; on duplicate returns `409` with `{code:"DUPLICATE_CONTENT"}` and includes `duplicates:[...]` only when no protected existing item is involved) |

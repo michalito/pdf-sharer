@@ -67,11 +67,11 @@ npm --prefix frontend run build
 - Expired TTL cleanup is operationally scheduled via `flask expire-items` / `./deploy.sh expire-items`; requests do not perform background cleanup.
 - Folder uploads are zipped server-side with zip path sanitization (`app/utils/zip_utils.py`).
 - Every request gets `X-Request-ID` (incoming value reused if provided).
-- `GET /api/health` returns `{"ok": true, "version": "<app-version>"}`.
+- `GET /api/health` returns `{"ok": true, "version": "<app-version>", "limits": {"noteTextMaxChars": <max-note-length>}}`.
 
 ## API Surface (Current)
 
-- `GET /api/health` (returns `ok` + `version`)
+- `GET /api/health` (returns `ok` + `version` + runtime `limits`)
 - `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `sort` (`name|size|created|modified`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
 - `POST /api/items/files`
 - `POST /api/items/folder`
@@ -93,9 +93,10 @@ npm --prefix frontend run build
 - `SESSION_COOKIE_SECURE` defaults to `false`; set it explicitly to `true` when serving the app over HTTPS and you want unlock-session cookies to be transport-secure.
 - Any non-production `FLASK_ENV` uses `Config.for_development()`, which currently fixes DB path and upload folder to local defaults.
 - `MAX_CONTENT_LENGTH` default is `2147483648` (2GB).
+- `MAX_NOTE_TEXT_LENGTH` controls maximum saved note body length and defaults to `100000`.
 - `NOTE_EXCERPT_LENGTH` controls note preview length in `GET /api/items` and is bounded to `40..1000` (default `180`).
 - `TRUST_PROXY_HOPS` controls how many reverse-proxy hops are trusted for `X-Forwarded-For` when deriving client IP (`0` by default; set `1` for one proxy).
-- `APP_VERSION` is exposed by `GET /api/health` and the UI footer; when unset, `deploy.sh` auto-detects from latest git tag (fallback `dev`).
+- `APP_VERSION` is exposed by `GET /api/health` and the UI footer; `/api/health` also exposes runtime limits including `noteTextMaxChars`; when unset, `deploy.sh` auto-detects from latest git tag (fallback `dev`).
 
 ## Change Checklist For Agents
 

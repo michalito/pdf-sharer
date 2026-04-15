@@ -63,6 +63,7 @@ function NoteDialogHarness() {
         spaces={spaces}
         initialSpaceId={1}
         defaultTtl="7d"
+        maxNoteTextChars={12}
         onClose={() => setOpen(false)}
         onSuccess={() => setOpen(false)}
         onDuplicate={() => {}}
@@ -117,6 +118,43 @@ it("resets note dialog fields and view mode when reopened", async () => {
   expect(within(dialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent("7 days");
   expect(within(dialog).getByPlaceholderText("Write a note... (supports markdown)")).toBeInTheDocument();
   expect(within(dialog).queryByText("Temporary note")).not.toBeInTheDocument();
+  expect(within(dialog).getByText("0 / 12 characters")).toBeInTheDocument();
+});
+
+it("shows note length feedback and blocks oversized note submission", async () => {
+  const user = userEvent.setup();
+  renderWithClient(<NoteDialogHarness />);
+
+  const dialog = await screen.findByRole("dialog", { name: "Save note" });
+  const saveButton = within(dialog).getByRole("button", { name: "Save note" });
+  const textarea = within(dialog).getByPlaceholderText("Write a note... (supports markdown)");
+
+  expect(within(dialog).getByText("0 / 12 characters")).toBeInTheDocument();
+  expect(saveButton).toBeDisabled();
+
+  await user.type(textarea, "Hello world!");
+  expect(within(dialog).getByText("12 / 12 characters")).toBeInTheDocument();
+  expect(saveButton).not.toBeDisabled();
+
+  await user.type(textarea, "!");
+  expect(within(dialog).getByText("13 / 12 characters")).toBeInTheDocument();
+  expect(within(dialog).getByText("Note is too long. Maximum length is 12 characters.")).toBeInTheDocument();
+  expect(saveButton).toBeDisabled();
+});
+
+it("counts note length using Unicode code points", async () => {
+  const user = userEvent.setup();
+  renderWithClient(<NoteDialogHarness />);
+
+  const dialog = await screen.findByRole("dialog", { name: "Save note" });
+  const saveButton = within(dialog).getByRole("button", { name: "Save note" });
+  const textarea = within(dialog).getByPlaceholderText("Write a note... (supports markdown)");
+
+  await user.type(textarea, "😀".repeat(12));
+
+  expect(within(dialog).getByText("12 / 12 characters")).toBeInTheDocument();
+  expect(within(dialog).queryByText("Note is too long. Maximum length is 12 characters.")).not.toBeInTheDocument();
+  expect(saveButton).not.toBeDisabled();
 });
 
 function UploadDialogHarness({ request }: { request: UploadDialogRequest | null }) {

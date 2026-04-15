@@ -52,6 +52,14 @@ export type ListItemsResponse = {
   countByState: Record<ItemState, number>;
 };
 
+export type AppInfo = {
+  ok: boolean;
+  version: string;
+  limits: {
+    noteTextMaxChars: number;
+  };
+};
+
 type ApiErrorBody = { error?: string; code?: string; duplicates?: DuplicateInfo[]; retryAfter?: number };
 
 export type DuplicateItemInfo = {
@@ -279,9 +287,8 @@ export async function deleteReadyToDelete(params?: { q?: string; kind?: ItemKind
   return apiJson<{ deleted: number }>(`/api/items/ready-to-delete${query}`, { method: "DELETE" });
 }
 
-export async function fetchVersion(): Promise<string> {
-  const data = await apiJson<{ ok: boolean; version: string }>("/api/health");
-  return data.version ?? "dev";
+export async function fetchAppInfo(): Promise<AppInfo> {
+  return apiJson<AppInfo>("/api/health");
 }
 
 // Storage dashboard
