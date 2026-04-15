@@ -12,6 +12,10 @@ import { validateOptionalPassword } from "./password";
 const dialogFieldClass =
   "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
 
+function countCodePoints(value: string): number {
+  return Array.from(value).length;
+}
+
 export default function NoteDialog({
   open,
   spaces,
@@ -58,7 +62,7 @@ export default function NoteDialog({
     mutationFn: createNote,
   });
   const trimmedText = text.trim();
-  const trimmedTextLength = trimmedText.length;
+  const trimmedTextLength = countCodePoints(trimmedText);
   const noteTextTooLong = trimmedTextLength > maxNoteTextChars;
 
   async function handleSubmit(force = false) {
