@@ -202,7 +202,15 @@ def _present_item(
 
 @api.route("/health", methods=["GET"])
 def health() -> Response:
-    return jsonify({"ok": True, "version": current_app.config["APP_VERSION"]})
+    return jsonify(
+        {
+            "ok": True,
+            "version": current_app.config["APP_VERSION"],
+            "limits": {
+                "noteTextMaxChars": current_app.config["MAX_NOTE_TEXT_LENGTH"],
+            },
+        }
+    )
 
 
 @api.route("/storage", methods=["GET"])

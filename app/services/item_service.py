@@ -56,7 +56,6 @@ class ItemService:
     MAX_DISPLAY_NAME_LENGTH = 255
     MAX_LINK_URL_LENGTH = 2048
     MAX_NOTE_TITLE_LENGTH = 120
-    MAX_NOTE_TEXT_LENGTH = 4000
     MIN_ITEM_PASSWORD_LENGTH = 8
     MAX_ITEM_PASSWORD_LENGTH = 128
 
@@ -757,9 +756,10 @@ class ItemService:
         text = (raw_text or "").strip()
         if not text:
             raise ValidationError("Missing 'text' field in request body")
-        if len(text) > self.MAX_NOTE_TEXT_LENGTH:
+        max_note_text_length = current_app.config["MAX_NOTE_TEXT_LENGTH"]
+        if len(text) > max_note_text_length:
             raise ValidationError(
-                f"Note is too long (max {self.MAX_NOTE_TEXT_LENGTH} characters)"
+                f"Note is too long (max {max_note_text_length} characters)"
             )
         return text
 

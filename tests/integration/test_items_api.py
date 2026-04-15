@@ -23,10 +23,11 @@ def test_health(client: FlaskClient):
     data = res.get_json()
     assert data["ok"] is True
     assert data["version"] == "dev"
+    assert data["limits"]["noteTextMaxChars"] == 100000
 
 
 def test_health_returns_configured_version(temp_upload_dir):
-    """Version from config propagates to /api/health response."""
+    """Version and runtime limits from config propagate to /api/health response."""
     from app.config import Config
 
     cfg = Config(
@@ -34,6 +35,7 @@ def test_health_returns_configured_version(temp_upload_dir):
         DATABASE_URI="sqlite:///:memory:",
         UPLOAD_FOLDER=temp_upload_dir,
         MAX_CONTENT_LENGTH=2 * 1024 * 1024 * 1024,
+        MAX_NOTE_TEXT_LENGTH=1234,
         SESSION_COOKIE_SECURE=False,
         APP_VERSION="1.2.3",
     )
@@ -44,6 +46,7 @@ def test_health_returns_configured_version(temp_upload_dir):
         client = flask_app.test_client()
         res = client.get("/api/health")
         assert res.get_json()["version"] == "1.2.3"
+        assert res.get_json()["limits"]["noteTextMaxChars"] == 1234
         db.drop_all()
 
 
@@ -298,6 +301,33 @@ def test_create_link_and_note_validation(client: FlaskClient):
     missing_text = client.post("/api/items/note", json={"title": "No body"})
     assert missing_text.status_code == 400
     assert "Missing 'text'" in missing_text.get_json()["error"]
+
+
+def test_create_note_accepts_text_at_default_limit(client: FlaskClient):
+    create = client.post("/api/items/note", json={"title": "Long note", "text": "a" * 100000})
+    assert create.status_code == 201
+    assert create.get_json()["noteText"] == "a" * 100000
+
+
+def test_create_note_rejects_text_over_default_limit(client: FlaskClient):
+    create = client.post("/api/items/note", json={"title": "Too long", "text": "a" * 100001})
+    assert create.status_code == 400
+    assert "Note is too long (max 100000 characters)" == create.get_json()["error"]
+
+
+def test_create_note_uses_configured_runtime_limit(app: Flask, client: FlaskClient):
+    app.config["MAX_NOTE_TEXT_LENGTH"] = 5
+
+    health = client.get("/api/health")
+    assert health.status_code == 200
+    assert health.get_json()["limits"]["noteTextMaxChars"] == 5
+
+    accepted = client.post("/api/items/note", json={"text": "abcde"})
+    assert accepted.status_code == 201
+
+    rejected = client.post("/api/items/note", json={"text": "abcdef"})
+    assert rejected.status_code == 400
+    assert rejected.get_json()["error"] == "Note is too long (max 5 characters)"
 
 
 def test_json_routes_reject_non_object_body(client: FlaskClient):

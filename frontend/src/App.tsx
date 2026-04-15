@@ -38,7 +38,7 @@ import UnlockDialog, { type UnlockDialogTarget } from "./components/dialogs/Unlo
 import {
   DuplicateContentError,
   type DuplicateInfo,
-  fetchVersion,
+  fetchAppInfo,
   getItemOrder,
   type ItemDto,
   type ItemKind,
@@ -240,9 +240,9 @@ export default function App() {
     [debouncedSearch, kindFilter, stateFilter, spaceFilter, sortField, sortOrder, page, perPage],
   );
 
-  const versionQuery = useQuery({
-    queryKey: ["version"],
-    queryFn: fetchVersion,
+  const appInfoQuery = useQuery({
+    queryKey: ["app-info"],
+    queryFn: fetchAppInfo,
     staleTime: Infinity,
   });
 
@@ -1021,7 +1021,9 @@ export default function App() {
       />
 
       <footer className="mx-auto mb-4 mt-8 flex w-full max-w-6xl items-center justify-between gap-3 border-t border-[var(--app-border)]/50 px-4 pt-4 text-[11px] text-[var(--app-muted)]">
-        <div className="font-mono uppercase tracking-[0.08em]">saíta{versionQuery.data ? ` · v${versionQuery.data}` : ""} · Internal use</div>
+        <div className="font-mono uppercase tracking-[0.08em]">
+          saíta{appInfoQuery.data?.version ? ` · v${appInfoQuery.data.version}` : ""} · Internal use
+        </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -1141,6 +1143,7 @@ export default function App() {
         spaces={spaces}
         initialSpaceId={noteDialogRequest?.initialSpaceId}
         defaultTtl={noteDialogRequest?.defaultTtl ?? ""}
+        maxNoteTextChars={appInfoQuery.data?.limits.noteTextMaxChars ?? 100000}
         onClose={() => setNoteDialogRequest(null)}
         onSuccess={() => setNoteDialogRequest(null)}
         onDuplicate={({ duplicates, retry }) =>

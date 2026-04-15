@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from app.constants import (
     DEFAULT_MAX_CONTENT_LENGTH,
+    DEFAULT_MAX_NOTE_TEXT_LENGTH,
     DEFAULT_NOTE_EXCERPT_LENGTH,
     MAX_NOTE_EXCERPT_LENGTH,
     MIN_NOTE_EXCERPT_LENGTH,
@@ -29,6 +30,21 @@ def _parse_note_excerpt_length(raw: str | None) -> int:
         return DEFAULT_NOTE_EXCERPT_LENGTH
 
     return max(MIN_NOTE_EXCERPT_LENGTH, min(MAX_NOTE_EXCERPT_LENGTH, value))
+
+
+def _parse_max_note_text_length(raw: str | None) -> int:
+    """Parse note length limit from env and require a positive integer."""
+    if raw is None or raw.strip() == "":
+        return DEFAULT_MAX_NOTE_TEXT_LENGTH
+
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_MAX_NOTE_TEXT_LENGTH
+
+    if value <= 0:
+        return DEFAULT_MAX_NOTE_TEXT_LENGTH
+    return value
 
 
 def _validate_database_uri(database_uri: str) -> str:
@@ -77,6 +93,7 @@ class Config:
     MAX_CONTENT_LENGTH: int
     APP_VERSION: str = "dev"
     TRUST_PROXY_HOPS: int = 0
+    MAX_NOTE_TEXT_LENGTH: int = DEFAULT_MAX_NOTE_TEXT_LENGTH
     NOTE_EXCERPT_LENGTH: int = DEFAULT_NOTE_EXCERPT_LENGTH
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
     # Session security settings
@@ -105,6 +122,7 @@ class Config:
         )
 
         max_content_length = int(os.environ.get("MAX_CONTENT_LENGTH", DEFAULT_MAX_CONTENT_LENGTH))
+        max_note_text_length = _parse_max_note_text_length(os.environ.get("MAX_NOTE_TEXT_LENGTH"))
         note_excerpt_length = _parse_note_excerpt_length(os.environ.get("NOTE_EXCERPT_LENGTH"))
         trust_proxy_hops = _parse_trust_proxy_hops(os.environ.get("TRUST_PROXY_HOPS"))
         session_cookie_secure = _parse_bool_env(
@@ -117,6 +135,7 @@ class Config:
             DATABASE_URI=database_uri,
             UPLOAD_FOLDER=upload_folder,
             MAX_CONTENT_LENGTH=max_content_length,
+            MAX_NOTE_TEXT_LENGTH=max_note_text_length,
             NOTE_EXCERPT_LENGTH=note_excerpt_length,
             APP_VERSION=os.environ.get("APP_VERSION", "dev"),
             TRUST_PROXY_HOPS=trust_proxy_hops,
@@ -129,6 +148,7 @@ class Config:
         base_dir = _get_base_dir()
 
         max_content_length = int(os.environ.get("MAX_CONTENT_LENGTH", DEFAULT_MAX_CONTENT_LENGTH))
+        max_note_text_length = _parse_max_note_text_length(os.environ.get("MAX_NOTE_TEXT_LENGTH"))
         note_excerpt_length = _parse_note_excerpt_length(os.environ.get("NOTE_EXCERPT_LENGTH"))
         trust_proxy_hops = _parse_trust_proxy_hops(os.environ.get("TRUST_PROXY_HOPS"))
 
@@ -137,6 +157,7 @@ class Config:
             DATABASE_URI=f"sqlite:///{base_dir / 'instance' / 'saita.db'}",
             UPLOAD_FOLDER=base_dir / "uploads",
             MAX_CONTENT_LENGTH=max_content_length,
+            MAX_NOTE_TEXT_LENGTH=max_note_text_length,
             NOTE_EXCERPT_LENGTH=note_excerpt_length,
             APP_VERSION=os.environ.get("APP_VERSION", "dev"),
             TRUST_PROXY_HOPS=trust_proxy_hops,
@@ -155,6 +176,7 @@ class Config:
             "SQLALCHEMY_TRACK_MODIFICATIONS": self.SQLALCHEMY_TRACK_MODIFICATIONS,
             "UPLOAD_FOLDER": str(self.UPLOAD_FOLDER),
             "MAX_CONTENT_LENGTH": self.MAX_CONTENT_LENGTH,
+            "MAX_NOTE_TEXT_LENGTH": self.MAX_NOTE_TEXT_LENGTH,
             "NOTE_EXCERPT_LENGTH": self.NOTE_EXCERPT_LENGTH,
             "TRUST_PROXY_HOPS": self.TRUST_PROXY_HOPS,
             "SESSION_COOKIE_SECURE": self.SESSION_COOKIE_SECURE,

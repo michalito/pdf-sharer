@@ -153,7 +153,7 @@ Spaces are named organizational groupings for items (one-to-many, optional). The
 - `DELETE /api/spaces/<id>` — returns `{"unassigned": N}`
 
 ### Other
-- `GET /api/health` (returns `{"ok": true, "version": "<app-version>"}`)
+- `GET /api/health` (returns `{"ok": true, "version": "<app-version>", "limits": {"noteTextMaxChars": <max-note-length>}}`)
 - `GET /api/storage` (returns `{disk, items: {totalCount, totalSizeBytes, countByKind, sizeByKind, countByState, sizeByState}, spaceStats: [{spaceId, spaceName, itemCount, sizeBytes}], largestItems}`)
 - `GET /d/<id>` (public share link: download file/folder, redirect link, render note, or show password prompt)
 - `POST /d/<id>` (submit password for protected share links)
@@ -170,7 +170,7 @@ Note payload behavior:
 - Delete behavior is intentionally two-step (`PATCH` to `ready_to_delete`, then `DELETE`).
 - `entrypoint.sh` runs migrations on every container start (zero-touch schema updates).
 - Migration files use manual prefixes (`0001_`, `0002_`) instead of Alembic hex IDs.
-- Service validation limits: display name 255 chars, link URL 2048, note title 120, note text 4000, space name 120.
+- Service validation limits: display name 255 chars, link URL 2048, note title 120, note text configurable via `MAX_NOTE_TEXT_LENGTH` (default 100000), space name 120.
 - **Item expiration (TTL)**: Items can optionally have an `expires_at` timestamp set at creation time from preset durations (`1h`, `6h`, `24h`, `3d`, `7d`, `30d`). Expired items are permanently deleted (DB row + disk file). Two-layer approach: (1) expired items are filtered from all queries immediately, (2) scheduled maintenance runs `flask expire-items` / `./deploy.sh expire-items` (with `--dry-run`, `--limit`). TTL is immutable after creation.
 
 ## Testing
@@ -187,7 +187,7 @@ Test files:
 - `FLASK_ENV=production` → `Config.from_env()` (reads `DATABASE_URL`, `UPLOAD_FOLDER`, etc.) and **requires** `SECRET_KEY`.
 - Any other `FLASK_ENV` → `Config.for_development()` (local SQLite defaults)
 - Keep `SECRET_KEY` stable across production restarts/deploys to preserve protected-item unlock sessions.
-- Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `TRUST_PROXY_HOPS` (default `0`; set `1` behind one reverse proxy), `SESSION_COOKIE_SECURE` (default `false`; set `true` explicitly for HTTPS-only unlock-session cookies), `APP_VERSION` (health/UI version string; auto-detected from latest git tag by `deploy.sh`, fallback `dev`), `HOST_PORT` (default 5001)
+- Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `MAX_NOTE_TEXT_LENGTH` (default 100000), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `TRUST_PROXY_HOPS` (default `0`; set `1` behind one reverse proxy), `SESSION_COOKIE_SECURE` (default `false`; set `true` explicitly for HTTPS-only unlock-session cookies), `APP_VERSION` (health/UI version string and part of `/api/health`; auto-detected from latest git tag by `deploy.sh`, fallback `dev`), `HOST_PORT` (default 5001)
 - `.env.example` documents all production config options.
 
 ## CI/CD

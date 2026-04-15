@@ -64,7 +64,7 @@ vi.mock("../api/items", async () => {
     deleteReadyToDelete: vi.fn(),
     updateItem: vi.fn(),
     listSpaces: vi.fn(),
-    fetchVersion: vi.fn(),
+    fetchAppInfo: vi.fn(),
     fetchStorageOverview: vi.fn(),
   };
 });
@@ -127,7 +127,11 @@ beforeEach(() => {
   localStorage.clear();
   itemsContentRenderTracker.count = 0;
 
-  vi.mocked(api.fetchVersion).mockResolvedValue("dev");
+  vi.mocked(api.fetchAppInfo).mockResolvedValue({
+    ok: true,
+    version: "dev",
+    limits: { noteTextMaxChars: 100000 },
+  });
   vi.mocked(api.listItems).mockResolvedValue({
     items: [],
     pagination: makePagination(0),
@@ -273,6 +277,51 @@ it("submits the save-note dialog", async () => {
       expect.anything(),
     );
   });
+});
+
+it("uses app info for the footer version and note limit", async () => {
+  vi.mocked(api.fetchAppInfo).mockResolvedValue({
+    ok: true,
+    version: "2.0.0",
+    limits: { noteTextMaxChars: 12 },
+  });
+
+  const user = userEvent.setup();
+  renderApp();
+
+  expect(await screen.findByText(/saíta · v2\.0\.0 · Internal use/i)).toBeInTheDocument();
+
+  const newMenu = screen.getByTestId("new-menu");
+  await user.click(within(newMenu).getByRole("button", { name: "New" }));
+  await user.click(within(newMenu).getByRole("button", { name: "Save note" }));
+
+  const dialog = await screen.findByRole("dialog", { name: "Save note" });
+  expect(within(dialog).getByText("0 / 12 characters")).toBeInTheDocument();
+});
+
+it("does not submit oversized note content", async () => {
+  vi.mocked(api.fetchAppInfo).mockResolvedValue({
+    ok: true,
+    version: "dev",
+    limits: { noteTextMaxChars: 12 },
+  });
+
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("Shared items");
+  const newMenu = screen.getByTestId("new-menu");
+  await user.click(within(newMenu).getByRole("button", { name: "New" }));
+  await user.click(within(newMenu).getByRole("button", { name: "Save note" }));
+
+  const dialog = await screen.findByRole("dialog", { name: "Save note" });
+  await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Retro");
+  await user.type(within(dialog).getByPlaceholderText("Write a note... (supports markdown)"), "Too long by one!");
+  expect(within(dialog).getByText("16 / 12 characters")).toBeInTheDocument();
+  expect(within(dialog).getByText("Note is too long. Maximum length is 12 characters.")).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "Save note" })).toBeDisabled();
+
+  expect(api.createNote).not.toHaveBeenCalled();
 });
 
 it("does not re-render items content when opening and typing in the note dialog", async () => {

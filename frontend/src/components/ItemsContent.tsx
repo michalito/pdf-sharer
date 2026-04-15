@@ -494,7 +494,7 @@ function ItemsContentComponent({
             <div className="font-display text-xl font-semibold">Drop files here to share instantly</div>
             <p className="max-w-2xl text-sm text-[var(--app-muted)]">
               Any file type is supported. Folder uploads are zipped automatically. You can also save quick links and
-              short notes.
+              notes.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               <button
