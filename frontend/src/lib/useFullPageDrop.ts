@@ -30,11 +30,15 @@ interface FSFileEntry extends FSEntry {
 
 interface FSDirectoryEntry extends FSEntry {
   isDirectory: true;
-  createReader(): { readEntries(success: (entries: FSEntry[]) => void, error?: (e: Error) => void): void };
+  createReader(): {
+    readEntries(success: (entries: FSEntry[]) => void, error?: (e: Error) => void): void;
+  };
 }
 
 function getEntry(item: DataTransferItem): FSEntry | null {
-  return (item as unknown as { webkitGetAsEntry?: () => FSEntry | null }).webkitGetAsEntry?.() ?? null;
+  return (
+    (item as unknown as { webkitGetAsEntry?: () => FSEntry | null }).webkitGetAsEntry?.() ?? null
+  );
 }
 
 function readAllEntries(reader: ReturnType<FSDirectoryEntry["createReader"]>): Promise<FSEntry[]> {
@@ -78,7 +82,10 @@ async function collectFiles(entry: FSEntry, rootName: string): Promise<File[]> {
 }
 
 /** Extract all files from dropped DataTransferItems, preserving folder structure. */
-async function extractDroppedFiles(items: DataTransferItem[], fallbackFiles: File[]): Promise<DropResult> {
+async function extractDroppedFiles(
+  items: DataTransferItem[],
+  fallbackFiles: File[],
+): Promise<DropResult> {
   const entries = items.map(getEntry).filter((e): e is FSEntry => e != null);
   const hasDirectory = entries.some((e) => e.isDirectory);
 
@@ -100,7 +107,12 @@ async function extractDroppedFiles(items: DataTransferItem[], fallbackFiles: Fil
 
 // ── Hook ──
 
-export function useFullPageDrop({ onDrop, onDropWhileDisabled, onDropError, disabled = false }: UseFullPageDropOptions) {
+export function useFullPageDrop({
+  onDrop,
+  onDropWhileDisabled,
+  onDropError,
+  disabled = false,
+}: UseFullPageDropOptions) {
   const [isOverWindow, setIsOverWindow] = useState(false);
   const counterRef = useRef(0);
   const disabledRef = useRef(disabled);
@@ -134,38 +146,34 @@ export function useFullPageDrop({ onDrop, onDropWhileDisabled, onDropError, disa
     [disabled],
   );
 
-  const handleDragOver = useCallback(
-    (e: DragEvent) => {
-      if (!hasFilesType(e.dataTransfer?.types)) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    },
-    [],
-  );
+  const handleDragOver = useCallback((e: DragEvent) => {
+    if (!hasFilesType(e.dataTransfer?.types)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  }, []);
 
-  const handleDrop = useCallback(
-    (e: DragEvent) => {
-      if (!hasFilesType(e.dataTransfer?.types)) return;
-      e.preventDefault();
-      counterRef.current = 0;
-      setIsOverWindow(false);
+  const handleDrop = useCallback((e: DragEvent) => {
+    if (!hasFilesType(e.dataTransfer?.types)) return;
+    e.preventDefault();
+    counterRef.current = 0;
+    setIsOverWindow(false);
 
-      const items = Array.from(e.dataTransfer?.items ?? []);
-      const fallbackFiles = Array.from(e.dataTransfer?.files ?? []);
-      // Must grab entries synchronously — DataTransferItems are cleared after the event
-      extractDroppedFiles(items, fallbackFiles).then((result) => {
+    const items = Array.from(e.dataTransfer?.items ?? []);
+    const fallbackFiles = Array.from(e.dataTransfer?.files ?? []);
+    // Must grab entries synchronously — DataTransferItems are cleared after the event
+    extractDroppedFiles(items, fallbackFiles)
+      .then((result) => {
         if (result.files.length === 0) return;
         if (disabledRef.current) {
           onDropWhileDisabledRef.current?.(result);
         } else {
           onDropRef.current(result);
         }
-      }).catch((error) => {
+      })
+      .catch((error) => {
         onDropErrorRef.current?.(error);
       });
-    },
-    [],
-  );
+  }, []);
 
   useEffect(() => {
     const handleVisibilityChange = () => {

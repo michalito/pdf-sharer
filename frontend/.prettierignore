@@ -1,0 +1,8 @@
+dist
+dev-dist
+node_modules
+coverage
+public/sw.js
+public/workbox-*.js
+package-lock.json
+tsconfig.node.tsbuildinfo

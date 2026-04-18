@@ -1,6 +1,13 @@
 import { useEffect, useRef } from "react";
 
-type AnchorRect = { left: number; top: number; bottom: number; right: number; width: number; height: number };
+type AnchorRect = {
+  left: number;
+  top: number;
+  bottom: number;
+  right: number;
+  width: number;
+  height: number;
+};
 type AnchorPoint = { x: number; y: number };
 
 type UsePopoverOptions = {

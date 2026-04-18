@@ -11,7 +11,7 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
     navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
   });
 } else if (!window.isSecureContext && import.meta.env.PROD) {
-  console.info("PWA: Service worker requires HTTPS (or localhost). Skipping registration.");
+  console.warn("PWA: Service worker requires HTTPS (or localhost). Skipping registration.");
 }
 
 const queryClient = new QueryClient({

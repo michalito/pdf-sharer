@@ -19,14 +19,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  ArrowLeftRight,
-  Check,
-  Pencil,
-  Plus,
-  Trash2,
-  X,
-} from "lucide-react";
+import { ArrowLeftRight, Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { SpaceDto } from "../api/items";
 import { useLongPress } from "../lib/useLongPress";
 import { usePopover } from "../lib/usePopover";
@@ -75,6 +68,7 @@ function ContextMenu({
     <div
       ref={menuRef}
       role="menu"
+      tabIndex={-1}
       onKeyDown={handleKeyDown}
       style={style}
       className="dialog-pop glass-panel min-w-[140px] rounded-lg p-1"
@@ -194,14 +188,9 @@ function SpaceChip({
 /* ------------------------------------------------------------------ */
 
 function SortableChip({ space }: { space: SpaceDto }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: space.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: space.id,
+  });
 
   const style = {
     transform: CSS.Translate.toString(transform),

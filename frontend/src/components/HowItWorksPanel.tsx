@@ -104,10 +104,7 @@ const tips = [
   "Filters only change your view \u2014 shared links keep working regardless.",
 ];
 
-export default function HowItWorksPanel(props: {
-  open: boolean;
-  onClose: () => void;
-}) {
+export default function HowItWorksPanel(props: { open: boolean; onClose: () => void }) {
   const { open, onClose } = props;
   const titleId = useId();
   const descriptionId = useId();
@@ -133,7 +130,12 @@ export default function HowItWorksPanel(props: {
 
   return (
     <div className="fixed inset-0 z-50">
-      <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close help panel" onClick={onClose} />
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/40"
+        aria-label="Close help panel"
+        onClick={onClose}
+      />
 
       <aside
         role="dialog"
@@ -169,8 +171,8 @@ export default function HowItWorksPanel(props: {
               </button>
             </div>
             <p id={descriptionId} className="mt-3 text-sm leading-relaxed text-[var(--app-muted)]">
-              Share files, folders, links, and notes with your team. No accounts needed &mdash; upload, get a link, hand
-              it off.
+              Share files, folders, links, and notes with your team. No accounts needed &mdash;
+              upload, get a link, hand it off.
             </p>
           </div>
 
@@ -195,7 +197,9 @@ export default function HowItWorksPanel(props: {
                       </div>
                       <div className="min-w-0">
                         <div className="text-[13px] font-semibold leading-tight">{f.title}</div>
-                        <p className="mt-1 text-[11px] leading-relaxed text-[var(--app-muted)]">{f.desc}</p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-[var(--app-muted)]">
+                          {f.desc}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -216,7 +220,9 @@ export default function HowItWorksPanel(props: {
                     </div>
                     <div>
                       <div className="text-sm font-semibold">{step.title}</div>
-                      <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-muted)]">{step.desc}</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-muted)]">
+                        {step.desc}
+                      </p>
                     </div>
                   </li>
                 ))}
@@ -226,7 +232,10 @@ export default function HowItWorksPanel(props: {
             {/* Section 3: Privacy & access */}
             <section className="rounded-lg border border-rose-600/20 border-l-[3px] border-l-rose-600/45 bg-rose-600/5 p-4">
               <div className="flex items-center gap-2">
-                <ShieldAlert className="h-4 w-4 text-rose-700 dark:text-rose-300" aria-hidden="true" />
+                <ShieldAlert
+                  className="h-4 w-4 text-rose-700 dark:text-rose-300"
+                  aria-hidden="true"
+                />
                 <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-rose-800 dark:text-rose-200">
                   Privacy & access
                 </div>
@@ -234,20 +243,23 @@ export default function HowItWorksPanel(props: {
               <ul className="mt-3 space-y-2.5">
                 <li className="flex items-start gap-2.5 text-xs leading-relaxed text-rose-900/85 dark:text-rose-100/85">
                   <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600/50" />
-                  No user accounts or ACLs. Anyone with a valid share link can access unprotected items.
+                  No user accounts or ACLs. Anyone with a valid share link can access unprotected
+                  items.
                 </li>
                 <li className="flex items-start gap-2.5 text-xs leading-relaxed text-rose-900/85 dark:text-rose-100/85">
                   <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600/50" />
-                  This app is designed for a trusted internal network. Share links are convenience URLs, not signed secret tokens.
+                  This app is designed for a trusted internal network. Share links are convenience
+                  URLs, not signed secret tokens.
                 </li>
                 <li className="flex items-start gap-2.5 text-xs leading-relaxed text-rose-900/85 dark:text-rose-100/85">
                   <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600/50" />
-                  Password-protected items require entry before opening and stay unlocked for the browser session.
+                  Password-protected items require entry before opening and stay unlocked for the
+                  browser session.
                 </li>
                 <li className="flex items-start gap-2.5 text-xs leading-relaxed text-rose-900/85 dark:text-rose-100/85">
                   <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600/50" />
-                  Admins or operators with server storage access can read files and metadata. Items persist until
-                  explicitly deleted.
+                  Admins or operators with server storage access can read files and metadata. Items
+                  persist until explicitly deleted.
                 </li>
               </ul>
             </section>
@@ -256,7 +268,9 @@ export default function HowItWorksPanel(props: {
             <section className="rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
               <div className="flex items-center gap-2">
                 <Lightbulb className="h-3.5 w-3.5 text-[var(--accent-cool)]" aria-hidden="true" />
-                <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--app-muted)]">Tips</div>
+                <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
+                  Tips
+                </div>
               </div>
               <ul className="mt-2.5 space-y-2">
                 {tips.map((tip) => (

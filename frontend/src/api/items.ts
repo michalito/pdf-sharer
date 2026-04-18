@@ -60,7 +60,12 @@ export type AppInfo = {
   };
 };
 
-type ApiErrorBody = { error?: string; code?: string; duplicates?: DuplicateInfo[]; retryAfter?: number };
+type ApiErrorBody = {
+  error?: string;
+  code?: string;
+  duplicates?: DuplicateInfo[];
+  retryAfter?: number;
+};
 
 export type DuplicateItemInfo = {
   id: number;
@@ -102,6 +107,15 @@ export class DuplicateContentError extends Error {
   }
 }
 
+export class UploadAbortedError extends Error {
+  code = "UPLOAD_ABORTED" as const;
+
+  constructor(message = "Upload cancelled") {
+    super(message);
+    this.name = "UploadAbortedError";
+  }
+}
+
 function buildQuery(params: Record<string, string | number | undefined | null>): string {
   const usp = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -112,24 +126,39 @@ function buildQuery(params: Record<string, string | number | undefined | null>):
   return q ? `?${q}` : "";
 }
 
-async function parseApiError(response: Response): Promise<Error> {
-  let body: ApiErrorBody | null = null;
-  try {
-    body = (await response.json()) as ApiErrorBody;
-  } catch {
-    // ignore
-  }
-  if (response.status === 409 && body?.code === "DUPLICATE_CONTENT" && body.duplicates) {
+function errorFromBody(status: number, body: ApiErrorBody | null): Error {
+  if (status === 409 && body?.code === "DUPLICATE_CONTENT" && body.duplicates) {
     return new DuplicateContentError(body.error || "Duplicate content detected", body.duplicates);
   }
-  if (response.status === 429 && body?.code === "RATE_LIMITED") {
+  if (status === 429 && body?.code === "RATE_LIMITED") {
     return new RateLimitError(
       body.error || "Too many attempts. Please try again later.",
       body.retryAfter ?? 60,
     );
   }
-  const message = body?.error || `Request failed (${response.status})`;
+  const message = body?.error || `Request failed (${status})`;
   return new Error(message);
+}
+
+async function parseApiError(response: Response): Promise<Error> {
+  let body: ApiErrorBody | null = null;
+  try {
+    body = (await response.json()) as ApiErrorBody;
+  } catch (e) {
+    console.warn("Failed to parse error response body", e);
+  }
+  return errorFromBody(response.status, body);
+}
+
+function isListItemsResponse(value: unknown): value is ListItemsResponse {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Partial<ListItemsResponse>;
+  return (
+    Array.isArray(v.items) &&
+    typeof v.pagination === "object" &&
+    v.pagination !== null &&
+    typeof (v.pagination as PaginationDto).total === "number"
+  );
 }
 
 async function apiJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -138,17 +167,20 @@ async function apiJson<T>(url: string, options?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function listItems(params: {
-  q?: string;
-  kind?: ItemKind;
-  state?: ItemState;
-  protected?: boolean;
-  space?: string;
-  page?: number;
-  perPage?: number;
-  sort?: SortField;
-  order?: SortOrder;
-}): Promise<ListItemsResponse> {
+export async function listItems(
+  params: {
+    q?: string;
+    kind?: ItemKind;
+    state?: ItemState;
+    protected?: boolean;
+    space?: string;
+    page?: number;
+    perPage?: number;
+    sort?: SortField;
+    order?: SortOrder;
+  },
+  opts: { signal?: AbortSignal } = {},
+): Promise<ListItemsResponse> {
   const query = buildQuery({
     q: params.q,
     kind: params.kind,
@@ -160,38 +192,68 @@ export async function listItems(params: {
     sort: params.sort,
     order: params.order,
   });
-  return apiJson<ListItemsResponse>(`/api/items${query}`);
+  const data = await apiJson<unknown>(`/api/items${query}`, { signal: opts.signal });
+  if (!isListItemsResponse(data)) {
+    throw new Error("Malformed response from /api/items");
+  }
+  return data;
 }
 
-export async function getItem(id: number): Promise<ItemDto> {
-  return apiJson<ItemDto>(`/api/items/${id}`);
+export async function getItem(id: number, opts: { signal?: AbortSignal } = {}): Promise<ItemDto> {
+  return apiJson<ItemDto>(`/api/items/${id}`, { signal: opts.signal });
 }
 
-function xhrForm<T>(url: string, formData: FormData, onProgress?: (pct: number) => void): Promise<T> {
-  return new Promise((resolve, reject) => {
+export type UploadHandle<T> = Promise<T> & { abort: () => void };
+
+function xhrForm<T>(
+  url: string,
+  formData: FormData,
+  opts?: { onProgress?: (pct: number) => void; signal?: AbortSignal },
+): UploadHandle<T> {
+  let abort: () => void = () => {};
+  const promise = new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
     xhr.responseType = "json";
 
-    xhr.upload.onprogress = (event) => {
-      if (!onProgress) return;
-      if (!event.lengthComputable) return;
-      const pct = Math.round((event.loaded / event.total) * 100);
-      onProgress(pct);
+    let aborted = false;
+    abort = () => {
+      if (aborted) return;
+      aborted = true;
+      try {
+        xhr.abort();
+      } catch (e) {
+        console.warn("Failed to abort XHR", e);
+      }
+      reject(new UploadAbortedError());
     };
 
-    xhr.onerror = () => reject(new Error("Network error. Please try again."));
+    if (opts?.signal) {
+      if (opts.signal.aborted) {
+        abort();
+        return;
+      }
+      opts.signal.addEventListener("abort", abort, { once: true });
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (!opts?.onProgress) return;
+      if (!event.lengthComputable) return;
+      const pct = Math.round((event.loaded / event.total) * 100);
+      opts.onProgress(pct);
+    };
+
+    xhr.onerror = () => {
+      if (aborted) return;
+      reject(new Error("Network error. Please try again."));
+    };
     xhr.onload = () => {
+      if (aborted) return;
       const ok = xhr.status >= 200 && xhr.status < 300;
       const body = xhr.response as ApiErrorBody | T | null;
       if (!ok) {
-        const errBody = body as ApiErrorBody | null;
-        if (xhr.status === 409 && errBody?.code === "DUPLICATE_CONTENT" && errBody.duplicates) {
-          reject(new DuplicateContentError(errBody.error || "Duplicate content detected", errBody.duplicates));
-          return;
-        }
-        const message = errBody?.error || `Request failed (${xhr.status})`;
-        reject(new Error(message));
+        const errBody = (body ?? null) as ApiErrorBody | null;
+        reject(errorFromBody(xhr.status, errBody));
         return;
       }
       resolve(body as T);
@@ -199,28 +261,37 @@ function xhrForm<T>(url: string, formData: FormData, onProgress?: (pct: number) 
 
     xhr.send(formData);
   });
+
+  return Object.assign(promise, { abort });
 }
 
-export async function uploadFiles(
-  files: File[],
-  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number; ttl?: TtlPreset; force?: boolean },
-): Promise<ItemDto[]> {
+type UploadOpts = {
+  onProgress?: (pct: number) => void;
+  password?: string;
+  spaceId?: number;
+  ttl?: TtlPreset;
+  force?: boolean;
+  signal?: AbortSignal;
+};
+
+export function uploadFiles(files: File[], opts?: UploadOpts): UploadHandle<ItemDto[]> {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
   if (opts?.password) formData.append("password", opts.password);
   if (opts?.spaceId != null) formData.append("space_id", String(opts.spaceId));
   if (opts?.ttl) formData.append("ttl", opts.ttl);
   if (opts?.force) formData.append("force", "true");
-  return xhrForm<ItemDto[]>("/api/items/files", formData, opts?.onProgress);
+  return xhrForm<ItemDto[]>("/api/items/files", formData, {
+    onProgress: opts?.onProgress,
+    signal: opts?.signal,
+  });
 }
 
-export async function uploadFolder(
-  files: File[],
-  opts?: { onProgress?: (pct: number) => void; password?: string; spaceId?: number; ttl?: TtlPreset; force?: boolean },
-): Promise<ItemDto> {
+export function uploadFolder(files: File[], opts?: UploadOpts): UploadHandle<ItemDto> {
   const formData = new FormData();
   for (const file of files) {
-    const relPath = (file as unknown as { webkitRelativePath?: string }).webkitRelativePath || file.name;
+    const relPath =
+      (file as unknown as { webkitRelativePath?: string }).webkitRelativePath || file.name;
     formData.append("files", file);
     formData.append("paths", relPath);
   }
@@ -228,7 +299,10 @@ export async function uploadFolder(
   if (opts?.spaceId != null) formData.append("space_id", String(opts.spaceId));
   if (opts?.ttl) formData.append("ttl", opts.ttl);
   if (opts?.force) formData.append("force", "true");
-  return xhrForm<ItemDto>("/api/items/folder", formData, opts?.onProgress);
+  return xhrForm<ItemDto>("/api/items/folder", formData, {
+    onProgress: opts?.onProgress,
+    signal: opts?.signal,
+  });
 }
 
 export async function createLink(params: {
@@ -277,7 +351,12 @@ export async function deleteItem(id: number): Promise<void> {
   if (!res.ok) throw await parseApiError(res);
 }
 
-export async function deleteReadyToDelete(params?: { q?: string; kind?: ItemKind; protected?: boolean; space?: string }): Promise<{ deleted: number }> {
+export async function deleteReadyToDelete(params?: {
+  q?: string;
+  kind?: ItemKind;
+  protected?: boolean;
+  space?: string;
+}): Promise<{ deleted: number }> {
   const query = buildQuery({
     q: params?.q,
     kind: params?.kind,
@@ -287,8 +366,8 @@ export async function deleteReadyToDelete(params?: { q?: string; kind?: ItemKind
   return apiJson<{ deleted: number }>(`/api/items/ready-to-delete${query}`, { method: "DELETE" });
 }
 
-export async function fetchAppInfo(): Promise<AppInfo> {
-  return apiJson<AppInfo>("/api/health");
+export async function fetchAppInfo(opts: { signal?: AbortSignal } = {}): Promise<AppInfo> {
+  return apiJson<AppInfo>("/api/health", { signal: opts.signal });
 }
 
 // Storage dashboard
@@ -330,8 +409,10 @@ export type StorageOverviewDto = {
   largestItems: ItemSummaryDto[];
 };
 
-export async function fetchStorageOverview(): Promise<StorageOverviewDto> {
-  return apiJson<StorageOverviewDto>("/api/storage");
+export async function fetchStorageOverview(
+  opts: { signal?: AbortSignal } = {},
+): Promise<StorageOverviewDto> {
+  return apiJson<StorageOverviewDto>("/api/storage", { signal: opts.signal });
 }
 
 export async function updateItem(
@@ -347,9 +428,12 @@ export async function updateItem(
 
 // Item ordering
 
-export async function getItemOrder(params?: { space?: string }): Promise<{ orderedIds: number[] }> {
+export async function getItemOrder(
+  params?: { space?: string },
+  opts: { signal?: AbortSignal } = {},
+): Promise<{ orderedIds: number[] }> {
   const query = buildQuery({ space: params?.space });
-  return apiJson<{ orderedIds: number[] }>(`/api/items/order${query}`);
+  return apiJson<{ orderedIds: number[] }>(`/api/items/order${query}`, { signal: opts.signal });
 }
 
 export async function reorderItems(orderedIds: number[]): Promise<void> {
@@ -362,8 +446,8 @@ export async function reorderItems(orderedIds: number[]): Promise<void> {
 
 // Spaces API
 
-export async function listSpaces(): Promise<SpaceDto[]> {
-  return apiJson<SpaceDto[]>("/api/spaces");
+export async function listSpaces(opts: { signal?: AbortSignal } = {}): Promise<SpaceDto[]> {
+  return apiJson<SpaceDto[]>("/api/spaces", { signal: opts.signal });
 }
 
 export async function createSpace(name: string): Promise<SpaceDto> {

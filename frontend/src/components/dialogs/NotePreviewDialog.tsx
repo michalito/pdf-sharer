@@ -121,7 +121,9 @@ export default function NotePreviewDialog({
             </button>
           </div>
         ) : showRaw ? (
-          <pre className="text-sm leading-relaxed whitespace-pre-wrap">{detail?.noteText || "(empty)"}</pre>
+          <pre className="text-sm leading-relaxed whitespace-pre-wrap">
+            {detail?.noteText || "(empty)"}
+          </pre>
         ) : detail?.noteText ? (
           <Suspense fallback={<span className="text-sm text-[var(--app-muted)]">Loading...</span>}>
             <MarkdownProse content={detail.noteText} />

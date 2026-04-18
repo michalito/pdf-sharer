@@ -1,8 +1,19 @@
 import { useEffect, useId } from "react";
 import { Check, Moon, SlidersHorizontal, Sun, X } from "lucide-react";
 import Select from "./Select";
-import { useSettings, type PerPageSetting, type StateFilterSetting, type TtlSetting } from "../lib/useSettings";
-import { sortFieldOptions, sortOrderOptions, stateFilterOptions, perPageOptions, ttlOptions } from "../lib/constants";
+import {
+  useSettings,
+  type PerPageSetting,
+  type StateFilterSetting,
+  type TtlSetting,
+} from "../lib/useSettings";
+import {
+  sortFieldOptions,
+  sortOrderOptions,
+  stateFilterOptions,
+  perPageOptions,
+  ttlOptions,
+} from "../lib/constants";
 import { useTheme } from "../lib/useTheme";
 import type { SortField, SortOrder } from "../api/items";
 
@@ -90,12 +101,9 @@ export default function SettingsPanel(props: { open: boolean; onClose: () => voi
                 </button>
               </div>
             </div>
-            <p
-              id={descriptionId}
-              className="mt-3 text-sm leading-relaxed text-[var(--app-muted)]"
-            >
-              Configure how the app behaves by default. Changes are saved automatically and
-              take effect on your next visit.
+            <p id={descriptionId} className="mt-3 text-sm leading-relaxed text-[var(--app-muted)]">
+              Configure how the app behaves by default. Changes are saved automatically and take
+              effect on your next visit.
             </p>
           </div>
 
@@ -112,16 +120,18 @@ export default function SettingsPanel(props: { open: boolean; onClose: () => voi
 
               <div className="mt-3 space-y-3 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
                 {/* Sort field */}
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-[var(--app-text)]">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-[var(--app-text)]">
                     Sort by
-                  </label>
+                  </span>
                   <Select<SortField>
                     value={settings.defaultSortField}
                     onChange={(v) => {
                       if (v) {
-                        const patch: Partial<{ defaultSortField: SortField; defaultSortOrder: SortOrder }> =
-                          { defaultSortField: v as SortField };
+                        const patch: Partial<{
+                          defaultSortField: SortField;
+                          defaultSortOrder: SortOrder;
+                        }> = { defaultSortField: v as SortField };
                         if (v === "manual") patch.defaultSortOrder = "desc";
                         settings.update(patch);
                       }
@@ -130,7 +140,7 @@ export default function SettingsPanel(props: { open: boolean; onClose: () => voi
                     className={selectClass}
                     aria-label="Default sort field"
                   />
-                </div>
+                </label>
 
                 {/* Sort order — hidden for manual sort */}
                 {isManualSort ? (
@@ -138,10 +148,10 @@ export default function SettingsPanel(props: { open: boolean; onClose: () => voi
                     Manual sort uses drag-and-drop ordering.
                   </p>
                 ) : (
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-[var(--app-text)]">
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-medium text-[var(--app-text)]">
                       Order
-                    </label>
+                    </span>
                     <Select<SortOrder>
                       value={settings.defaultSortOrder}
                       onChange={(v) => {
@@ -151,7 +161,7 @@ export default function SettingsPanel(props: { open: boolean; onClose: () => voi
                       className={selectClass}
                       aria-label="Default sort order"
                     />
-                  </div>
+                  </label>
                 )}
               </div>
             </section>
@@ -166,10 +176,10 @@ export default function SettingsPanel(props: { open: boolean; onClose: () => voi
               </p>
 
               <div className="mt-3 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-[var(--app-text)]">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-[var(--app-text)]">
                     State
-                  </label>
+                  </span>
                   <Select<StateFilterSetting>
                     value={settings.defaultStateFilter}
                     onChange={(v) => {
@@ -179,7 +189,7 @@ export default function SettingsPanel(props: { open: boolean; onClose: () => voi
                     className={selectClass}
                     aria-label="Default state filter"
                   />
-                </div>
+                </label>
               </div>
             </section>
 
@@ -193,10 +203,10 @@ export default function SettingsPanel(props: { open: boolean; onClose: () => voi
               </p>
 
               <div className="mt-3 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-[var(--app-text)]">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-[var(--app-text)]">
                     Per page
-                  </label>
+                  </span>
                   <Select
                     value={String(settings.defaultPerPage)}
                     onChange={(v) => {
@@ -207,7 +217,7 @@ export default function SettingsPanel(props: { open: boolean; onClose: () => voi
                     className={selectClass}
                     aria-label="Items per page"
                   />
-                </div>
+                </label>
               </div>
             </section>
 
@@ -221,10 +231,10 @@ export default function SettingsPanel(props: { open: boolean; onClose: () => voi
               </p>
 
               <div className="mt-3 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-[var(--app-text)]">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-[var(--app-text)]">
                     Auto-delete after
-                  </label>
+                  </span>
                   <Select<TtlSetting>
                     value={settings.defaultTtl}
                     onChange={(v) => {
@@ -234,10 +244,9 @@ export default function SettingsPanel(props: { open: boolean; onClose: () => voi
                     className={selectClass}
                     aria-label="Default auto-delete"
                   />
-                </div>
+                </label>
               </div>
             </section>
-
           </div>
 
           {/* ── Footer ── */}

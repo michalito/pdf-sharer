@@ -19,7 +19,9 @@ vi.mock("react-hot-toast", () => {
 
 vi.mock("../components/ItemsContent", async () => {
   const React = await vi.importActual<typeof import("react")>("react");
-  const actual = await vi.importActual<typeof import("../components/ItemsContent")>("../components/ItemsContent");
+  const actual = await vi.importActual<typeof import("../components/ItemsContent")>(
+    "../components/ItemsContent",
+  );
 
   return {
     __esModule: true,
@@ -209,7 +211,12 @@ beforeEach(() => {
       countByKind: { file: 5, folder: 2, link: 2, note: 1 },
       sizeByKind: { file: 4_000_000_000, folder: 1_000_000_000, link: 200, note: 500 },
       countByState: { active: 7, done: 2, archived: 1, ready_to_delete: 0 },
-      sizeByState: { active: 3_500_000_000, done: 1_000_000_000, archived: 500_000_000, ready_to_delete: 0 },
+      sizeByState: {
+        active: 3_500_000_000,
+        done: 1_000_000_000,
+        archived: 500_000_000,
+        ready_to_delete: 0,
+      },
     },
     spaceStats: [],
     largestItems: [],
@@ -233,7 +240,10 @@ it("submits the save-link dialog", async () => {
   await user.click(within(newMenu).getByRole("button", { name: "Save link" }));
 
   const dialog = await screen.findByRole("dialog", { name: "Save external link" });
-  await user.type(within(dialog).getByPlaceholderText("https://example.com/docs"), "https://example.com/new");
+  await user.type(
+    within(dialog).getByPlaceholderText("https://example.com/docs"),
+    "https://example.com/new",
+  );
   await user.type(within(dialog).getByPlaceholderText("Team docs"), "Engineering Docs");
   await user.type(within(dialog).getByPlaceholderText("8-128 characters"), "safepass1");
   await user.type(within(dialog).getByPlaceholderText("Repeat password"), "safepass1");
@@ -262,7 +272,10 @@ it("submits the save-note dialog", async () => {
 
   const dialog = await screen.findByRole("dialog", { name: "Save note" });
   await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Retro");
-  await user.type(within(dialog).getByPlaceholderText("Write a note... (supports markdown)"), "Ship links and notes this week.");
+  await user.type(
+    within(dialog).getByPlaceholderText("Write a note... (supports markdown)"),
+    "Ship links and notes this week.",
+  );
   await user.type(within(dialog).getByPlaceholderText("8-128 characters"), "notespass");
   await user.type(within(dialog).getByPlaceholderText("Repeat password"), "notespass");
   await user.click(within(dialog).getByRole("button", { name: "Save note" }));
@@ -316,9 +329,14 @@ it("does not submit oversized note content", async () => {
 
   const dialog = await screen.findByRole("dialog", { name: "Save note" });
   await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Retro");
-  await user.type(within(dialog).getByPlaceholderText("Write a note... (supports markdown)"), "Too long by one!");
+  await user.type(
+    within(dialog).getByPlaceholderText("Write a note... (supports markdown)"),
+    "Too long by one!",
+  );
   expect(within(dialog).getByText("16 / 12 characters")).toBeInTheDocument();
-  expect(within(dialog).getByText("Note is too long. Maximum length is 12 characters.")).toBeInTheDocument();
+  expect(
+    within(dialog).getByText("Note is too long. Maximum length is 12 characters."),
+  ).toBeInTheDocument();
   expect(within(dialog).getByRole("button", { name: "Save note" })).toBeDisabled();
 
   expect(api.createNote).not.toHaveBeenCalled();
@@ -368,7 +386,10 @@ it("does not re-render items content when opening and typing in the note dialog"
   expect(itemsContentRenderTracker.count).toBe(initialRenderCount);
 
   await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Weekly");
-  await user.type(within(dialog).getByPlaceholderText("Write a note... (supports markdown)"), "Dialog-local state only.");
+  await user.type(
+    within(dialog).getByPlaceholderText("Write a note... (supports markdown)"),
+    "Dialog-local state only.",
+  );
 
   expect(itemsContentRenderTracker.count).toBe(initialRenderCount);
 });
@@ -433,10 +454,7 @@ it("uses persisted default state filter and page size for the initial list query
 });
 
 it("prefills default auto-delete in upload, link, and note dialogs", async () => {
-  localStorage.setItem(
-    "saita-settings",
-    JSON.stringify({ defaultTtl: "7d" }),
-  );
+  localStorage.setItem("saita-settings", JSON.stringify({ defaultTtl: "7d" }));
 
   const user = userEvent.setup();
   renderApp();
@@ -447,7 +465,9 @@ it("prefills default auto-delete in upload, link, and note dialogs", async () =>
   await user.click(within(newMenu).getByRole("button", { name: "New" }));
   await user.click(within(newMenu).getByRole("button", { name: "Save link" }));
   const linkDialog = await screen.findByRole("dialog", { name: "Save external link" });
-  expect(within(linkDialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent("7 days");
+  expect(within(linkDialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent(
+    "7 days",
+  );
   await user.click(within(linkDialog).getByRole("button", { name: "Cancel" }));
   await waitFor(() => {
     expect(screen.queryByRole("dialog", { name: "Save external link" })).not.toBeInTheDocument();
@@ -456,7 +476,9 @@ it("prefills default auto-delete in upload, link, and note dialogs", async () =>
   await user.click(within(newMenu).getByRole("button", { name: "New" }));
   await user.click(within(newMenu).getByRole("button", { name: "Save note" }));
   const noteDialog = await screen.findByRole("dialog", { name: "Save note" });
-  expect(within(noteDialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent("7 days");
+  expect(within(noteDialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent(
+    "7 days",
+  );
   await user.click(within(noteDialog).getByRole("button", { name: "Cancel" }));
   await waitFor(() => {
     expect(screen.queryByRole("dialog", { name: "Save note" })).not.toBeInTheDocument();
@@ -464,13 +486,17 @@ it("prefills default auto-delete in upload, link, and note dialogs", async () =>
 
   await user.click(within(newMenu).getByRole("button", { name: "New" }));
   await user.click(within(newMenu).getByRole("button", { name: "Upload files" }));
-  const pickerInput = document.querySelector('input[type="file"]:not([webkitdirectory])') as HTMLInputElement | null;
+  const pickerInput = document.querySelector(
+    'input[type="file"]:not([webkitdirectory])',
+  ) as HTMLInputElement | null;
   if (!pickerInput) throw new Error("files input not found");
   const file = new File(["queued"], "queued.txt", { type: "text/plain" });
   fireEvent.change(pickerInput, { target: { files: [file] } });
 
   const uploadDialog = await screen.findByRole("dialog", { name: "Upload files" });
-  expect(within(uploadDialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent("7 days");
+  expect(
+    within(uploadDialog).getByRole("combobox", { name: "Auto-delete after" }),
+  ).toHaveTextContent("7 days");
 });
 
 it("opens settings from both header and footer entry points", async () => {
@@ -593,7 +619,9 @@ it("starts queued upload after closing a currently open upload dialog", async ()
   const newMenu = screen.getByTestId("new-menu");
   await user.click(within(newMenu).getByRole("button", { name: "New" }));
   await user.click(within(newMenu).getByRole("button", { name: "Upload files" }));
-  const pickerInput = document.querySelector('input[type="file"]:not([webkitdirectory])') as HTMLInputElement | null;
+  const pickerInput = document.querySelector(
+    'input[type="file"]:not([webkitdirectory])',
+  ) as HTMLInputElement | null;
   if (!pickerInput) throw new Error("files input not found");
   const first = new File(["first"], "first.txt", { type: "text/plain" });
   fireEvent.change(pickerInput, { target: { files: [first] } });
@@ -645,9 +673,13 @@ it("keeps queued dialog files intact while previous upload request is still in f
   const newMenu = screen.getByTestId("new-menu");
   await user.click(within(newMenu).getByRole("button", { name: "New" }));
   await user.click(within(newMenu).getByRole("button", { name: "Upload files" }));
-  const pickerInput = document.querySelector('input[type="file"]:not([webkitdirectory])') as HTMLInputElement | null;
+  const pickerInput = document.querySelector(
+    'input[type="file"]:not([webkitdirectory])',
+  ) as HTMLInputElement | null;
   if (!pickerInput) throw new Error("files input not found");
-  fireEvent.change(pickerInput, { target: { files: [new File(["first"], "first.txt", { type: "text/plain" })] } });
+  fireEvent.change(pickerInput, {
+    target: { files: [new File(["first"], "first.txt", { type: "text/plain" })] },
+  });
 
   const firstDialog = await screen.findByRole("dialog", { name: "Upload files" });
 
@@ -935,7 +967,9 @@ const twoSpaces: import("../api/items").SpaceDto[] = [
   { id: 2, name: "Engineering", createdAt: "2026-02-28T00:00:00+00:00", itemCount: 5 },
 ];
 
-function makeSpace(overrides: Partial<import("../api/items").SpaceDto> = {}): import("../api/items").SpaceDto {
+function makeSpace(
+  overrides: Partial<import("../api/items").SpaceDto> = {},
+): import("../api/items").SpaceDto {
   return {
     id: 1,
     name: "Design",
@@ -946,7 +980,9 @@ function makeSpace(overrides: Partial<import("../api/items").SpaceDto> = {}): im
   };
 }
 
-function makeItem(overrides: Partial<import("../api/items").ItemDto> = {}): import("../api/items").ItemDto {
+function makeItem(
+  overrides: Partial<import("../api/items").ItemDto> = {},
+): import("../api/items").ItemDto {
   return {
     id: 1,
     name: "report.pdf",
@@ -1171,9 +1207,7 @@ it("opens picker, assigns a space, and calls updateItem", async () => {
     pagination: makePagination(1),
     countByState: makeCountByState({ active: 1 }),
   });
-  vi.mocked(api.updateItem).mockResolvedValue(
-    makeItem({ spaceId: 2, spaceName: "Engineering" }),
-  );
+  vi.mocked(api.updateItem).mockResolvedValue(makeItem({ spaceId: 2, spaceName: "Engineering" }));
 
   const user = userEvent.setup();
   renderApp();
@@ -1201,9 +1235,7 @@ it("unassigns a space via the picker", async () => {
     pagination: makePagination(1),
     countByState: makeCountByState({ active: 1 }),
   });
-  vi.mocked(api.updateItem).mockResolvedValue(
-    makeItem({ spaceId: null, spaceName: null }),
-  );
+  vi.mocked(api.updateItem).mockResolvedValue(makeItem({ spaceId: null, spaceName: null }));
 
   const user = userEvent.setup();
   renderApp();

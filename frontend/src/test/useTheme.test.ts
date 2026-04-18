@@ -21,9 +21,9 @@ test("updates theme-color meta tag when toggling to dark", () => {
   act(() => result.current.toggle());
 
   expect(result.current.theme).toBe("dark");
-  expect(
-    document.querySelector('meta[name="theme-color"]')?.getAttribute("content"),
-  ).toBe("#120f14");
+  expect(document.querySelector('meta[name="theme-color"]')?.getAttribute("content")).toBe(
+    "#120f14",
+  );
 });
 
 test("updates theme-color meta tag when toggling back to light", () => {
@@ -33,7 +33,7 @@ test("updates theme-color meta tag when toggling back to light", () => {
   act(() => result.current.toggle());
 
   expect(result.current.theme).toBe("light");
-  expect(
-    document.querySelector('meta[name="theme-color"]')?.getAttribute("content"),
-  ).toBe("#f5efe4");
+  expect(document.querySelector('meta[name="theme-color"]')?.getAttribute("content")).toBe(
+    "#f5efe4",
+  );
 });

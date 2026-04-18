@@ -48,11 +48,14 @@ export default defineConfig(({ command }) => {
     base: command === "build" ? "/static/" : "/",
     server: {
       proxy: {
+        // Upload endpoints stream multi-GB bodies; keep those unbounded.
+        "/api/items/files": { target: proxyTarget, changeOrigin: true, timeout: 0, proxyTimeout: 0 },
+        "/api/items/folder": { target: proxyTarget, changeOrigin: true, timeout: 0, proxyTimeout: 0 },
         "/api": {
           target: proxyTarget,
           changeOrigin: true,
-          timeout: 0,
-          proxyTimeout: 0,
+          timeout: 30_000,
+          proxyTimeout: 30_000,
         },
         "/d": { target: proxyTarget, changeOrigin: true },
         "/static": { target: proxyTarget, changeOrigin: true },
@@ -61,6 +64,7 @@ export default defineConfig(({ command }) => {
     build: {
       outDir: "dist",
       emptyOutDir: true,
+      sourcemap: true,
       rollupOptions: {
         output: {
           manualChunks: {

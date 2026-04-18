@@ -30,6 +30,7 @@ export default function SpacePicker({
     <div
       ref={menuRef}
       role="menu"
+      tabIndex={-1}
       onKeyDown={handleKeyDown}
       style={style}
       className="dialog-pop glass-panel min-w-[160px] max-h-[240px] overflow-y-auto rounded-lg p-1"
@@ -52,9 +53,7 @@ export default function SpacePicker({
         Unassigned
       </button>
 
-      {spaces.length > 0 && (
-        <div className="my-0.5 h-px bg-[var(--app-border)]" />
-      )}
+      {spaces.length > 0 && <div className="my-0.5 h-px bg-[var(--app-border)]" />}
 
       {spaces.map((s) => {
         const isSelected = currentSpaceId === s.id;

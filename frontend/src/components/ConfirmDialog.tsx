@@ -1,4 +1,13 @@
-import { ReactNode, useEffect, useId } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]):not([tabindex="-1"]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getFocusableElements(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => !el.hasAttribute("data-focus-trap-sentinel"),
+  );
+}
 
 export default function ConfirmDialog(props: {
   open: boolean;
@@ -30,6 +39,8 @@ export default function ConfirmDialog(props: {
   } = props;
   const titleId = useId();
   const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -39,6 +50,54 @@ export default function ConfirmDialog(props: {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onCancel]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
+
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const focusables = getFocusableElements(dialog);
+    const initialTarget =
+      focusables.find((el) => el.matches("input, textarea, select")) ??
+      focusables.find((el) => el.getAttribute("type") === "submit") ??
+      focusables[focusables.length - 1] ??
+      dialog;
+    initialTarget.focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const currentFocusables = getFocusableElements(dialog);
+      if (currentFocusables.length === 0) {
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = currentFocusables[0];
+      const last = currentFocusables[currentFocusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || !dialog.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !dialog.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    dialog.addEventListener("keydown", onKeyDown);
+    return () => {
+      dialog.removeEventListener("keydown", onKeyDown);
+      const target = returnFocusRef.current;
+      if (target && document.body.contains(target)) {
+        target.focus();
+      }
+    };
+  }, [open]);
 
   if (!open) return null;
 
@@ -80,12 +139,20 @@ export default function ConfirmDialog(props: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-hidden="true"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onCancel}
+      />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
         className={`glass-panel dialog-pop relative w-full rounded-xl p-5 ${size === "lg" ? "max-w-lg" : "max-w-md"}`}
       >
         {formMode ? (

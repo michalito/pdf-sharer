@@ -77,7 +77,10 @@ it("resets link dialog fields to defaults when reopened", async () => {
   renderWithClient(<LinkDialogHarness />);
 
   let dialog = await screen.findByRole("dialog", { name: "Save external link" });
-  await user.type(within(dialog).getByPlaceholderText("https://example.com/docs"), "https://example.com/changed");
+  await user.type(
+    within(dialog).getByPlaceholderText("https://example.com/docs"),
+    "https://example.com/changed",
+  );
   await user.type(within(dialog).getByPlaceholderText("Team docs"), "Changed");
   await user.click(within(dialog).getByRole("combobox", { name: "Space" }));
   await user.click(await screen.findByRole("option", { name: "Ops" }));
@@ -91,7 +94,9 @@ it("resets link dialog fields to defaults when reopened", async () => {
   expect(within(dialog).getByPlaceholderText("https://example.com/docs")).toHaveValue("");
   expect(within(dialog).getByPlaceholderText("Team docs")).toHaveValue("");
   expect(within(dialog).getByRole("combobox", { name: "Space" })).toHaveTextContent("Design");
-  expect(within(dialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent("7 days");
+  expect(within(dialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent(
+    "7 days",
+  );
 });
 
 it("resets note dialog fields and view mode when reopened", async () => {
@@ -100,7 +105,10 @@ it("resets note dialog fields and view mode when reopened", async () => {
 
   let dialog = await screen.findByRole("dialog", { name: "Save note" });
   await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Draft");
-  await user.type(within(dialog).getByPlaceholderText("Write a note... (supports markdown)"), "Temporary note");
+  await user.type(
+    within(dialog).getByPlaceholderText("Write a note... (supports markdown)"),
+    "Temporary note",
+  );
   await user.click(within(dialog).getByRole("button", { name: "Preview" }));
   expect(await within(dialog).findByText("Temporary note")).toBeInTheDocument();
   await user.click(within(dialog).getByRole("combobox", { name: "Space" }));
@@ -113,10 +121,16 @@ it("resets note dialog fields and view mode when reopened", async () => {
 
   dialog = await screen.findByRole("dialog", { name: "Save note" });
   expect(within(dialog).getByPlaceholderText("Meeting summary")).toHaveValue("");
-  expect(within(dialog).getByPlaceholderText("Write a note... (supports markdown)")).toHaveValue("");
+  expect(within(dialog).getByPlaceholderText("Write a note... (supports markdown)")).toHaveValue(
+    "",
+  );
   expect(within(dialog).getByRole("combobox", { name: "Space" })).toHaveTextContent("Design");
-  expect(within(dialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent("7 days");
-  expect(within(dialog).getByPlaceholderText("Write a note... (supports markdown)")).toBeInTheDocument();
+  expect(within(dialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent(
+    "7 days",
+  );
+  expect(
+    within(dialog).getByPlaceholderText("Write a note... (supports markdown)"),
+  ).toBeInTheDocument();
   expect(within(dialog).queryByText("Temporary note")).not.toBeInTheDocument();
   expect(within(dialog).getByText("0 / 12 characters")).toBeInTheDocument();
 });
@@ -138,7 +152,9 @@ it("shows note length feedback and blocks oversized note submission", async () =
 
   await user.type(textarea, "!");
   expect(within(dialog).getByText("13 / 12 characters")).toBeInTheDocument();
-  expect(within(dialog).getByText("Note is too long. Maximum length is 12 characters.")).toBeInTheDocument();
+  expect(
+    within(dialog).getByText("Note is too long. Maximum length is 12 characters."),
+  ).toBeInTheDocument();
   expect(saveButton).toBeDisabled();
 });
 
@@ -153,7 +169,9 @@ it("counts note length using Unicode code points", async () => {
   await user.type(textarea, "😀".repeat(12));
 
   expect(within(dialog).getByText("12 / 12 characters")).toBeInTheDocument();
-  expect(within(dialog).queryByText("Note is too long. Maximum length is 12 characters.")).not.toBeInTheDocument();
+  expect(
+    within(dialog).queryByText("Note is too long. Maximum length is 12 characters."),
+  ).not.toBeInTheDocument();
   expect(saveButton).not.toBeDisabled();
 });
 
@@ -201,5 +219,7 @@ it("resets upload dialog fields to request defaults when reopened", async () => 
   expect(within(dialog).getByPlaceholderText("8-128 characters")).toHaveValue("");
   expect(within(dialog).getByPlaceholderText("Repeat password")).toHaveValue("");
   expect(within(dialog).getByRole("combobox", { name: "Space" })).toHaveTextContent("Design");
-  expect(within(dialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent("7 days");
+  expect(within(dialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent(
+    "7 days",
+  );
 });
