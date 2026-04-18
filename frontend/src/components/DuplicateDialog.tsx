@@ -42,7 +42,7 @@ export default function DuplicateDialog(props: {
         {isMultiFile ? (
           <>
             <p>Some files match items that already exist:</p>
-            <ul className="list-inside list-disc space-y-1">
+            <ul className="list-inside list-disc space-y-1 break-words">
               {(duplicates as FileDuplicateInfo[]).map((d) => (
                 <li key={d.fileIndex}>
                   <span className="font-medium text-[var(--app-text)]">{d.fileName}</span>
@@ -60,7 +60,7 @@ export default function DuplicateDialog(props: {
         ) : (
           <>
             <p>An item with identical content already exists:</p>
-            <ul className="list-inside list-disc space-y-1">
+            <ul className="list-inside list-disc space-y-1 break-words">
               {(duplicates as DuplicateItemInfo[]).map((item) => (
                 <li key={item.id}>
                   <DuplicateItemSummary item={item} />
