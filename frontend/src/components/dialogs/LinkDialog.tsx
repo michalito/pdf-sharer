@@ -3,7 +3,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../ConfirmDialog";
 import Select from "../Select";
-import { createLink, DuplicateContentError, type DuplicateInfo, type SpaceDto, type TtlPreset } from "../../api/items";
+import {
+  createLink,
+  DuplicateContentError,
+  type DuplicateInfo,
+  type SpaceDto,
+  type TtlPreset,
+} from "../../api/items";
 import { TTL_PRESETS } from "../../lib/format";
 import { validateOptionalPassword } from "./password";
 
@@ -180,8 +186,14 @@ export default function LinkDialog({
           placeholder="Repeat password"
           className={dialogFieldClass}
           autoComplete="new-password"
+          aria-invalid={
+            password.length > 0 && passwordConfirm.length > 0 && password !== passwordConfirm
+          }
         />
       </label>
+      {password.length > 0 && passwordConfirm.length > 0 && password !== passwordConfirm ? (
+        <p className="mt-1 text-xs text-[var(--danger)]">Passwords do not match.</p>
+      ) : null}
     </ConfirmDialog>
   );
 }

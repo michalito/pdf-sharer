@@ -147,8 +147,14 @@ export default function UploadDialog({
           placeholder="Repeat password"
           className={dialogFieldClass}
           autoComplete="new-password"
+          aria-invalid={
+            password.length > 0 && passwordConfirm.length > 0 && password !== passwordConfirm
+          }
         />
       </label>
+      {password.length > 0 && passwordConfirm.length > 0 && password !== passwordConfirm ? (
+        <p className="mt-1 text-xs text-[var(--danger)]">Passwords do not match.</p>
+      ) : null}
     </ConfirmDialog>
   );
 }

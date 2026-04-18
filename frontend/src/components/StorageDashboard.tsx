@@ -1,12 +1,6 @@
 import { useEffect, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  File as FileIcon,
-  FolderArchive,
-  Link2,
-  MessageSquareText,
-  X,
-} from "lucide-react";
+import { File as FileIcon, FolderArchive, Link2, MessageSquareText, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { fetchStorageOverview } from "../api/items";
 import type { ItemKind, ItemState, SpaceStatsDto, StorageOverviewDto } from "../api/items";
@@ -27,24 +21,17 @@ const stateMeta: Record<ItemState, { label: string; color: string }> = {
 };
 
 function Skeleton({ className = "" }: { className?: string }) {
-  return (
-    <div
-      className={`animate-pulse rounded bg-[var(--app-border)]/40 ${className}`}
-    />
-  );
+  return <div className={`animate-pulse rounded bg-[var(--app-border)]/40 ${className}`} />;
 }
 
-export default function StorageDashboard(props: {
-  open: boolean;
-  onClose: () => void;
-}) {
+export default function StorageDashboard(props: { open: boolean; onClose: () => void }) {
   const { open, onClose } = props;
   const titleId = useId();
   const descriptionId = useId();
 
   const storageQuery = useQuery({
     queryKey: ["storage"],
-    queryFn: fetchStorageOverview,
+    queryFn: ({ signal }) => fetchStorageOverview({ signal }),
     staleTime: 30_000,
     enabled: open,
   });
@@ -91,10 +78,7 @@ export default function StorageDashboard(props: {
           <div className="border-b border-[var(--app-border)]/55 p-5 pb-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2
-                  id={titleId}
-                  className="font-display text-xl font-semibold"
-                >
+                <h2 id={titleId} className="font-display text-xl font-semibold">
                   Storage
                 </h2>
                 <div
@@ -162,9 +146,7 @@ function DashboardContent({ data }: { data: StorageOverviewDto }) {
           </div>
         ) : (
           <div className="mt-3 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
-            <p className="text-xs text-[var(--app-muted)]">
-              Disk usage unavailable
-            </p>
+            <p className="text-xs text-[var(--app-muted)]">Disk usage unavailable</p>
           </div>
         )}
       </section>
@@ -191,9 +173,7 @@ function DashboardContent({ data }: { data: StorageOverviewDto }) {
                     {label}
                   </span>
                 </div>
-                <div className="mt-1.5 text-2xl font-semibold tabular-nums">
-                  {count}
-                </div>
+                <div className="mt-1.5 text-2xl font-semibold tabular-nums">{count}</div>
                 <div className="mt-0.5 font-mono text-[11px] text-[var(--app-muted)]">
                   {formatBytes(size)}
                 </div>
@@ -228,10 +208,7 @@ function DashboardContent({ data }: { data: StorageOverviewDto }) {
           )}
         </div>
         <div className="mt-3 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
-          <SpaceDistribution
-            spaceStats={spaceStats}
-            totalSize={items.totalSizeBytes}
-          />
+          <SpaceDistribution spaceStats={spaceStats} totalSize={items.totalSizeBytes} />
         </div>
       </section>
 
@@ -252,9 +229,7 @@ function DashboardContent({ data }: { data: StorageOverviewDto }) {
                   className="flex items-center gap-2.5 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 px-3 py-2"
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--app-muted)]" />
-                  <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                    {item.name}
-                  </span>
+                  <span className="min-w-0 flex-1 truncate text-xs font-medium">{item.name}</span>
                   {item.spaceName && (
                     <span className="shrink-0 rounded bg-[var(--accent-cool-soft)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent-cool)]">
                       {item.spaceName}
@@ -370,15 +345,9 @@ function StateBar({
               className="h-2 w-2 rounded-[2px]"
               style={{ backgroundColor: stateMeta[state].color }}
             />
-            <span className="text-[var(--app-muted)]">
-              {stateMeta[state].label}
-            </span>
-            <span className="font-mono font-medium">
-              {formatBytes(sizes[state])}
-            </span>
-            <span className="font-mono text-[var(--app-muted)]">
-              ({counts[state]})
-            </span>
+            <span className="text-[var(--app-muted)]">{stateMeta[state].label}</span>
+            <span className="font-mono font-medium">{formatBytes(sizes[state])}</span>
+            <span className="font-mono text-[var(--app-muted)]">({counts[state]})</span>
           </div>
         ))}
       </div>
@@ -405,9 +374,7 @@ function SpaceDistribution({
   totalSize: number;
 }) {
   if (spaceStats.length === 0) {
-    return (
-      <p className="text-xs text-[var(--app-muted)]">No items yet</p>
-    );
+    return <p className="text-xs text-[var(--app-muted)]">No items yet</p>;
   }
 
   return (
@@ -439,10 +406,7 @@ function SpaceDistribution({
       {/* Legend */}
       <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
         {spaceStats.map((ss, i) => (
-          <div
-            key={ss.spaceId ?? "unspaced"}
-            className="flex items-center gap-1.5"
-          >
+          <div key={ss.spaceId ?? "unspaced"} className="flex items-center gap-1.5">
             <span
               className="h-2 w-2 rounded-[2px]"
               style={{
@@ -450,12 +414,8 @@ function SpaceDistribution({
               }}
             />
             <span className="text-[var(--app-muted)]">{ss.spaceName}</span>
-            <span className="font-mono font-medium">
-              {formatBytes(ss.sizeBytes)}
-            </span>
-            <span className="font-mono text-[var(--app-muted)]">
-              ({ss.itemCount})
-            </span>
+            <span className="font-mono font-medium">{formatBytes(ss.sizeBytes)}</span>
+            <span className="font-mono text-[var(--app-muted)]">({ss.itemCount})</span>
           </div>
         ))}
       </div>
@@ -481,10 +441,7 @@ function LoadingSkeleton() {
         <Skeleton className="h-3 w-24" />
         <div className="mt-3 grid grid-cols-2 gap-2.5">
           {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="rounded-lg border border-[var(--app-border)]/35 p-3"
-            >
+            <div key={i} className="rounded-lg border border-[var(--app-border)]/35 p-3">
               <Skeleton className="h-3 w-16" />
               <Skeleton className="mt-2 h-7 w-10" />
               <Skeleton className="mt-1 h-3 w-14" />
@@ -511,9 +468,7 @@ function LoadingSkeleton() {
 function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <p className="text-sm text-[var(--danger)]">
-        Failed to load storage data
-      </p>
+      <p className="text-sm text-[var(--danger)]">Failed to load storage data</p>
       <button
         type="button"
         onClick={onRetry}

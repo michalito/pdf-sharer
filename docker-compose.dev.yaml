@@ -27,7 +27,7 @@ services:
     image: node:20-bookworm-slim
     working_dir: /frontend
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT:-5173}:5173"
     environment:
       - VITE_API_PROXY_TARGET=http://web:5000
     volumes:

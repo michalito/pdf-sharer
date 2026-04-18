@@ -1,4 +1,4 @@
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { usePopover } from "../lib/usePopover";
@@ -18,6 +18,7 @@ type SelectProps<T extends string> = {
 };
 
 function Dropdown<T extends string>({
+  id,
   anchorRect,
   options,
   value,
@@ -26,6 +27,7 @@ function Dropdown<T extends string>({
   onClose,
   renderOption,
 }: {
+  id: string;
   anchorRect: DOMRect;
   options: Option<T>[];
   value: T | "";
@@ -58,7 +60,9 @@ function Dropdown<T extends string>({
   return createPortal(
     <div
       ref={menuRef}
+      id={id}
       role="listbox"
+      tabIndex={-1}
       onKeyDown={handleKeyDown}
       style={{ ...style, minWidth: anchorRect.width }}
       className="dialog-pop glass-panel max-h-[240px] overflow-y-auto rounded-lg p-1"
@@ -121,9 +125,9 @@ export default function Select<T extends string>({
 }: SelectProps<T>) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const listboxId = useId();
 
-  const selectedLabel =
-    options.find((o) => o.value === value)?.label ?? placeholder ?? "";
+  const selectedLabel = options.find((o) => o.value === value)?.label ?? placeholder ?? "";
 
   function handleClose() {
     setOpen(false);
@@ -138,6 +142,7 @@ export default function Select<T extends string>({
         role="combobox"
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-controls={open ? listboxId : undefined}
         aria-label={ariaLabel}
         disabled={disabled}
         className={`relative text-left ${className} ${disabled ? "cursor-not-allowed opacity-70" : ""}`}
@@ -157,6 +162,7 @@ export default function Select<T extends string>({
 
       {open && triggerRef.current && (
         <Dropdown
+          id={listboxId}
           anchorRect={triggerRef.current.getBoundingClientRect()}
           options={options}
           value={value}

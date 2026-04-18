@@ -2,7 +2,10 @@ export type PasswordValidationResult =
   | { ok: true; password: string | undefined }
   | { ok: false; message: string };
 
-export function validateOptionalPassword(passwordRaw: string, confirmRaw: string): PasswordValidationResult {
+export function validateOptionalPassword(
+  passwordRaw: string,
+  confirmRaw: string,
+): PasswordValidationResult {
   const password = passwordRaw.trim();
   const confirm = confirmRaw.trim();
 

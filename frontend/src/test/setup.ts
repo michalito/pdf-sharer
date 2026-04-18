@@ -13,3 +13,30 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => false,
   }),
 });
+
+class MockIntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+  readonly root = null;
+  readonly rootMargin = "";
+  readonly thresholds = [];
+}
+
+class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+Object.defineProperty(window, "IntersectionObserver", {
+  writable: true,
+  value: MockIntersectionObserver,
+});
+Object.defineProperty(window, "ResizeObserver", {
+  writable: true,
+  value: MockResizeObserver,
+});

@@ -28,6 +28,7 @@ Use the deploy script for normal operations:
 # Development (backend + frontend, hot reload)
 ./deploy.sh dev
 ./deploy.sh dev down
+./deploy.sh dev                  # in a worktree, auto-derives the instance name
 
 # Production
 ./deploy.sh prod
@@ -35,6 +36,7 @@ Use the deploy script for normal operations:
 
 # Common ops
 ./deploy.sh status
+./deploy.sh status --name kyoto
 ./deploy.sh logs
 ./deploy.sh migrate
 ./deploy.sh migrate create "message"
@@ -52,7 +54,11 @@ npm --prefix frontend run build
 
 ## Operational Facts (Important)
 
-- Default host port is `5001` (`HOST_PORT` override supported).
+- Default backend host port is `5001` (`HOST_PORT` override supported).
+- Default dev frontend host port is `5173` (`FRONTEND_PORT` override supported).
+- In a non-primary git worktree, `./deploy.sh` auto-derives the instance name from the worktree directory and scopes Docker Compose resources to `saita-<worktree>`, which keeps branch/worktree DB and upload volumes isolated.
+- `./deploy.sh --name <instance>` remains available as an explicit override.
+- `./deploy.sh dev` auto-selects free backend/frontend ports for derived/named instances when the worktree `.env` does not already pin them, then saves them into that worktree’s `.env`.
 - Public share links are served at `/d/<id>` and resolve by kind:
   - file/folder: direct download
   - link: HTTP redirect to target URL
@@ -72,7 +78,7 @@ npm --prefix frontend run build
 ## API Surface (Current)
 
 - `GET /api/health` (returns `ok` + `version` + runtime `limits`)
-- `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `sort` (`name|size|created|modified`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
+- `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `space`, `sort` (`name|size|created|modified|manual`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
 - `POST /api/items/files`
 - `POST /api/items/folder`
 - `POST /api/items/link`
@@ -97,6 +103,7 @@ npm --prefix frontend run build
 - `NOTE_EXCERPT_LENGTH` controls note preview length in `GET /api/items` and is bounded to `40..1000` (default `180`).
 - `TRUST_PROXY_HOPS` controls how many reverse-proxy hops are trusted for `X-Forwarded-For` when deriving client IP (`0` by default; set `1` for one proxy).
 - `APP_VERSION` is exposed by `GET /api/health` and the UI footer; `/api/health` also exposes runtime limits including `noteTextMaxChars`; when unset, `deploy.sh` auto-detects from latest git tag (fallback `dev`).
+- `FRONTEND_PORT` only affects `./deploy.sh dev`; use it with `--name`/`HOST_PORT` to run multiple worktrees side by side.
 
 ## Change Checklist For Agents
 

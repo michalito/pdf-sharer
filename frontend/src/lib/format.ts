@@ -42,4 +42,3 @@ export const TTL_PRESETS = [
   { value: "7d" as const, label: "7 days" },
   { value: "30d" as const, label: "30 days" },
 ] as const;
-

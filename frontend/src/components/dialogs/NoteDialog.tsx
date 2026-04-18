@@ -5,7 +5,13 @@ import toast from "react-hot-toast";
 import ConfirmDialog from "../ConfirmDialog";
 const MarkdownProse = lazy(() => import("../MarkdownProse"));
 import Select from "../Select";
-import { createNote, DuplicateContentError, type DuplicateInfo, type SpaceDto, type TtlPreset } from "../../api/items";
+import {
+  createNote,
+  DuplicateContentError,
+  type DuplicateInfo,
+  type SpaceDto,
+  type TtlPreset,
+} from "../../api/items";
 import { TTL_PRESETS } from "../../lib/format";
 import { validateOptionalPassword } from "./password";
 
@@ -130,7 +136,9 @@ export default function NoteDialog({
 
       <div className="mt-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">Note</span>
+          <span className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+            Note
+          </span>
           <div className="inline-flex overflow-hidden rounded-md border border-[var(--app-border)]">
             <button
               type="button"
@@ -177,7 +185,9 @@ export default function NoteDialog({
         ) : (
           <div className="mt-1 min-h-[9.5rem] max-h-[20rem] overflow-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-2">
             {text.trim() ? (
-              <Suspense fallback={<p className="text-sm text-[var(--app-muted)]">Loading preview...</p>}>
+              <Suspense
+                fallback={<p className="text-sm text-[var(--app-muted)]">Loading preview...</p>}
+              >
                 <MarkdownProse content={text} />
               </Suspense>
             ) : (
@@ -188,7 +198,8 @@ export default function NoteDialog({
 
         <div className="mt-1 flex items-start justify-between gap-3 text-[11px]">
           <p className="text-[var(--app-muted)]">
-            Supports <strong>markdown</strong>: headings, bold, italic, lists, links, code, and tables.
+            Supports <strong>markdown</strong>: headings, bold, italic, lists, links, code, and
+            tables.
           </p>
           <p
             className={`shrink-0 whitespace-nowrap ${
@@ -259,8 +270,14 @@ export default function NoteDialog({
           placeholder="Repeat password"
           className={dialogFieldClass}
           autoComplete="new-password"
+          aria-invalid={
+            password.length > 0 && passwordConfirm.length > 0 && password !== passwordConfirm
+          }
         />
       </label>
+      {password.length > 0 && passwordConfirm.length > 0 && password !== passwordConfirm ? (
+        <p className="mt-1 text-xs text-[var(--danger)]">Passwords do not match.</p>
+      ) : null}
     </ConfirmDialog>
   );
 }
