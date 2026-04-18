@@ -368,6 +368,13 @@ is_container_running() {
     compose "$compose_file" ps --quiet web 2>/dev/null | grep -q .
 }
 
+has_service_container() {
+    local compose_file="${1:-docker-compose.yaml}"
+    local service="${2:-web}"
+
+    compose "$compose_file" ps --all --quiet "$service" 2>/dev/null | grep -q .
+}
+
 get_running_compose_file() {
     if is_container_running docker-compose.dev.yaml; then
         echo "docker-compose.dev.yaml"
@@ -384,6 +391,32 @@ require_running_compose_file() {
 
     if [[ -z "$compose_file" ]]; then
         die "No running containers for project '$PROJECT_NAME'. Start with: ./deploy.sh dev$(selected_instance_flag) or ./deploy.sh prod$(selected_instance_flag)"
+    fi
+
+    echo "$compose_file"
+}
+
+get_logs_compose_file() {
+    local compose_file
+    compose_file=$(get_running_compose_file)
+
+    if [[ -n "$compose_file" ]]; then
+        echo "$compose_file"
+    elif has_service_container docker-compose.dev.yaml; then
+        echo "docker-compose.dev.yaml"
+    elif has_service_container docker-compose.yaml; then
+        echo "docker-compose.yaml"
+    else
+        echo ""
+    fi
+}
+
+require_logs_compose_file() {
+    local compose_file
+    compose_file=$(get_logs_compose_file)
+
+    if [[ -z "$compose_file" ]]; then
+        die "No containers found for project '$PROJECT_NAME'. Start with: ./deploy.sh dev$(selected_instance_flag) or ./deploy.sh prod$(selected_instance_flag)"
     fi
 
     echo "$compose_file"
@@ -659,7 +692,7 @@ cmd_logs() {
 
     check_dependencies docker
     prepare_compose_env
-    compose_file=$(require_running_compose_file)
+    compose_file=$(require_logs_compose_file)
 
     if [[ "$arg" == "-f" ]] || [[ "$arg" == "--follow" ]]; then
         compose "$compose_file" logs -f web

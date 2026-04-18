@@ -68,6 +68,7 @@ npm --prefix frontend run test:watch            # vitest watch mode
 ```
 
 Port note: backend host port defaults to `5001` (`HOST_PORT` can override). Dev frontend host port defaults to `5173` (`FRONTEND_PORT` can override). In non-primary git worktrees, `./deploy.sh` auto-derives the Compose project name from the worktree directory so multiple worktrees can run side by side with isolated volumes. `./deploy.sh --name <instance>` remains available as an override. `./deploy.sh dev` auto-selects free ports for derived/named instances and writes them into that worktree’s `.env` when ports are not already pinned.
+`./deploy.sh logs` can still retrieve logs for the scoped project after the `web` container exits, as long as the Compose container still exists.
 
 ## Architecture
 

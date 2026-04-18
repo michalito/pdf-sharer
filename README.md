@@ -46,6 +46,8 @@ When `deploy.sh` runs inside a non-primary git worktree, it automatically derive
 ./deploy.sh dev down
 ```
 
+`./deploy.sh logs` still resolves the scoped project when the `web` container has already exited, so startup and healthcheck crashes remain inspectable without restarting first.
+
 ## Folder uploads
 
 Folder uploads are supported via `webkitdirectory` (Chrome/Edge). The browser uploads the folder contents + relative paths; the server streams them into a zip archive and stores it as a single downloadable item.

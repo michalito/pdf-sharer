@@ -59,6 +59,7 @@ npm --prefix frontend run build
 - In a non-primary git worktree, `./deploy.sh` auto-derives the instance name from the worktree directory and scopes Docker Compose resources to `saita-<worktree>`, which keeps branch/worktree DB and upload volumes isolated.
 - `./deploy.sh --name <instance>` remains available as an explicit override.
 - `./deploy.sh dev` auto-selects free backend/frontend ports for derived/named instances when the worktree `.env` does not already pin them, then saves them into that worktree’s `.env`.
+- `./deploy.sh logs` can still retrieve logs for the scoped project after the `web` container has exited, as long as the Compose container still exists.
 - Public share links are served at `/d/<id>` and resolve by kind:
   - file/folder: direct download
   - link: HTTP redirect to target URL
