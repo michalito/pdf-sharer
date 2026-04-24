@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repository guide for coding agents working in this project.
+Quick-reference guide for contributors and AI coding assistants working in this project. For setup and PR conventions, see [CONTRIBUTING.md](CONTRIBUTING.md). For the deeper architecture walk-through, see [CLAUDE.md](CLAUDE.md).
 
 ## Project Summary
 
@@ -75,13 +75,16 @@ npm --prefix frontend run build
 - Folder uploads are zipped server-side with zip path sanitization (`app/utils/zip_utils.py`).
 - Every request gets `X-Request-ID` (incoming value reused if provided).
 - `GET /api/health` returns `{"ok": true, "version": "<app-version>", "limits": {"noteTextMaxChars": <max-note-length>}}`.
+- Spaces are organizational only. `space` filters accept a positive space ID or `none`; multipart upload uses `space_id`, while JSON APIs use `spaceId`.
+- Manual item reordering uses `GET /api/items/order` for scoped/global reads, but `PUT /api/items/reorder` remains a global exact permutation of all active non-expired item IDs.
 
 ## API Surface (Current)
 
 - `GET /api/health` (returns `ok` + `version` + runtime `limits`)
-- `GET /api/items` with optional `q`, `kind`, `state`, `protected`, `space`, `sort` (`name|size|created|modified|manual`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
-- `POST /api/items/files`
-- `POST /api/items/folder`
+- `GET /api/storage`
+- `GET /api/items` with optional `q`, `kind`, `state`, `space` (`<id>|none`), `protected`, `sort` (`name|size|created|modified|manual`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
+- `POST /api/items/files` (multipart `files`; optional `password`, `space_id`, `ttl`, `force`)
+- `POST /api/items/folder` (multipart `files` + `paths`; optional `password`, `space_id`, `ttl`, `force`)
 - `POST /api/items/link`
 - `POST /api/items/note`
 - `GET /api/items/<id>`
@@ -89,7 +92,14 @@ npm --prefix frontend run build
 - `PATCH /api/items/<id>` with body `{"state?":"...", "spaceId?":1, "pinned?":true}` (bumps `updatedAt`)
 - `GET /api/items/<id>/download`
 - `DELETE /api/items/<id>` (requires `ready_to_delete`)
-- `DELETE /api/items/ready-to-delete` (optional `q`, `kind`, `protected`)
+- `GET /api/items/order` (optional `space`)
+- `PUT /api/items/reorder` (global exact permutation of all active non-expired item IDs)
+- `DELETE /api/items/ready-to-delete` (optional `q`, `kind`, `space`, `protected`)
+- `GET /api/spaces`
+- `POST /api/spaces`
+- `PATCH /api/spaces/<id>`
+- `PUT /api/spaces/reorder`
+- `DELETE /api/spaces/<id>`
 - `GET /d/<id>`
 - `POST /d/<id>`
 

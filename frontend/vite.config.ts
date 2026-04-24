@@ -76,9 +76,20 @@ export default defineConfig(({ command }) => {
       },
     },
     test: {
-      environment: "jsdom",
+      environment: "happy-dom",
       setupFiles: "./src/test/setup.ts",
       globals: true,
+      coverage: {
+        provider: "istanbul",
+        reporter: ["text", "html", "clover", "json"],
+        reportsDirectory: "./coverage",
+        thresholds: {
+          statements: 80,
+          branches: 65,
+          functions: 75,
+          lines: 80,
+        },
+      },
     },
   };
 });

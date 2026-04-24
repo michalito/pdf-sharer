@@ -43,17 +43,29 @@ export default function NotePreviewDialog({
   }, [item]);
 
   useEffect(() => {
+    let cancelled = false;
     if (!open) {
       requestIdRef.current += 1;
+      queueMicrotask(() => {
+        if (cancelled) return;
+        setDetail(null);
+        setShowRaw(false);
+        setErrorMessage(null);
+        setIsLoading(false);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    queueMicrotask(() => {
+      if (cancelled) return;
       setDetail(null);
       setShowRaw(false);
-      setErrorMessage(null);
-      setIsLoading(false);
-      return;
-    }
-    setDetail(null);
-    setShowRaw(false);
-    void loadNote();
+      void loadNote();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [loadNote, open]);
 
   const activeItem = detail ?? item;

@@ -31,7 +31,10 @@ export function usePopover({
 }: UsePopoverOptions) {
   const menuRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   const style: React.CSSProperties = {
     position: "fixed",

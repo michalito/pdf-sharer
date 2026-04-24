@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Detailed architecture and behavioral reference for this repository. Auto-loaded by Claude Code (claude.ai/code) from the project root, and useful to any human contributor who wants the deep-dive view. For quick-start commands and the contributor workflow, see [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
-Last verified against code: 2026-03-02.
+Last verified against code: 2026-04-24.
 
 ## Project Snapshot
 
@@ -107,7 +107,7 @@ Key patterns:
 - **meta_json column**: Links store `{"url": "..."}`, notes store `{"text": "..."}`, folders store `{"file_count": N, "top_level_dir": "..."}`.
 - **Session unlocks**: Per-item unlock state is tracked in signed Flask session cookies (`app/services/item_access.py`).
 - **Item expiration**: Optional `expires_at` column. Expired items are filtered from all queries immediately and are removed by the `flask expire-items` / `./deploy.sh expire-items` maintenance command.
-- **Item position**: Optional `position` column for manual (drag-and-drop) ordering. New items get `max(position)+1`. Reorder endpoint requires an exact permutation of all active item IDs.
+- **Item position**: Optional `position` column for manual (drag-and-drop) ordering. New items get `max(position)+1`. `GET /api/items/order` can be scoped by space, but `PUT /api/items/reorder` requires a global exact permutation of all active non-expired item IDs.
 
 ### Frontend
 
@@ -135,25 +135,25 @@ Spaces are named organizational groupings for items (one-to-many, optional). The
 
 ### Items
 - `GET /api/items` with optional `q`, `kind`, `state`, `space` (ID or `none`), `protected`, `sort` (`name|size|created|modified|manual`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page` — response includes `countByState` (totals by state for the current filters, ignoring the `state` filter)
-- `POST /api/items/files` (multipart field `files`, repeatable; optional `password`, `ttl`, `spaceId`)
-- `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`; optional `password`, `ttl`, `spaceId`)
-- `POST /api/items/link` (JSON: `{"url":"https://...","name?":"...","password?":"...","ttl?":"1h|6h|24h|3d|7d|30d","spaceId?":1}`)
-- `POST /api/items/note` (JSON: `{"text":"...","title?":"...","password?":"...","ttl?":"...","spaceId?":1}`)
+- `POST /api/items/files` (multipart field `files`, repeatable; optional `password`, `ttl`, `space_id`, `force`)
+- `POST /api/items/folder` (multipart: repeatable `files` + repeatable `paths`; optional `password`, `ttl`, `space_id`, `force`)
+- `POST /api/items/link` (JSON: `{"url":"https://...","name?":"...","password?":"...","ttl?":"1h|6h|24h|3d|7d|30d","spaceId?":1,"force?":true}`)
+- `POST /api/items/note` (JSON: `{"text":"...","title?":"...","password?":"...","ttl?":"...","spaceId?":1,"force?":true}`)
 - `GET /api/items/<id>`
 - `POST /api/items/<id>/unlock` (JSON: `{"password":"..."}`)
 - `PATCH /api/items/<id>` with JSON `{"state?":"active|done|archived|ready_to_delete","spaceId?":1,"pinned?":true}` (at least one field required; bumps `updatedAt`)
 - `GET /api/items/<id>/download`
 - `DELETE /api/items/<id>` only when item state is `ready_to_delete`
-- `GET /api/items/order` with optional `space` (ID or `none`) — returns `{"orderedIds": [...]}`
-- `PUT /api/items/reorder` (JSON: `{"orderedIds": [1, 3, 2, ...]}`) — returns `{"ok": true}`
-- `DELETE /api/items/ready-to-delete` (optional `q`, `kind`, `protected`)
+- `GET /api/items/order` with optional `space` (ID or `none`) — returns `{"orderedIds": [...]}` for active non-expired items in manual order
+- `PUT /api/items/reorder` (JSON: `{"orderedIds": [1, 3, 2, ...]}`) — global exact permutation of all active non-expired item IDs; returns `{"ok": true}`
+- `DELETE /api/items/ready-to-delete` (optional `q`, `kind`, `space` (ID or `none`), `protected`)
 
 ### Spaces
 - `GET /api/spaces` — list all spaces with item counts
 - `POST /api/spaces` (JSON: `{"name":"..."}`) — returns 201
 - `PATCH /api/spaces/<id>` (JSON: `{"name":"..."}`) — rename
 - `PUT /api/spaces/reorder` (JSON: `{"orderedIds": [3, 1, 2]}`) — reorders spaces by position
-- `DELETE /api/spaces/<id>` — returns `{"unassigned": N}`
+- `DELETE /api/spaces/<id>` — unassigns active visible items in that space and returns `{"unassigned": N}`
 
 ### Other
 - `GET /api/health` (returns `{"ok": true, "version": "<app-version>", "limits": {"noteTextMaxChars": <max-note-length>}}`)

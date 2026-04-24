@@ -33,6 +33,13 @@ import { getSettingsSnapshot } from "./lib/useSettings";
 
 type KindFilter = "all" | ItemKind;
 type StateFilter = "all" | ItemState;
+type UploadFilesHandler = (
+  files: File[],
+  password?: string,
+  spaceId?: number,
+  ttl?: TtlPreset,
+  force?: boolean,
+) => Promise<void>;
 
 function uuid(): string {
   return globalThis.crypto?.randomUUID
@@ -53,6 +60,8 @@ export default function App() {
   const filesInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const newMenuRef = useRef<HTMLDivElement | null>(null);
+  const handleUploadFilesRef = useRef<UploadFilesHandler>(async () => {});
+  const handleUploadFolderRef = useRef<UploadFilesHandler>(async () => {});
 
   const [searchText, setSearchText] = useState("");
   const debouncedSearch = useDebouncedValue(searchText.trim(), 250);
@@ -128,9 +137,19 @@ export default function App() {
 
   useEffect(() => {
     if (dialogs.isAnyModalOpen || queuedDrops.length === 0) return;
-    const [next, ...rest] = queuedDrops;
-    setQueuedDrops(rest);
-    openUploadDialog(next.kind, next.files);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setQueuedDrops((current) => {
+        const [next, ...rest] = current;
+        if (!next) return current;
+        openUploadDialog(next.kind, next.files);
+        return rest;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [dialogs.isAnyModalOpen, openUploadDialog, queuedDrops]);
 
   useEffect(() => {
@@ -262,6 +281,7 @@ export default function App() {
           ),
         );
         await queryClient.invalidateQueries({ queryKey: ["items"] });
+        await queryClient.invalidateQueries({ queryKey: ["spaces"] });
         return result;
       } catch (e) {
         const isDuplicate = e instanceof DuplicateContentError;
@@ -272,6 +292,7 @@ export default function App() {
               ? {
                   ...upload,
                   status: isDuplicate ? "duplicate" : isAborted ? "cancelled" : "error",
+                  progress: isDuplicate ? 50 : upload.progress,
                 }
               : upload,
           ),
@@ -310,7 +331,7 @@ export default function App() {
             duplicates: e.duplicates,
             retryFn: async () => {
               dismissUpload(task.id);
-              await handleUploadFiles(files, password, spaceId, ttl, true);
+              await handleUploadFilesRef.current(files, password, spaceId, ttl, true);
             },
             cancelFn: () => {
               setUploads((prev) =>
@@ -361,7 +382,7 @@ export default function App() {
             duplicates: e.duplicates,
             retryFn: async () => {
               dismissUpload(task.id);
-              await handleUploadFolder(files, password, spaceId, ttl, true);
+              await handleUploadFolderRef.current(files, password, spaceId, ttl, true);
             },
             cancelFn: () => {
               setUploads((prev) =>
@@ -384,6 +405,11 @@ export default function App() {
     [dialogs, dismissUpload, runUpload],
   );
 
+  useEffect(() => {
+    handleUploadFilesRef.current = handleUploadFiles;
+    handleUploadFolderRef.current = handleUploadFolder;
+  }, [handleUploadFiles, handleUploadFolder]);
+
   const handleDialogUploadStart = useCallback(
     async (payload: {
       files: File[];
@@ -397,9 +423,8 @@ export default function App() {
       } else {
         await handleUploadFolder(payload.files, payload.password, payload.spaceId, payload.ttl);
       }
-      await queryClient.invalidateQueries({ queryKey: ["spaces"] });
     },
-    [handleUploadFiles, handleUploadFolder, queryClient],
+    [handleUploadFiles, handleUploadFolder],
   );
 
   const copyLink = useCallback(async (id: number) => {
@@ -441,8 +466,15 @@ export default function App() {
   useEffect(() => {
     const serverPage = pagination?.page;
     if (serverPage !== undefined && serverPage !== page) {
-      setPage(serverPage);
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) setPage(serverPage);
+      });
+      return () => {
+        cancelled = true;
+      };
     }
+    return undefined;
   }, [page, pagination?.page]);
 
   const openFilesPicker = useCallback(() => {

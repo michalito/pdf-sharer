@@ -2,6 +2,10 @@
 
 saíta is an internal web application for sharing **any type of file**, **zip archives**, **folders** (zipped by the server), **external links**, and **notes**. It is designed for deployment on a trusted internal network and intentionally has **no authentication**.
 
+## Trust model
+
+saíta is **designed for a trusted internal network and has no authentication by design**. Anyone with network access to the app can upload, download, and delete items. Do not expose it directly to the public internet. Per-item password protection exists for file/folder/link/note sharing via `/d/<id>`, but it is not a substitute for network-level access control.
+
 ## Features
 
 - Upload any file type
@@ -113,7 +117,7 @@ Named helper commands target only that instance:
 |--------|----------|-------------|
 | `GET` | `/api/health` | Health check (`{"ok": true, "version": "<app-version>", "limits": {"noteTextMaxChars": 100000}}`) |
 | `GET` | `/api/storage` | Storage overview (`{disk, items: {totalCount, totalSizeBytes, countByKind, sizeByKind, countByState, sizeByState}, spaceStats: [{spaceId, spaceName, itemCount, sizeBytes}], largestItems}`) |
-| `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&protected=true\|false&space=<id>\|none&sort=name\|size\|created\|modified\|manual&order=asc\|desc&page=1&per_page=50`; `q` matches names and unprotected note body text; note items include `noteExcerpt`, not full `noteText`; includes `contentHash`; default sort: `created` desc) |
+| `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&space=<id>\|none&protected=true\|false&sort=name\|size\|created\|modified\|manual&order=asc\|desc&page=1&per_page=50`; `q` matches names and unprotected note body text; note items include `noteExcerpt`, not full `noteText`; includes `contentHash`; default sort: `created` desc) |
 | `POST` | `/api/items/files` | Upload files (multipart/form-data, field `files` repeatable; optional `password`, `space_id`, `ttl`, `force`; on duplicate returns `409` with `{code:"DUPLICATE_CONTENT"}` and includes `duplicates:[...]` only when no protected existing item is involved) |
 | `POST` | `/api/items/folder` | Upload a folder (multipart: `files` + `paths` repeatable; optional `password`, `space_id`, `ttl`, `force`; on duplicate returns `409` with `{code:"DUPLICATE_CONTENT"}` and includes `duplicates:[...]` only when no protected existing item is involved) |
 | `POST` | `/api/items/link` | Save a URL (JSON: `{"url":"https://...","name?":"optional label","password?":"optional password","spaceId?":1,"ttl?":"1h\|6h\|24h\|3d\|7d\|30d","force?":true}`; on duplicate returns `409` with `{code:"DUPLICATE_CONTENT"}` and includes `duplicates:[...]` only when no protected existing item is involved) |
@@ -123,7 +127,9 @@ Named helper commands target only that instance:
 | `GET` | `/api/items/<id>/download` | Download a file/folder item |
 | `POST` | `/api/items/<id>/unlock` | Unlock a protected item for current browser session (JSON: `{"password":"..."}`) |
 | `DELETE` | `/api/items/<id>` | Delete an item (requires state `ready_to_delete`) |
-| `DELETE` | `/api/items/ready-to-delete` | Bulk delete items in state `ready_to_delete` (optional filters: `?q=...&kind=file\|folder\|link\|note&protected=true\|false`) |
+| `GET` | `/api/items/order` | Get current manual item order (optional `?space=<id>\|none`; returns `{"orderedIds":[...]}`) |
+| `PUT` | `/api/items/reorder` | Reorder active items (JSON: `{"orderedIds":[1,3,2]}` — must be an exact permutation of all active non-expired item IDs) |
+| `DELETE` | `/api/items/ready-to-delete` | Bulk delete items in state `ready_to_delete` (optional filters: `?q=...&kind=file\|folder\|link\|note&space=<id>\|none&protected=true\|false`) |
 | `GET` | `/api/spaces` | List all spaces with item counts, ordered by position |
 | `POST` | `/api/spaces` | Create a space (JSON: `{"name":"..."}`) |
 | `PATCH` | `/api/spaces/<id>` | Rename a space (JSON: `{"name":"..."}`) |
@@ -157,3 +163,11 @@ This is a breaking rewrite (new schema, new UI, no auth). Remove old Docker volu
 ```bash
 ./deploy.sh cleanup volumes
 ```
+
+## Project governance
+
+- **Contributing** — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, and PR conventions.
+- **Security** — report vulnerabilities per [SECURITY.md](SECURITY.md); do not open public issues for security bugs.
+- **Code of Conduct** — [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) (Contributor Covenant v2.1).
+- **Changelog** — [CHANGELOG.md](CHANGELOG.md).
+- **License** — MIT, see [LICENSE](LICENSE).

@@ -16,6 +16,14 @@ build/
 eggs/
 .eggs/
 
+# Test artifacts
+.coverage
+.coverage.*
+*.tsbuildinfo
+htmlcov/
+coverage/
+.pytest_cache/
+
 # Virtual environments
 venv/
 .venv/

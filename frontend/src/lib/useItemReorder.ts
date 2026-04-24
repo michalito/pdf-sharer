@@ -10,27 +10,11 @@ import {
   type ListItemsResponse,
   type PaginationDto,
 } from "../api/items";
+import { mergeFilteredOrderIntoGlobal, mergePageOrderIntoGlobal } from "./itemOrder";
 
 type KindFilter = "all" | ItemKind;
 type StateFilter = "all" | ItemState;
 type SpaceFilter = "all" | "none" | number;
-
-function substituteInOrder(
-  source: number[],
-  targetSet: Set<number>,
-  replacement: number[],
-): number[] {
-  const result: number[] = [];
-  let index = 0;
-  for (const id of source) {
-    if (targetSet.has(id)) {
-      result.push(replacement[index++]);
-    } else {
-      result.push(id);
-    }
-  }
-  return result;
-}
 
 type UseItemReorderArgs = {
   queryKey: QueryKey;
@@ -119,15 +103,19 @@ export function useItemReorder({
       try {
         const { orderedIds: globalOrder } = await getItemOrder();
 
-        let fullNewOrder: number[];
-        if (spaceFilter === "all") {
-          fullNewOrder = substituteInOrder(globalOrder, new Set(currentIds), newPageOrder);
-        } else {
+        let scopedOrder: number[] | undefined;
+        if (spaceFilter !== "all") {
           const scopeParam = spaceFilter === "none" ? "none" : String(spaceFilter);
-          const { orderedIds: scopedOrder } = await getItemOrder({ space: scopeParam });
-          const newScopedOrder = substituteInOrder(scopedOrder, new Set(currentIds), newPageOrder);
-          fullNewOrder = substituteInOrder(globalOrder, new Set(scopedOrder), newScopedOrder);
+          const { orderedIds } = await getItemOrder({ space: scopeParam });
+          scopedOrder = orderedIds;
         }
+
+        const fullNewOrder = mergePageOrderIntoGlobal({
+          globalOrder,
+          currentPageIds: currentIds,
+          nextPageOrder: newPageOrder,
+          scopedOrder,
+        });
 
         await reorderItemsMutation.mutateAsync(fullNewOrder);
       } catch {
@@ -176,14 +164,12 @@ export function useItemReorder({
         targetIndex = Math.max(0, Math.min(targetIndex, workingOrder.length));
         workingOrder.splice(targetIndex, 0, itemId);
 
-        const nextScopedOrder = substituteInOrder(
-          scopedOrder,
-          new Set(filteredOrder),
-          workingOrder,
-        );
-        const fullNewOrder = spaceQueryParam
-          ? substituteInOrder(globalOrder, new Set(scopedOrder), nextScopedOrder)
-          : nextScopedOrder;
+        const fullNewOrder = mergeFilteredOrderIntoGlobal({
+          globalOrder,
+          filteredOrder,
+          nextFilteredOrder: workingOrder,
+          scopedOrder: spaceQueryParam ? scopedOrder : undefined,
+        });
 
         await reorderItemsMutation.mutateAsync(fullNewOrder);
       } catch {

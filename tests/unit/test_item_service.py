@@ -71,6 +71,9 @@ class _FailOnCommitRepository(_RepoBase):
 class _FailingFindByHashRepository(_RepoBase):
     """Repository stub that fails while checking duplicate content."""
 
+    def __init__(self) -> None:
+        self.rollback_calls = 0
+
     def find_by_content_hash(self, content_hash: str) -> list[object]:
         _ = content_hash
         raise SQLAlchemyError("simulated duplicate lookup failure")
@@ -83,7 +86,7 @@ class _FailingFindByHashRepository(_RepoBase):
         pass
 
     def rollback(self) -> None:
-        pass
+        self.rollback_calls += 1
 
 
 def test_upload_files_cleans_all_disk_files_on_db_failure(tmp_path: Path):
@@ -144,7 +147,8 @@ def test_upload_files_cleans_staged_files_on_duplicate_lookup_failure(tmp_path: 
     app = Flask(__name__)
     app.config["UPLOAD_FOLDER"] = tmp_path
 
-    service = ItemService(repository=_FailingFindByHashRepository())
+    repo = _FailingFindByHashRepository()
+    service = ItemService(repository=repo)
     files = [
         FileStorage(stream=BytesIO(b"a"), filename="a.txt", content_type="text/plain"),
         FileStorage(stream=BytesIO(b"b"), filename="b.txt", content_type="text/plain"),
@@ -155,3 +159,33 @@ def test_upload_files_cleans_staged_files_on_duplicate_lookup_failure(tmp_path: 
             service.upload_files(files)
 
     assert list(tmp_path.iterdir()) == []
+    assert repo.rollback_calls == 1
+
+
+def test_create_link_wraps_duplicate_lookup_failure(tmp_path: Path):
+    app = Flask(__name__)
+    app.config["UPLOAD_FOLDER"] = tmp_path
+
+    repo = _FailingFindByHashRepository()
+    service = ItemService(repository=repo)
+
+    with app.app_context():
+        with pytest.raises(FileOperationError, match="Failed to check duplicate content"):
+            service.create_link(url="https://example.com/failure")
+
+    assert repo.rollback_calls == 1
+
+
+def test_create_note_wraps_duplicate_lookup_failure(tmp_path: Path):
+    app = Flask(__name__)
+    app.config["UPLOAD_FOLDER"] = tmp_path
+    app.config["MAX_NOTE_TEXT_LENGTH"] = 100000
+
+    repo = _FailingFindByHashRepository()
+    service = ItemService(repository=repo)
+
+    with app.app_context():
+        with pytest.raises(FileOperationError, match="Failed to check duplicate content"):
+            service.create_note(text="failure note")
+
+    assert repo.rollback_calls == 1

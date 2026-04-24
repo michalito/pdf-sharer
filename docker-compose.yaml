@@ -16,9 +16,13 @@ services:
       - FLASK_ENV=production
       - SECRET_KEY=${SECRET_KEY:-}
       - DATABASE_URL=${DATABASE_URL:-}
+      - UPLOAD_FOLDER=${UPLOAD_FOLDER:-/app/uploads}
       - MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-2147483648}
+      - MAX_NOTE_TEXT_LENGTH=${MAX_NOTE_TEXT_LENGTH:-100000}
+      - NOTE_EXCERPT_LENGTH=${NOTE_EXCERPT_LENGTH:-180}
       - TRUST_PROXY_HOPS=${TRUST_PROXY_HOPS:-0}
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
+      - APP_VERSION=${APP_VERSION:-dev}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')"]

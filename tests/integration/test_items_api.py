@@ -298,9 +298,48 @@ def test_create_link_and_note_validation(client: FlaskClient):
     assert bad_link.status_code == 400
     assert "http:// or https://" in bad_link.get_json()["error"]
 
+    bad_link_name = client.post(
+        "/api/items/link",
+        json={"url": "https://example.com", "name": 123},
+    )
+    assert bad_link_name.status_code == 400
+    assert "Field 'name' must be a string" == bad_link_name.get_json()["error"]
+
     missing_text = client.post("/api/items/note", json={"title": "No body"})
     assert missing_text.status_code == 400
     assert "Missing 'text'" in missing_text.get_json()["error"]
+
+    bad_note_title = client.post(
+        "/api/items/note",
+        json={"title": 123, "text": "Body"},
+    )
+    assert bad_note_title.status_code == 400
+    assert "Field 'title' must be a string" == bad_note_title.get_json()["error"]
+
+
+def test_upload_force_form_field_must_be_boolean(client: FlaskClient):
+    file_res = client.post(
+        "/api/items/files",
+        data={
+            "files": [(io.BytesIO(b"x"), "x.txt")],
+            "force": "definitely",
+        },
+        content_type="multipart/form-data",
+    )
+    assert file_res.status_code == 400
+    assert "Invalid 'force'" in file_res.get_json()["error"]
+
+    folder_res = client.post(
+        "/api/items/folder",
+        data={
+            "files": [(io.BytesIO(b"x"), "x.txt")],
+            "paths": ["folder/x.txt"],
+            "force": "definitely",
+        },
+        content_type="multipart/form-data",
+    )
+    assert folder_res.status_code == 400
+    assert "Invalid 'force'" in folder_res.get_json()["error"]
 
 
 def test_create_note_accepts_text_at_default_limit(client: FlaskClient):

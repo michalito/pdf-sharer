@@ -38,7 +38,10 @@ export function useLongPress(
   const isTouchRef = useRef(false);
   const startPosRef = useRef<Position>({ x: 0, y: 0 });
   const onLongPressRef = useRef(onLongPress);
-  onLongPressRef.current = onLongPress;
+
+  useEffect(() => {
+    onLongPressRef.current = onLongPress;
+  }, [onLongPress]);
 
   const clear = useCallback(() => {
     if (timerRef.current !== null) {

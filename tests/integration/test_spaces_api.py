@@ -200,6 +200,38 @@ def test_delete_space_items_become_unspaced(app: Flask, client: FlaskClient):
     assert item_after["spaceName"] is None
 
 
+def test_delete_space_returns_visible_unassigned_count(app: Flask, client: FlaskClient):
+    space = client.post("/api/spaces", json={"name": "Docs"}).get_json()
+
+    active = client.post(
+        "/api/items/files",
+        data={"files": (io.BytesIO(b"hello"), "hello.txt"), "space_id": str(space["id"])},
+        content_type="multipart/form-data",
+    ).get_json()[0]
+
+    with app.app_context():
+        db.session.add(
+            Item(
+                stored_name="expired-space-doc.txt",
+                display_name="expired-space-doc.txt",
+                kind="file",
+                state="active",
+                mime_type="text/plain",
+                size_bytes=5,
+                space_id=space["id"],
+                expires_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            )
+        )
+        db.session.commit()
+
+    res = client.delete(f"/api/spaces/{space['id']}")
+    assert res.status_code == 200
+    assert res.get_json() == {"unassigned": 1}
+
+    active_after = client.get(f"/api/items/{active['id']}").get_json()
+    assert active_after["spaceId"] is None
+
+
 def test_delete_space_not_found(client: FlaskClient):
     res = client.delete("/api/spaces/999")
     assert res.status_code == 404

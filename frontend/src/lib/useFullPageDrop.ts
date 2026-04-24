@@ -119,10 +119,13 @@ export function useFullPageDrop({
   const onDropRef = useRef(onDrop);
   const onDropWhileDisabledRef = useRef(onDropWhileDisabled);
   const onDropErrorRef = useRef(onDropError);
-  disabledRef.current = disabled;
-  onDropRef.current = onDrop;
-  onDropWhileDisabledRef.current = onDropWhileDisabled;
-  onDropErrorRef.current = onDropError;
+
+  useEffect(() => {
+    disabledRef.current = disabled;
+    onDropRef.current = onDrop;
+    onDropWhileDisabledRef.current = onDropWhileDisabled;
+    onDropErrorRef.current = onDropError;
+  }, [disabled, onDrop, onDropError, onDropWhileDisabled]);
 
   const handleDragEnter = useCallback(
     (e: DragEvent) => {
@@ -201,8 +204,14 @@ export function useFullPageDrop({
 
   useEffect(() => {
     if (!disabled) return;
+    let cancelled = false;
     counterRef.current = 0;
-    setIsOverWindow(false);
+    queueMicrotask(() => {
+      if (!cancelled) setIsOverWindow(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [disabled]);
 
   return { isOverWindow };

@@ -191,6 +191,7 @@ class ItemService:
                     try:
                         grouped_dupes, has_protected_existing = self._collect_upload_file_duplicates(saved)
                     except SQLAlchemyError as e:
+                        self._rollback_after_db_error()
                         logger.error("Database error checking file duplicates: %s", e, exc_info=True)
                         raise FileOperationError("Failed to check duplicate content")
                     if has_protected_existing:
@@ -288,6 +289,7 @@ class ItemService:
                     try:
                         existing = self.repository.find_by_content_hash(content_hash)
                     except SQLAlchemyError as e:
+                        self._rollback_after_db_error()
                         logger.error("Database error checking folder duplicates: %s", e, exc_info=True)
                         raise FileOperationError("Failed to check duplicate content")
 
@@ -319,6 +321,7 @@ class ItemService:
                     persisted = True
                     return item
                 except SQLAlchemyError as e:
+                    self._rollback_after_db_error()
                     logger.error("Database error creating folder item: %s", e, exc_info=True)
                     raise FileOperationError("Failed to create item record")
         finally:
@@ -348,7 +351,12 @@ class ItemService:
 
         with acquire_content_hash_locks([content_hash]):
             if not skip_dedup:
-                existing = self.repository.find_by_content_hash(content_hash)
+                try:
+                    existing = self.repository.find_by_content_hash(content_hash)
+                except SQLAlchemyError as e:
+                    self._rollback_after_db_error()
+                    logger.error("Database error checking link duplicates: %s", e, exc_info=True)
+                    raise FileOperationError("Failed to check duplicate content")
                 self._check_duplicate_for_existing(existing)
             next_position = self.repository.get_max_position() + 1
             try:
@@ -367,6 +375,7 @@ class ItemService:
                     position=next_position,
                 )
             except SQLAlchemyError as e:
+                self._rollback_after_db_error()
                 logger.error("Database error creating link item: %s", e, exc_info=True)
                 raise FileOperationError("Failed to create item record")
 
@@ -393,7 +402,12 @@ class ItemService:
 
         with acquire_content_hash_locks([content_hash]):
             if not skip_dedup:
-                existing = self.repository.find_by_content_hash(content_hash)
+                try:
+                    existing = self.repository.find_by_content_hash(content_hash)
+                except SQLAlchemyError as e:
+                    self._rollback_after_db_error()
+                    logger.error("Database error checking note duplicates: %s", e, exc_info=True)
+                    raise FileOperationError("Failed to check duplicate content")
                 self._check_duplicate_for_existing(existing)
             next_position = self.repository.get_max_position() + 1
             try:
@@ -412,6 +426,7 @@ class ItemService:
                     position=next_position,
                 )
             except SQLAlchemyError as e:
+                self._rollback_after_db_error()
                 logger.error("Database error creating note item: %s", e, exc_info=True)
                 raise FileOperationError("Failed to create item record")
 
@@ -700,6 +715,11 @@ class ItemService:
             logger.warning("%s completed with %s file deletion failure(s)", label.capitalize(), failures)
 
         return len(items)
+
+    def _rollback_after_db_error(self) -> None:
+        rollback = getattr(self.repository, "rollback", None)
+        if rollback is not None:
+            rollback()
 
     def _item_has_stored_file(self, item: Item) -> bool:
         return item.kind in {ItemKind.FILE.value, ItemKind.FOLDER.value}

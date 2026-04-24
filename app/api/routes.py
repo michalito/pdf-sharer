@@ -138,10 +138,15 @@ def _parse_pagination_params() -> tuple[int, int]:
     return page, per_page
 
 
-def _parse_bool_form_field(raw: Optional[str]) -> bool:
-    if raw is None:
+def _parse_bool_form_field(raw: Optional[str], *, field: str) -> bool:
+    if raw is None or raw.strip() == "":
         return False
-    return raw.strip().lower() in {"1", "true", "yes"}
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes"}:
+        return True
+    if value in {"0", "false", "no"}:
+        return False
+    raise ValidationError(f"Invalid '{field}' value. Use true or false.")
 
 
 def _parse_bool_json_field(data: dict, field: str, *, default: bool = False) -> bool:
@@ -347,7 +352,7 @@ def upload_files() -> tuple[Response, int]:
     space_id = _parse_optional_int_form_field("space_id")
     _validate_space_id(space_id)
     ttl = request.form.get("ttl")
-    force = _parse_bool_form_field(request.form.get("force"))
+    force = _parse_bool_form_field(request.form.get("force"), field="force")
     items = service.upload_files(files, password=password, space_id=space_id, ttl=ttl, force=force)
     for item in items:
         _remember_item_unlock_if_protected(service, item)
@@ -364,7 +369,7 @@ def upload_folder() -> tuple[Response, int]:
     space_id = _parse_optional_int_form_field("space_id")
     _validate_space_id(space_id)
     ttl = request.form.get("ttl")
-    force = _parse_bool_form_field(request.form.get("force"))
+    force = _parse_bool_form_field(request.form.get("force"), field="force")
 
     item = service.upload_folder(files, paths, password=password, space_id=space_id, ttl=ttl, force=force)
     _remember_item_unlock_if_protected(service, item)
@@ -381,7 +386,9 @@ def create_link() -> tuple[Response, int]:
         raise ValidationError("Missing 'url' field in request body")
 
     name_raw = data.get("name")
-    name = str(name_raw) if name_raw is not None else None
+    if name_raw is not None and not isinstance(name_raw, str):
+        raise ValidationError("Field 'name' must be a string")
+    name = name_raw
     password = _get_json_password_field(data)
 
     space_id = _parse_optional_int_json_field(data, "spaceId")
@@ -403,7 +410,9 @@ def create_note() -> tuple[Response, int]:
         raise ValidationError("Missing 'text' field in request body")
 
     title_raw = data.get("title")
-    title = str(title_raw) if title_raw is not None else None
+    if title_raw is not None and not isinstance(title_raw, str):
+        raise ValidationError("Field 'title' must be a string")
+    title = title_raw
     password = _get_json_password_field(data)
 
     space_id = _parse_optional_int_json_field(data, "spaceId")

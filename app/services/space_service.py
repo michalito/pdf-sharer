@@ -67,9 +67,9 @@ class SpaceService:
             raise FileOperationError("Failed to rename space")
 
     def delete_space(self, space_id: int) -> int:
-        """Delete a space and return the number of items that were unassigned."""
+        """Delete a space and return the visible item count that was unassigned."""
         space = self.repository.get_by_id_or_raise(space_id)
-        count = space.items.count()
+        count = self.repository.count_active_items(space.id)
         try:
             self.repository.delete(space)
         except SQLAlchemyError as e:

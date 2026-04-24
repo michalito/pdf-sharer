@@ -716,6 +716,66 @@ it("keeps queued dialog files intact while previous upload request is still in f
   });
 });
 
+it("refetches spaces after confirming a duplicate upload retry", async () => {
+  const user = userEvent.setup();
+  vi.mocked(api.listSpaces)
+    .mockResolvedValueOnce([makeSpace({ id: 1, name: "Design", itemCount: 0 })])
+    .mockResolvedValueOnce([makeSpace({ id: 1, name: "Design", itemCount: 1 })]);
+
+  const existing = makeItem({
+    id: 99,
+    name: "existing.txt",
+    kind: "file",
+    spaceId: 1,
+    spaceName: "Design",
+  });
+  const uploaded = makeItem({
+    id: 100,
+    name: "dup.txt",
+    kind: "file",
+    spaceId: 1,
+    spaceName: "Design",
+  });
+  vi.mocked(api.uploadFiles)
+    .mockRejectedValueOnce(
+      new api.DuplicateContentError("Duplicate content detected", [
+        { fileIndex: 0, fileName: "dup.txt", existingItems: [existing] },
+      ]),
+    )
+    .mockResolvedValueOnce([uploaded]);
+
+  renderApp();
+  await screen.findByText("Shared items");
+
+  const newMenu = screen.getByTestId("new-menu");
+  await user.click(within(newMenu).getByRole("button", { name: "New" }));
+  await user.click(within(newMenu).getByRole("button", { name: "Upload files" }));
+  const pickerInput = document.querySelector('input[type="file"]:not([webkitdirectory])') as HTMLInputElement | null;
+  if (!pickerInput) throw new Error("files input not found");
+  const file = new File(["duplicate"], "dup.txt", { type: "text/plain" });
+  fireEvent.change(pickerInput, { target: { files: [file] } });
+
+  const uploadDialog = await screen.findByRole("dialog", { name: "Upload files" });
+  await user.click(within(uploadDialog).getByRole("combobox", { name: "Space" }));
+  const spaceOptions = await screen.findByRole("listbox");
+  await user.click(within(spaceOptions).getByRole("option", { name: "Design" }));
+  await user.click(within(uploadDialog).getByRole("button", { name: "Start upload" }));
+
+  const duplicateDialog = await screen.findByRole("dialog", { name: "Duplicates detected" });
+  await user.click(within(duplicateDialog).getByRole("button", { name: "Upload anyway" }));
+
+  await waitFor(() => {
+    expect(api.uploadFiles).toHaveBeenCalledTimes(2);
+  });
+  expect(api.uploadFiles).toHaveBeenLastCalledWith(
+    [file],
+    expect.objectContaining({ spaceId: 1, force: true }),
+  );
+  await waitFor(() => {
+    expect(api.listSpaces).toHaveBeenCalledTimes(2);
+  });
+});
+
 it("shows kind-specific actions and loads full note text for preview", async () => {
   vi.mocked(api.listItems).mockResolvedValue({
     items: [

@@ -124,6 +124,7 @@ export default function Select<T extends string>({
   renderOption,
 }: SelectProps<T>) {
   const [open, setOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxId = useId();
 
@@ -131,6 +132,7 @@ export default function Select<T extends string>({
 
   function handleClose() {
     setOpen(false);
+    setAnchorRect(null);
     triggerRef.current?.focus();
   }
 
@@ -147,7 +149,10 @@ export default function Select<T extends string>({
         disabled={disabled}
         className={`relative text-left ${className} ${disabled ? "cursor-not-allowed opacity-70" : ""}`}
         onClick={() => {
-          if (!disabled) setOpen((prev) => !prev);
+          if (disabled) return;
+          const nextOpen = !open;
+          setOpen(nextOpen);
+          setAnchorRect(nextOpen ? triggerRef.current?.getBoundingClientRect() ?? null : null);
         }}
       >
         {renderTrigger ? (
@@ -160,10 +165,10 @@ export default function Select<T extends string>({
         )}
       </button>
 
-      {open && triggerRef.current && (
+      {open && anchorRect && (
         <Dropdown
           id={listboxId}
-          anchorRect={triggerRef.current.getBoundingClientRect()}
+          anchorRect={anchorRect}
           options={options}
           value={value}
           placeholder={placeholder}

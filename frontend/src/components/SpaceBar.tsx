@@ -267,13 +267,6 @@ export default function SpaceBar({
     }),
   );
 
-  // Sync local order when spaces prop changes and we're not rearranging
-  useEffect(() => {
-    if (!rearranging) {
-      setLocalOrder(spaces);
-    }
-  }, [spaces, rearranging]);
-
   // Stable ref to latest exitRearrangeMode for the keyboard handler
   const exitRef = useRef<() => void>(() => {});
 
@@ -302,7 +295,7 @@ export default function SpaceBar({
     setEditingId(null);
   }
 
-  async function exitRearrangeMode() {
+  const exitRearrangeMode = useCallback(async () => {
     if (isSaving) return;
     setIsSaving(true);
     try {
@@ -313,8 +306,11 @@ export default function SpaceBar({
     } finally {
       setIsSaving(false);
     }
-  }
-  exitRef.current = exitRearrangeMode;
+  }, [isSaving, localOrder, onReorderSpaces]);
+
+  useEffect(() => {
+    exitRef.current = exitRearrangeMode;
+  }, [exitRearrangeMode]);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
