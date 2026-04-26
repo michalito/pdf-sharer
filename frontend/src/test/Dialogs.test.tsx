@@ -324,6 +324,29 @@ it("creates and selects a space from the upload dialog", async () => {
   );
 });
 
+it("does not submit the upload dialog when Enter is pressed on a closed space combobox", async () => {
+  const user = userEvent.setup();
+  const onStartUpload = vi.fn().mockResolvedValue(undefined);
+  const request: UploadDialogRequest = {
+    kind: "files",
+    files: [new File(["hello"], "hello.txt", { type: "text/plain" })],
+    initialSpaceId: 1,
+    defaultTtl: "",
+  };
+
+  renderWithClient(<UploadDialogHarness request={request} onStartUpload={onStartUpload} />);
+
+  const dialog = await screen.findByRole("dialog", { name: "Upload files" });
+  const combobox = within(dialog).getByRole("combobox", { name: "Space" });
+  combobox.focus();
+  expect(combobox).toHaveAttribute("aria-expanded", "false");
+
+  await user.keyboard("{Enter}");
+
+  expect(onStartUpload).not.toHaveBeenCalled();
+  expect(combobox).toHaveAttribute("aria-expanded", "true");
+});
+
 it("hides the create option for whitespace-only queries and cancels via Escape", async () => {
   const user = userEvent.setup();
   const onCreateSpace = vi.fn().mockResolvedValue(roadmapSpace);

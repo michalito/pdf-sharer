@@ -247,9 +247,12 @@ export default function SpaceCombobox({
               if (options.length === 0) return;
               setHighlight((h) => (h - 1 + options.length) % options.length);
             } else if (e.key === "Enter") {
-              if (!isOpen) return;
               e.preventDefault();
               e.stopPropagation();
+              if (!isOpen) {
+                open();
+                return;
+              }
               const opt = options[highlight];
               if (opt) activate(opt);
             } else if (e.key === "Escape") {
