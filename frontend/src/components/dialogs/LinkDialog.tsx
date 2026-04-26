@@ -12,6 +12,7 @@ import {
 } from "../../api/items";
 import { TTL_PRESETS } from "../../lib/format";
 import { validateOptionalPassword } from "./password";
+import SpaceCombobox from "./SpaceCombobox";
 
 const dialogFieldClass =
   "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
@@ -24,6 +25,8 @@ export default function LinkDialog({
   onClose,
   onSuccess,
   onDuplicate,
+  onCreateSpace,
+  isCreatingSpace,
 }: {
   open: boolean;
   spaces: SpaceDto[];
@@ -32,6 +35,8 @@ export default function LinkDialog({
   onClose: () => void;
   onSuccess: () => void;
   onDuplicate: (payload: { duplicates: DuplicateInfo[]; retry: () => Promise<void> }) => void;
+  onCreateSpace: (name: string) => Promise<SpaceDto>;
+  isCreatingSpace?: boolean;
 }) {
   const queryClient = useQueryClient();
   const wasOpenRef = useRef(false);
@@ -101,7 +106,7 @@ export default function LinkDialog({
       description="Store a URL as a shareable item in the same workflow as files."
       confirmLabel={createLinkMutation.isPending ? "Saving..." : "Save link"}
       cancelLabel="Cancel"
-      confirmDisabled={!url.trim() || createLinkMutation.isPending}
+      confirmDisabled={!url.trim() || createLinkMutation.isPending || isCreatingSpace}
       formMode
       onCancel={() => {
         if (createLinkMutation.isPending) return;
@@ -132,19 +137,13 @@ export default function LinkDialog({
         />
       </label>
 
-      {spaces.length > 0 ? (
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Space (optional)
-          <Select
-            value={spaceId != null ? String(spaceId) : ""}
-            onChange={(value) => setSpaceId(value ? Number(value) : undefined)}
-            options={spaces.map((space) => ({ value: String(space.id), label: space.name }))}
-            placeholder="—"
-            className={`${dialogFieldClass} mt-1`}
-            aria-label="Space"
-          />
-        </label>
-      ) : null}
+      <SpaceCombobox
+        spaces={spaces}
+        value={spaceId}
+        onChange={setSpaceId}
+        onCreateSpace={onCreateSpace}
+        isCreatingSpace={isCreatingSpace}
+      />
 
       <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
         Auto-delete after (optional)

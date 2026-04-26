@@ -5,6 +5,7 @@ import Select from "../Select";
 import type { SpaceDto, TtlPreset } from "../../api/items";
 import { TTL_PRESETS } from "../../lib/format";
 import { validateOptionalPassword } from "./password";
+import SpaceCombobox from "./SpaceCombobox";
 
 const dialogFieldClass =
   "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
@@ -23,6 +24,8 @@ export default function UploadDialog({
   spaces,
   onClose,
   onStartUpload,
+  onCreateSpace,
+  isCreatingSpace,
 }: {
   request: UploadDialogRequest | null;
   spaces: SpaceDto[];
@@ -34,6 +37,8 @@ export default function UploadDialog({
     spaceId?: number;
     ttl?: TtlPreset;
   }) => Promise<void>;
+  onCreateSpace: (name: string) => Promise<SpaceDto>;
+  isCreatingSpace?: boolean;
 }) {
   const open = Boolean(request);
   const wasOpenRef = useRef(false);
@@ -86,25 +91,20 @@ export default function UploadDialog({
       }
       confirmLabel="Start upload"
       cancelLabel="Cancel"
+      confirmDisabled={isCreatingSpace}
       formMode
       onCancel={onClose}
       onConfirm={() => {
         void handleConfirm();
       }}
     >
-      {spaces.length > 0 ? (
-        <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Space (optional)
-          <Select
-            value={spaceId != null ? String(spaceId) : ""}
-            onChange={(value) => setSpaceId(value ? Number(value) : undefined)}
-            options={spaces.map((space) => ({ value: String(space.id), label: space.name }))}
-            placeholder="—"
-            className={`${dialogFieldClass} mt-1`}
-            aria-label="Space"
-          />
-        </label>
-      ) : null}
+      <SpaceCombobox
+        spaces={spaces}
+        value={spaceId}
+        onChange={setSpaceId}
+        onCreateSpace={onCreateSpace}
+        isCreatingSpace={isCreatingSpace}
+      />
 
       <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
         Auto-delete after (optional)

@@ -106,6 +106,8 @@ export default function AppDialogs({
         spaces={spaces}
         onClose={() => dialogs.closeUpload()}
         onStartUpload={onStartUpload}
+        onCreateSpace={mutations.createSpace.mutateAsync}
+        isCreatingSpace={mutations.createSpace.isPending}
       />
 
       <LinkDialog
@@ -121,6 +123,8 @@ export default function AppDialogs({
             retryFn: retry,
           })
         }
+        onCreateSpace={mutations.createSpace.mutateAsync}
+        isCreatingSpace={mutations.createSpace.isPending}
       />
 
       <NoteDialog
@@ -137,6 +141,8 @@ export default function AppDialogs({
             retryFn: retry,
           })
         }
+        onCreateSpace={mutations.createSpace.mutateAsync}
+        isCreatingSpace={mutations.createSpace.isPending}
       />
 
       <UnlockDialog
