@@ -14,6 +14,7 @@ import {
 } from "../../api/items";
 import { TTL_PRESETS } from "../../lib/format";
 import { validateOptionalPassword } from "./password";
+import SpaceCombobox from "./SpaceCombobox";
 
 const dialogFieldClass =
   "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
@@ -31,6 +32,8 @@ export default function NoteDialog({
   onClose,
   onSuccess,
   onDuplicate,
+  onCreateSpace,
+  isCreatingSpace,
 }: {
   open: boolean;
   spaces: SpaceDto[];
@@ -40,6 +43,8 @@ export default function NoteDialog({
   onClose: () => void;
   onSuccess: () => void;
   onDuplicate: (payload: { duplicates: DuplicateInfo[]; retry: () => Promise<void> }) => void;
+  onCreateSpace: (name: string) => Promise<SpaceDto>;
+  isCreatingSpace?: boolean;
 }) {
   const queryClient = useQueryClient();
   const wasOpenRef = useRef(false);
@@ -113,7 +118,9 @@ export default function NoteDialog({
       description="Write a note and share it with a stable /d/<id> link."
       confirmLabel={createNoteMutation.isPending ? "Saving..." : "Save note"}
       cancelLabel="Cancel"
-      confirmDisabled={!trimmedText || noteTextTooLong || createNoteMutation.isPending}
+      confirmDisabled={
+        !trimmedText || noteTextTooLong || createNoteMutation.isPending || isCreatingSpace
+      }
       formMode
       onCancel={() => {
         if (createNoteMutation.isPending) return;
@@ -216,19 +223,13 @@ export default function NoteDialog({
         ) : null}
       </div>
 
-      {spaces.length > 0 ? (
-        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-          Space (optional)
-          <Select
-            value={spaceId != null ? String(spaceId) : ""}
-            onChange={(value) => setSpaceId(value ? Number(value) : undefined)}
-            options={spaces.map((space) => ({ value: String(space.id), label: space.name }))}
-            placeholder="—"
-            className={`${dialogFieldClass} mt-1`}
-            aria-label="Space"
-          />
-        </label>
-      ) : null}
+      <SpaceCombobox
+        spaces={spaces}
+        value={spaceId}
+        onChange={setSpaceId}
+        onCreateSpace={onCreateSpace}
+        isCreatingSpace={isCreatingSpace}
+      />
 
       <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
         Auto-delete after (optional)
