@@ -152,7 +152,7 @@ export default function Select<T extends string>({
           if (disabled) return;
           const nextOpen = !open;
           setOpen(nextOpen);
-          setAnchorRect(nextOpen ? triggerRef.current?.getBoundingClientRect() ?? null : null);
+          setAnchorRect(nextOpen ? (triggerRef.current?.getBoundingClientRect() ?? null) : null);
         }}
       >
         {renderTrigger ? (

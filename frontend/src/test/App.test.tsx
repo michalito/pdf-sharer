@@ -750,7 +750,9 @@ it("refetches spaces after confirming a duplicate upload retry", async () => {
   const newMenu = screen.getByTestId("new-menu");
   await user.click(within(newMenu).getByRole("button", { name: "New" }));
   await user.click(within(newMenu).getByRole("button", { name: "Upload files" }));
-  const pickerInput = document.querySelector('input[type="file"]:not([webkitdirectory])') as HTMLInputElement | null;
+  const pickerInput = document.querySelector(
+    'input[type="file"]:not([webkitdirectory])',
+  ) as HTMLInputElement | null;
   if (!pickerInput) throw new Error("files input not found");
   const file = new File(["duplicate"], "dup.txt", { type: "text/plain" });
   fireEvent.change(pickerInput, { target: { files: [file] } });

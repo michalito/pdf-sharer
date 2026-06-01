@@ -1,8 +1,6 @@
 """Unit tests for content hashing utilities."""
 
 import hashlib
-import tempfile
-from pathlib import Path
 
 from app.utils.hashing import hash_file, hash_string
 

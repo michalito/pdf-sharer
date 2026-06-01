@@ -38,15 +38,9 @@ export default function SpaceCombobox({
   const shouldSelectOnOpenRef = useRef(false);
   const listboxId = useId();
 
-  useEffect(() => {
-    setCreatedSpaces((prev) => {
-      if (prev.length === 0) return prev;
-      const spaceIds = new Set(spaces.map((s) => s.id));
-      const next = prev.filter((c) => !spaceIds.has(c.id));
-      return next.length === prev.length ? prev : next;
-    });
-  }, [spaces]);
-
+  // `createdSpaces` are appended on optimistic create; entries that later
+  // appear in the `spaces` prop are filtered out here, so no separate pruning
+  // effect is needed.
   const allSpaces = useMemo(() => {
     const spaceIds = new Set(spaces.map((s) => s.id));
     return [...spaces, ...createdSpaces.filter((c) => !spaceIds.has(c.id))];
@@ -81,10 +75,10 @@ export default function SpaceCombobox({
 
   const createPending = isSubmitting || Boolean(isCreatingSpace);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    if (highlight >= options.length) setHighlight(Math.max(0, options.length - 1));
-  }, [highlight, isOpen, options.length]);
+  // Clamp during render instead of via an effect: when the options list shrinks
+  // (e.g. a background refetch removes a space) the stored highlight can fall
+  // out of range. Deriving the safe value avoids a cascading re-render.
+  const safeHighlight = options.length === 0 ? 0 : Math.min(highlight, options.length - 1);
 
   const close = useCallback(() => {
     setIsOpen(false);
@@ -97,8 +91,7 @@ export default function SpaceCombobox({
     if (!isOpen) return;
     function isInsideAnchored(target: Node) {
       return (
-        Boolean(wrapperRef.current?.contains(target)) ||
-        Boolean(menuRef.current?.contains(target))
+        Boolean(wrapperRef.current?.contains(target)) || Boolean(menuRef.current?.contains(target))
       );
     }
     function handlePointerDown(e: PointerEvent) {
@@ -174,9 +167,7 @@ export default function SpaceCombobox({
     setIsSubmitting(true);
     try {
       const space = await onCreateSpace(trimmed);
-      setCreatedSpaces((prev) =>
-        prev.some((p) => p.id === space.id) ? prev : [...prev, space],
-      );
+      setCreatedSpaces((prev) => (prev.some((p) => p.id === space.id) ? prev : [...prev, space]));
       onChange(space.id);
       close();
     } catch {
@@ -186,10 +177,10 @@ export default function SpaceCombobox({
     }
   }
 
-  const displayValue = isOpen ? query : selected?.name ?? "";
+  const displayValue = isOpen ? query : (selected?.name ?? "");
   const placeholder = isOpen ? "Search or create a space…" : "Select or create a space";
   const showClear = Boolean(selected) && !isOpen && !createPending;
-  const activeId = isOpen && options[highlight] ? options[highlight].id : undefined;
+  const activeId = isOpen && options[safeHighlight] ? options[safeHighlight].id : undefined;
 
   return (
     <div className="mt-3" ref={wrapperRef}>
@@ -237,7 +228,7 @@ export default function SpaceCombobox({
                 return;
               }
               if (options.length === 0) return;
-              setHighlight((h) => (h + 1) % options.length);
+              setHighlight((safeHighlight + 1) % options.length);
             } else if (e.key === "ArrowUp") {
               e.preventDefault();
               if (!isOpen) {
@@ -245,7 +236,7 @@ export default function SpaceCombobox({
                 return;
               }
               if (options.length === 0) return;
-              setHighlight((h) => (h - 1 + options.length) % options.length);
+              setHighlight((safeHighlight - 1 + options.length) % options.length);
             } else if (e.key === "Enter") {
               e.preventDefault();
               e.stopPropagation();
@@ -253,7 +244,7 @@ export default function SpaceCombobox({
                 open();
                 return;
               }
-              const opt = options[highlight];
+              const opt = options[safeHighlight];
               if (opt) activate(opt);
             } else if (e.key === "Escape") {
               if (isOpen) {
@@ -326,7 +317,7 @@ export default function SpaceCombobox({
                       <OptionRow
                         id={opt.id}
                         option={opt}
-                        isHighlighted={i === highlight}
+                        isHighlighted={i === safeHighlight}
                         isSelected={isSelectedOpt}
                         pending={opt.kind === "create" && createPending}
                         onActivate={() => activate(opt)}

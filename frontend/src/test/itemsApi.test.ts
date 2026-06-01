@@ -152,7 +152,9 @@ it("maps API error payloads to typed errors", async () => {
   );
   await expect(createNote({ text: "same" })).rejects.toBeInstanceOf(DuplicateContentError);
 
-  mockFetch(jsonResponse({ error: "Slow down", code: "RATE_LIMITED", retryAfter: 12 }, { status: 429 }));
+  mockFetch(
+    jsonResponse({ error: "Slow down", code: "RATE_LIMITED", retryAfter: 12 }, { status: 429 }),
+  );
   await expect(unlockItem(1, "bad")).rejects.toMatchObject({
     name: "RateLimitError",
     retryAfter: 12,
@@ -207,11 +209,19 @@ it("covers the small JSON helpers and no-content endpoints", async () => {
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(jsonResponse(item))
-    .mockResolvedValueOnce(jsonResponse({ ok: true, version: "dev", limits: { noteTextMaxChars: 100 } }))
-    .mockResolvedValueOnce(jsonResponse({ disk: null, items: {}, spaceStats: [], largestItems: [] }))
+    .mockResolvedValueOnce(
+      jsonResponse({ ok: true, version: "dev", limits: { noteTextMaxChars: 100 } }),
+    )
+    .mockResolvedValueOnce(
+      jsonResponse({ disk: null, items: {}, spaceStats: [], largestItems: [] }),
+    )
     .mockResolvedValueOnce(jsonResponse({ orderedIds: [3, 2, 1] }))
-    .mockResolvedValueOnce(jsonResponse([{ id: 1, name: "Design", position: 1, createdAt: "x", itemCount: 0 }]))
-    .mockResolvedValueOnce(jsonResponse({ id: 9, name: "Inbox", position: 2, createdAt: "x", itemCount: 0 }))
+    .mockResolvedValueOnce(
+      jsonResponse([{ id: 1, name: "Design", position: 1, createdAt: "x", itemCount: 0 }]),
+    )
+    .mockResolvedValueOnce(
+      jsonResponse({ id: 9, name: "Inbox", position: 2, createdAt: "x", itemCount: 0 }),
+    )
     .mockResolvedValueOnce(jsonResponse({ unassigned: 2 }))
     .mockResolvedValueOnce(jsonResponse({ deleted: 4 }))
     .mockResolvedValueOnce(jsonResponse({ ok: true }))
@@ -227,7 +237,9 @@ it("covers the small JSON helpers and no-content endpoints", async () => {
   await expect(listSpaces()).resolves.toHaveLength(1);
   await expect(createSpace("Inbox")).resolves.toMatchObject({ id: 9 });
   await expect(deleteSpace(9)).resolves.toEqual({ unassigned: 2 });
-  await expect(deleteReadyToDelete({ q: "old", kind: "file", protected: true, space: "none" })).resolves.toEqual({
+  await expect(
+    deleteReadyToDelete({ q: "old", kind: "file", protected: true, space: "none" }),
+  ).resolves.toEqual({
     deleted: 4,
   });
   await expect(reorderItems([1, 2])).resolves.toBeUndefined();
@@ -235,7 +247,9 @@ it("covers the small JSON helpers and no-content endpoints", async () => {
   await expect(unlockItem(1, "secret")).resolves.toBeUndefined();
   await expect(deleteItem(1)).resolves.toBeUndefined();
 
-  expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/items/order?space=none", { signal: undefined });
+  expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/items/order?space=none", {
+    signal: undefined,
+  });
   expect(fetchMock).toHaveBeenNthCalledWith(
     8,
     "/api/items/ready-to-delete?q=old&kind=file&protected=true&space=none",

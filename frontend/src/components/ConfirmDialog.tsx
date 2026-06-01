@@ -108,7 +108,10 @@ export default function ConfirmDialog(props: {
 
   const body = (
     <>
-      <div id={titleId} className="font-display text-lg font-semibold text-[var(--app-text)] break-words">
+      <div
+        id={titleId}
+        className="font-display text-lg font-semibold text-[var(--app-text)] break-words"
+      >
         {title}
       </div>
       {description ? (

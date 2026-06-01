@@ -3,9 +3,8 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
-from flask import g, has_request_context, request
+from flask import g, has_request_context
 
 
 class RequestIdFilter(logging.Filter):

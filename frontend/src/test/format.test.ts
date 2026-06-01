@@ -30,12 +30,5 @@ it("formats time remaining in useful buckets", () => {
 });
 
 it("keeps TTL presets ordered from shortest to longest", () => {
-  expect(TTL_PRESETS.map((preset) => preset.value)).toEqual([
-    "1h",
-    "6h",
-    "24h",
-    "3d",
-    "7d",
-    "30d",
-  ]);
+  expect(TTL_PRESETS.map((preset) => preset.value)).toEqual(["1h", "6h", "24h", "3d", "7d", "30d"]);
 });

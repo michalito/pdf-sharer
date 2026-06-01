@@ -2,7 +2,7 @@
 
 Detailed architecture and behavioral reference for this repository. Auto-loaded by Claude Code (claude.ai/code) from the project root, and useful to any human contributor who wants the deep-dive view. For quick-start commands and the contributor workflow, see [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
-Last verified against code: 2026-04-24.
+Last verified against code: 2026-06-01.
 
 ## Project Snapshot
 
@@ -11,6 +11,13 @@ Last verified against code: 2026-04-24.
 - Frontend: React + TypeScript + Vite (TanStack Query for server state)
 - Deployment: Docker Compose via `./deploy.sh`; CI builds via GitHub Actions + `Dockerfile.ci`
 - Trust model: internal network, no authentication by design
+
+## Agent Operating Rules
+
+1. **Think Before Coding**: State assumptions explicitly. Ask rather than guess. Push back when a simpler approach exists. Stop when confused.
+2. **Simplicity First**: Write the minimum code that solves the problem. Add nothing speculative. Treat architecture decisions as important, especially for refactors or larger updates/additions.
+3. **Goal-Driven Execution**: Define success criteria. Loop until verified. Strong success criteria let Claude work independently.
+4. **Fail Loud**: "Completed" is wrong if anything was skipped silently. "Tests pass" is wrong if any were skipped. Surface uncertainty instead of hiding it.
 
 ## Commands
 
@@ -82,21 +89,27 @@ app/
   api/routes.py                   # Item REST API under /api
   api/space_routes.py             # Space CRUD endpoints under /api/spaces
   api/item_presenter.py           # present_item_for_api() — access-policy masking for protected items
+  api/helpers.py                  # Shared route helpers: get_service(), get_throttle(), get_client_ip()
   web/routes.py                   # "/" SPA fallback + "/d/<id>" share route
   services/item_service.py        # Upload, zip, delete/state logic, validation limits
   services/space_service.py       # Space CRUD, name normalization, cascading unassign on delete
   services/item_access.py         # Per-item session unlock tracking (signed Flask cookies)
+  services/unlock_throttle.py     # DB-backed brute-force throttle for unlock attempts (per client_ip + item)
   repositories/item_repository.py
   repositories/space_repository.py
   domain/item.py                  # Item model, ItemKind, ItemState, to_dto()
   domain/space.py                 # Space model (name, normalized_name, item relationship)
+  domain/unlock_attempt.py        # UnlockAttempt model — persists unlock-throttle state (unlock_attempts table)
   config.py                       # Config dataclass (from_env / for_development)
-  constants.py                    # Upload size, note excerpt bounds, TTL presets
+  constants.py                    # Upload size, note excerpt bounds, TTL presets, unlock-throttle limits
   exceptions.py                   # AppError hierarchy (NotFoundError, ValidationError, etc.)
   error_handlers.py               # register_error_handlers() — called on both blueprints
   logging_config.py               # JSON logging in prod, plain text in dev
   utils/zip_utils.py              # sanitize_zip_path(), dedupe_zip_path()
   utils/markdown.py               # Markdown→HTML via mistune (strikethrough, tables, task lists)
+  utils/hashing.py                # SHA-256 content hashing for duplicate detection
+  utils/content_hash_lock.py      # Per-content-hash file locks serializing concurrent dedup-and-create
+  utils/validation.py             # validate_reorder_ids() — exact-permutation check shared by reorder endpoints
   cli.py                          # flask prune-orphans, flask expire-items commands
 ```
 
@@ -175,6 +188,8 @@ Note payload behavior:
 - Migration files use manual prefixes (`0001_`, `0002_`) instead of Alembic hex IDs.
 - Service validation limits: display name 255 chars, link URL 2048, note title 120, note text configurable via `MAX_NOTE_TEXT_LENGTH` (default 100000), space name 120.
 - **Item expiration (TTL)**: Items can optionally have an `expires_at` timestamp set at creation time from preset durations (`1h`, `6h`, `24h`, `3d`, `7d`, `30d`). Expired items are permanently deleted (DB row + disk file). Two-layer approach: (1) expired items are filtered from all queries immediately, (2) scheduled maintenance runs `flask expire-items` / `./deploy.sh expire-items` (with `--dry-run`, `--limit`). TTL is immutable after creation.
+- **Content-hash duplicate detection**: Files, folder zips, links, and notes get a SHA-256 `content_hash` (`app/utils/hashing.py`; exposed as `contentHash` in the item DTO). On create, content already stored is rejected with `DuplicateDetectedError` (HTTP 409, payload lists the existing duplicates) unless `force=true` is passed. TTL'd items (`expires_at` set) skip the dedup check. Concurrent create requests sharing a hash are serialized by per-hash file locks (`app/utils/content_hash_lock.py`).
+- **Unlock throttling**: `POST /api/items/<id>/unlock` is rate-limited per `(client_ip, item_id)` by a DB-backed throttle (`app/services/unlock_throttle.py`, `unlock_attempts` table). Defaults (`app/constants.py`): 5 attempts per 60s window, then a 60s cooldown; exceeding the limit raises `RateLimitError` (HTTP 429).
 
 ## Testing
 
@@ -182,8 +197,8 @@ Backend fixtures (`tests/conftest.py`): `app` creates a full Flask app with in-m
 
 Test files:
 - `tests/integration/`: `test_items_api.py`, `test_spaces_api.py`, `test_storage_api.py`, `test_cli.py`
-- `tests/unit/`: `test_zip_utils.py`, `test_item_presenter.py`, `test_markdown.py`, `test_config.py`, `test_item_access.py`
-- `frontend/src/test/`: `App.test.tsx`, `ConfirmDialogFocus.test.tsx`, `Dialogs.test.tsx`, `ErrorBoundary.test.tsx`, `MarkdownProse.test.tsx`, `StorageDashboard.test.tsx`, `useDialogState.test.ts`, `useItemMutations.test.tsx`, `useItemReorder.test.tsx`, `useSettings.test.ts`, `useTheme.test.ts` (Vitest + jsdom + Testing Library, API mocked via `vi.mock()`; `src/test/setup.ts` stubs `matchMedia`, `IntersectionObserver`, and `ResizeObserver`)
+- `tests/unit/`: `test_zip_utils.py`, `test_item_presenter.py`, `test_markdown.py`, `test_config.py`, `test_item_access.py`, `test_item_service.py`, `test_hashing.py`, `test_content_hash_lock.py`, `test_unlock_throttle.py`, `test_proxy_fix.py`, `test_deploy_script.py`
+- `frontend/src/test/`: `App.test.tsx`, `ConfirmDialogFocus.test.tsx`, `Dialogs.test.tsx`, `ErrorBoundary.test.tsx`, `MarkdownProse.test.tsx`, `SpaceBar.test.tsx`, `SpaceCombobox.test.tsx`, `StorageDashboard.test.tsx`, `format.test.ts`, `itemOrder.test.ts`, `itemsApi.test.ts`, `useDialogState.test.ts`, `useFullPageDrop.test.ts`, `useItemMutations.test.tsx`, `useItemReorder.test.tsx`, `useLongPress.test.tsx`, `useSettings.test.ts`, `useTheme.test.ts` (Vitest + happy-dom + Testing Library, API mocked via `vi.mock()`; `src/test/setup.ts` stubs `matchMedia`, `IntersectionObserver`, and `ResizeObserver`)
 
 ## Configuration
 

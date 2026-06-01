@@ -78,7 +78,8 @@ class ItemRepository:
         if sort == "manual":
             return [Item.is_pinned.desc(), Item.position.asc(), Item.id.asc()]
 
-        direction = lambda col: col.asc() if order == "asc" else col.desc()
+        def direction(col):
+            return col.asc() if order == "asc" else col.desc()
 
         if sort == "name":
             secondary = direction(func.lower(Item.display_name))

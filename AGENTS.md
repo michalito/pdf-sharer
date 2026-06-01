@@ -20,6 +20,13 @@ When docs and code disagree, trust code in:
 - Deployment behavior: `deploy.sh`, `docker-compose*.yaml`, `entrypoint.sh`
 - Frontend API usage: `frontend/src/api/items.ts`
 
+## Agent Operating Rules
+
+1. **Think Before Coding**: State assumptions explicitly. Ask rather than guess. Push back when a simpler approach exists. Stop when confused.
+2. **Simplicity First**: Write the minimum code that solves the problem. Add nothing speculative. Treat architecture decisions as important, especially for refactors or larger updates/additions.
+3. **Goal-Driven Execution**: Define success criteria. Loop until verified. Strong success criteria let agents work independently.
+4. **Fail Loud**: "Completed" is wrong if anything was skipped silently. "Tests pass" is wrong if any were skipped. Surface uncertainty instead of hiding it.
+
 ## Fast Start Commands
 
 Use the deploy script for normal operations:

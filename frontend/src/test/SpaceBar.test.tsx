@@ -87,7 +87,9 @@ it("enters rearrange mode, saves order, and cancels without saving", async () =>
 
   await user.click(screen.getByRole("button", { name: "Save order" }));
   await waitFor(() => expect(props.onReorderSpaces).toHaveBeenCalledWith([1, 2]));
-  await waitFor(() => expect(screen.queryByRole("button", { name: "Save order" })).not.toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Save order" })).not.toBeInTheDocument(),
+  );
 
   menu = openContextMenu(/Design/);
   await user.click(within(menu).getByRole("menuitem", { name: /Rearrange/ }));
@@ -103,5 +105,7 @@ it("stays in rearrange mode when saving fails", async () => {
   await user.click(within(menu).getByRole("menuitem", { name: /Rearrange/ }));
   await user.click(screen.getByRole("button", { name: "Save order" }));
 
-  await waitFor(() => expect(screen.getByRole("button", { name: "Save order" })).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Save order" })).toBeInTheDocument(),
+  );
 });

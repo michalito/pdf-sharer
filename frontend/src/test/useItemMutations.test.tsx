@@ -281,17 +281,16 @@ it("optimistic update filters and sorts the visible cache", async () => {
   await act(async () => {
     await result.current.updateItem.mutateAsync({ id: 1, pinned: true });
   });
-  expect(client.getQueryData<ListItemsResponse>([...nameQueryKey])?.items.map((i) => i.id)).toEqual([
-    1,
-    2,
-  ]);
+  expect(client.getQueryData<ListItemsResponse>([...nameQueryKey])?.items.map((i) => i.id)).toEqual(
+    [1, 2],
+  );
 
   await act(async () => {
     await result.current.updateItem.mutateAsync({ id: 1, state: "done" });
   });
-  expect(client.getQueryData<ListItemsResponse>([...nameQueryKey])?.items.map((i) => i.id)).toEqual([
-    2,
-  ]);
+  expect(client.getQueryData<ListItemsResponse>([...nameQueryKey])?.items.map((i) => i.id)).toEqual(
+    [2],
+  );
 });
 
 it("deleteItem reports success and failure", async () => {
