@@ -121,7 +121,7 @@ function ContextMenu({
 /* ------------------------------------------------------------------ */
 
 const chipBase =
-  "inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
+  "inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors focus-ring";
 const chipInactive =
   "border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text)] hover:bg-[var(--app-hover)]";
 const chipActive =
@@ -169,6 +169,7 @@ function SpaceChip({
       onTouchEnd={longPress.onTouchEnd}
       onTouchMove={longPress.onTouchMove}
       onContextMenu={longPress.onContextMenu}
+      aria-pressed={isActive}
       className={`shrink-0 ${chipBase} ${isActive ? chipActive : chipInactive} transition-[color,background-color,border-color,transform] duration-200 ${
         longPress.isPressed ? "scale-[0.96]" : ""
       }`}
@@ -358,6 +359,7 @@ export default function SpaceBar({
       <button
         type="button"
         onClick={() => !rearranging && onFilterChange("all")}
+        aria-pressed={activeFilter === "all"}
         className={`shrink-0 ${chipBase} ${activeFilter === "all" && !rearranging ? chipActive : chipInactive} transition-all duration-200 ${
           rearranging ? "opacity-40 pointer-events-none" : ""
         }`}
@@ -368,11 +370,12 @@ export default function SpaceBar({
       <button
         type="button"
         onClick={() => !rearranging && onFilterChange("none")}
+        aria-pressed={activeFilter === "none"}
         className={`shrink-0 ${chipBase} ${activeFilter === "none" && !rearranging ? chipActive : chipInactive} transition-all duration-200 ${
           rearranging ? "opacity-40 pointer-events-none" : ""
         }`}
       >
-        Uncollected
+        No space
       </button>
 
       {displaySpaces.length > 0 && (
@@ -426,6 +429,8 @@ export default function SpaceBar({
                   }
                 }}
                 onBlur={handleEditSubmit}
+                aria-label="Rename space"
+                maxLength={120}
                 className="h-8 w-32 shrink-0 rounded-lg border border-[var(--accent)] bg-[var(--app-panel-strong)] px-2.5 text-xs text-[var(--app-text)] outline-none"
                 autoFocus
               />
@@ -488,6 +493,8 @@ export default function SpaceBar({
           }}
           onBlur={handleCreateSubmit}
           placeholder="Space name"
+          aria-label="New space name"
+          maxLength={120}
           className="h-8 w-32 shrink-0 rounded-lg border border-[var(--accent)] bg-[var(--app-panel-strong)] px-2.5 text-xs text-[var(--app-text)] outline-none"
           autoFocus
           disabled={isCreating}
@@ -500,7 +507,7 @@ export default function SpaceBar({
             setTimeout(() => createInputRef.current?.focus(), 0);
           }}
           className={`shrink-0 ${chipBase} ${chipInactive}`}
-          title="Create new space"
+          title="New space"
           aria-label="Create new space"
         >
           <Plus className="h-3.5 w-3.5" />

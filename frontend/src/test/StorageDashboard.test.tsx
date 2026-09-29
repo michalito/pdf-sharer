@@ -153,9 +153,9 @@ it("shows error state and retry button on fetch failure", async () => {
 it("shows space distribution with space names", async () => {
   renderDashboard();
   await screen.findByText("Items by space");
-  expect(screen.getByText("2 spaces")).toBeInTheDocument();
+  expect(screen.getByText("1 space")).toBeInTheDocument();
   expect(screen.getAllByText("Design").length).toBeGreaterThanOrEqual(1);
-  expect(screen.getByText("Unspaced")).toBeInTheDocument();
+  expect(screen.getByText("No space")).toBeInTheDocument();
 });
 
 it("shows empty message when spaceStats is empty", async () => {

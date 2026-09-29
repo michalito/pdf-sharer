@@ -1,6 +1,6 @@
 """Tests for the markdown rendering utility."""
 
-from app.utils.markdown import render_markdown
+from app.utils.markdown import _markdown_head, markdown_to_plain_text, render_markdown
 
 
 def test_basic_heading():
@@ -55,3 +55,55 @@ def test_link():
 def test_blockquote():
     html = render_markdown("> quoted text")
     assert "<blockquote>" in html
+
+
+def test_markdown_to_plain_text_strips_syntax():
+    md = (
+        "# Standup\n\n- Shipped **dedup**\n- [ ] Next: [polish](https://x.test)\n\n"
+        "| a | b |\n|---|---|\n| 1 | 2 |"
+    )
+    assert markdown_to_plain_text(md) == "Standup Shipped dedup Next: polish a b 1 2"
+
+
+def test_markdown_to_plain_text_keeps_escaped_characters_as_text():
+    assert markdown_to_plain_text("a < b && c") == "a < b && c"
+
+
+def test_markdown_to_plain_text_empty():
+    assert markdown_to_plain_text("  \n\n ") == ""
+
+
+def test_markdown_to_plain_text_head_cuts_on_line_boundary():
+    md = "intro line that is long\n" + "[docs](https://example.com/" + "x" * 50 + ")"
+    assert markdown_to_plain_text(md, max_source_chars=40) == "intro line that is long"
+
+
+def test_markdown_to_plain_text_head_keeps_text_when_only_newline_is_early():
+    md = "#\n" + "word " * 100
+    assert markdown_to_plain_text(md, max_source_chars=50).startswith("word word")
+
+
+def test_markdown_to_plain_text_keeps_inline_punctuation_tight():
+    assert markdown_to_plain_text("Hello **world**! Use `npm`, see [docs](http://x).") == (
+        "Hello world! Use npm, see docs."
+    )
+
+
+def test_markdown_to_plain_text_keeps_image_alt_text():
+    assert markdown_to_plain_text("![diagram of flow](a.png) caption") == "diagram of flow caption"
+
+
+def test_markdown_head_closes_open_code_fence():
+    md = "before\n~~~~\ncode line\n" + "more code\n" * 20 + "~~~~\nafter"
+    head = _markdown_head(md, 40)
+    assert head == "before\n~~~~\ncode line\nmore code\n~~~~"
+    assert markdown_to_plain_text(md, max_source_chars=40) == "before code line more code"
+
+
+def test_markdown_head_leaves_closed_fences_alone():
+    md = "```\ncode\n```\ntext line\n" + "tail " * 20
+    assert _markdown_head(md, 30) == "```\ncode\n```\ntext line"
+
+
+def test_markdown_to_plain_text_head_is_noop_for_short_text():
+    assert markdown_to_plain_text("# Title", max_source_chars=100) == "Title"

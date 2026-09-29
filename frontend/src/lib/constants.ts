@@ -1,5 +1,31 @@
-import type { SortField, SortOrder } from "../api/items";
+import {
+  File as FileIcon,
+  FolderArchive,
+  Link2,
+  MessageSquareText,
+  type LucideIcon,
+} from "lucide-react";
+import type { ItemKind, ItemState, SortField, SortOrder } from "../api/items";
+import { TTL_PRESETS } from "./format";
 import type { StateFilterSetting, TtlSetting } from "./useSettings";
+
+export const kindIcons: Record<ItemKind, LucideIcon> = {
+  file: FileIcon,
+  folder: FolderArchive,
+  link: Link2,
+  note: MessageSquareText,
+};
+
+export const itemStateOptions: Array<{ value: ItemState; label: string }> = [
+  { value: "active", label: "Active" },
+  { value: "done", label: "Done" },
+  { value: "archived", label: "Archived" },
+  { value: "ready_to_delete", label: "Ready to delete" },
+];
+
+export function itemStateLabel(state: ItemState): string {
+  return itemStateOptions.find((option) => option.value === state)?.label ?? state;
+}
 
 export const sortFieldOptions: Array<{ value: SortField; label: string }> = [
   { value: "manual", label: "Manual" },
@@ -15,11 +41,8 @@ export const sortOrderOptions: Array<{ value: SortOrder; label: string }> = [
 ];
 
 export const stateFilterOptions: Array<{ value: StateFilterSetting; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "active", label: "Active" },
-  { value: "done", label: "Done" },
-  { value: "archived", label: "Archived" },
-  { value: "ready_to_delete", label: "Ready to delete" },
+  { value: "all", label: "All statuses" },
+  ...itemStateOptions,
 ];
 
 export const perPageOptions: Array<{ value: string; label: string }> = [
@@ -31,10 +54,5 @@ export const perPageOptions: Array<{ value: string; label: string }> = [
 
 export const ttlOptions: Array<{ value: TtlSetting; label: string }> = [
   { value: "", label: "Never" },
-  { value: "1h", label: "1 hour" },
-  { value: "6h", label: "6 hours" },
-  { value: "24h", label: "24 hours" },
-  { value: "3d", label: "3 days" },
-  { value: "7d", label: "7 days" },
-  { value: "30d", label: "30 days" },
+  ...TTL_PRESETS,
 ];

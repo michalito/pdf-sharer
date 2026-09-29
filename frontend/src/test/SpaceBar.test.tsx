@@ -34,7 +34,7 @@ it("filters fixed and custom spaces", async () => {
   const props = renderSpaceBar({ activeFilter: 1 });
 
   await user.click(screen.getByRole("button", { name: "All items" }));
-  await user.click(screen.getByRole("button", { name: "Uncollected" }));
+  await user.click(screen.getByRole("button", { name: "No space" }));
   await user.click(screen.getByRole("button", { name: /Build/ }));
 
   expect(props.onFilterChange).toHaveBeenNthCalledWith(1, "all");

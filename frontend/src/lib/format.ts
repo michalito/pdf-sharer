@@ -42,3 +42,7 @@ export const TTL_PRESETS = [
   { value: "7d" as const, label: "7 days" },
   { value: "30d" as const, label: "30 days" },
 ] as const;
+
+export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}

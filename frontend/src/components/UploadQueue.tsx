@@ -6,13 +6,22 @@ export type UploadTask = {
   abort?: () => void;
 };
 
-const toneClass = {
-  uploading: "bg-[var(--accent)]",
-  done: "bg-[var(--success)]",
-  error: "bg-[var(--danger)]",
-  duplicate: "bg-amber-500",
-  cancelled: "bg-[var(--app-muted)]",
-} as const;
+const queueButtonClass =
+  "rounded-md px-2 py-1 text-xs text-[var(--app-muted)] transition-colors hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] focus-ring";
+
+const statusText: Record<Exclude<UploadTask["status"], "uploading">, string> = {
+  done: "Uploaded",
+  error: "Upload failed",
+  duplicate: "Duplicate found — waiting for your choice",
+  cancelled: "Cancelled",
+};
+
+const statusTone: Record<Exclude<UploadTask["status"], "uploading">, string> = {
+  done: "text-[var(--success)]",
+  error: "text-[var(--danger)]",
+  duplicate: "text-amber-700 dark:text-amber-300",
+  cancelled: "text-[var(--app-muted)]",
+};
 
 export default function UploadQueue(props: {
   uploads: UploadTask[];
@@ -41,42 +50,36 @@ export default function UploadQueue(props: {
           <div className="flex items-center justify-between gap-2">
             <div className="truncate text-sm font-medium text-[var(--app-text)]">{u.label}</div>
             {u.status === "uploading" && u.abort ? (
-              <button
-                type="button"
-                className="rounded-md px-2 py-1 text-xs text-[var(--app-muted)] transition-colors hover:bg-[var(--app-hover)] hover:text-[var(--app-text)]"
-                onClick={() => u.abort?.()}
-              >
+              <button type="button" className={queueButtonClass} onClick={() => u.abort?.()}>
                 Cancel
               </button>
             ) : u.status !== "uploading" ? (
-              <button
-                type="button"
-                className="rounded-md px-2 py-1 text-xs text-[var(--app-muted)] transition-colors hover:bg-[var(--app-hover)]"
-                onClick={() => onDismiss(u.id)}
-              >
+              <button type="button" className={queueButtonClass} onClick={() => onDismiss(u.id)}>
                 Dismiss
               </button>
             ) : null}
           </div>
 
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-sm bg-black/10 dark:bg-white/10">
-            <div
-              className={`h-full rounded-sm transition-all ${toneClass[u.status]}`}
-              style={{ width: `${Math.min(100, Math.max(0, u.progress))}%` }}
-            />
-          </div>
-
-          <div className="mt-2 text-xs text-[var(--app-muted)]">
-            {u.status === "uploading"
-              ? `${u.progress}% uploaded`
-              : u.status === "error"
-                ? "Upload failed"
-                : u.status === "duplicate"
-                  ? "Duplicate detected - choose an action"
-                  : u.status === "cancelled"
-                    ? "Upload cancelled by user"
-                    : "Done"}
-          </div>
+          {u.status === "uploading" ? (
+            <>
+              <div
+                className="mt-2 h-2 w-full overflow-hidden rounded-sm bg-black/10 dark:bg-white/10"
+                role="progressbar"
+                aria-label={`Uploading ${u.label}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={u.progress}
+              >
+                <div
+                  className="h-full rounded-sm bg-[var(--accent)] transition-all"
+                  style={{ width: `${Math.min(100, Math.max(0, u.progress))}%` }}
+                />
+              </div>
+              <div className="mt-2 text-xs text-[var(--app-muted)]">{u.progress}% uploaded</div>
+            </>
+          ) : (
+            <div className={`mt-1 text-xs ${statusTone[u.status]}`}>{statusText[u.status]}</div>
+          )}
         </div>
       ))}
     </div>

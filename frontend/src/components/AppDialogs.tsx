@@ -8,6 +8,7 @@ import UploadDialog from "./dialogs/UploadDialog";
 import UnlockDialog from "./dialogs/UnlockDialog";
 import type { AppInfo, ItemDto, ItemKind, PaginationDto, SpaceDto, TtlPreset } from "../api/items";
 import type { SpaceFilter } from "./SpaceBar";
+import { pluralize } from "../lib/format";
 import type { DialogStateApi } from "../lib/useDialogState";
 import type { ItemMutations } from "../lib/useItemMutations";
 
@@ -57,12 +58,13 @@ export default function AppDialogs({
         title="Delete item?"
         description={
           dialogs.state.deleteItem
-            ? `Delete “${dialogs.state.deleteItem.name}”? This will remove it immediately.`
+            ? `“${dialogs.state.deleteItem.name}” will be permanently deleted and its share link will stop working.`
             : undefined
         }
-        confirmLabel={mutations.deleteItem.isPending ? "Deleting..." : "Delete"}
+        confirmLabel={mutations.deleteItem.isPending ? "Deleting…" : "Delete"}
         cancelLabel="Cancel"
         confirmVariant="danger"
+        confirmDisabled={mutations.deleteItem.isPending}
         onCancel={() => dialogs.closeDeleteItem()}
         onConfirm={() => {
           if (!dialogs.state.deleteItem || mutations.deleteItem.isPending) return;
@@ -77,12 +79,13 @@ export default function AppDialogs({
         title="Delete all ready-to-delete items?"
         description={
           pagination
-            ? `Delete ${pagination.total} item(s) marked “Ready to delete”? This cannot be undone.`
-            : "Delete all items marked “Ready to delete”?"
+            ? `${pluralize(pagination.total, "item")} marked “Ready to delete” will be permanently deleted. This cannot be undone.`
+            : "All items marked “Ready to delete” will be permanently deleted. This cannot be undone."
         }
-        confirmLabel={mutations.bulkDelete.isPending ? "Deleting..." : "Delete all"}
+        confirmLabel={mutations.bulkDelete.isPending ? "Deleting…" : "Delete all"}
         cancelLabel="Cancel"
         confirmVariant="danger"
+        confirmDisabled={mutations.bulkDelete.isPending}
         onCancel={() => dialogs.closeBulkDelete()}
         onConfirm={() => {
           if (mutations.bulkDelete.isPending) return;
@@ -148,9 +151,7 @@ export default function AppDialogs({
       <UnlockDialog
         target={dialogs.state.unlock}
         onClose={() => dialogs.closeUnlock()}
-        onUnlocked={async (item, action) => {
-          await performItemAction(item, action);
-        }}
+        onUnlocked={performItemAction}
       />
 
       <NotePreviewDialog
@@ -163,10 +164,10 @@ export default function AppDialogs({
         title="Delete space?"
         description={
           dialogs.state.deleteSpace
-            ? `Delete "${dialogs.state.deleteSpace.name}"? Items in this space won't be deleted — they'll become uncollected.`
+            ? `Items in “${dialogs.state.deleteSpace.name}” won’t be deleted — they’ll move to No space.`
             : undefined
         }
-        confirmLabel={mutations.deleteSpace.isPending ? "Deleting..." : "Delete space"}
+        confirmLabel={mutations.deleteSpace.isPending ? "Deleting…" : "Delete space"}
         cancelLabel="Cancel"
         confirmVariant="danger"
         confirmDisabled={mutations.deleteSpace.isPending}

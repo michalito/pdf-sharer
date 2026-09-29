@@ -1,13 +1,5 @@
-import { type ReactNode, useEffect, useId, useRef } from "react";
-
-const FOCUSABLE_SELECTOR =
-  'button:not([disabled]):not([tabindex="-1"]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-function getFocusableElements(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-    (el) => !el.hasAttribute("data-focus-trap-sentinel"),
-  );
-}
+import { type ReactNode, useId, useRef } from "react";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
 export default function ConfirmDialog(props: {
   open: boolean;
@@ -40,64 +32,8 @@ export default function ConfirmDialog(props: {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement | null>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onCancel]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    returnFocusRef.current = document.activeElement as HTMLElement | null;
-
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    const focusables = getFocusableElements(dialog);
-    const initialTarget =
-      focusables.find((el) => el.matches("input, textarea, select")) ??
-      focusables.find((el) => el.getAttribute("type") === "submit") ??
-      focusables[focusables.length - 1] ??
-      dialog;
-    initialTarget.focus();
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
-      const currentFocusables = getFocusableElements(dialog);
-      if (currentFocusables.length === 0) {
-        e.preventDefault();
-        dialog.focus();
-        return;
-      }
-      const first = currentFocusables[0];
-      const last = currentFocusables[currentFocusables.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-      if (e.shiftKey) {
-        if (active === first || !dialog.contains(active)) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else if (active === last || !dialog.contains(active)) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    dialog.addEventListener("keydown", onKeyDown);
-    return () => {
-      dialog.removeEventListener("keydown", onKeyDown);
-      const target = returnFocusRef.current;
-      if (target && document.body.contains(target)) {
-        target.focus();
-      }
-    };
-  }, [open]);
+  useFocusTrap(dialogRef, open, onCancel);
 
   if (!open) return null;
 
@@ -123,7 +59,7 @@ export default function ConfirmDialog(props: {
       <div className="mt-5 flex justify-end gap-2">
         <button
           type="button"
-          className="pressable rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+          className="pressable rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)] focus-ring"
           onClick={onCancel}
         >
           {cancelLabel}
@@ -156,7 +92,7 @@ export default function ConfirmDialog(props: {
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className={`glass-panel dialog-pop relative w-full rounded-xl p-5 ${size === "lg" ? "max-w-lg" : "max-w-md"}`}
+        className={`glass-panel dialog-pop relative max-h-[calc(100dvh-2rem)] w-full overflow-y-auto rounded-xl p-5 ${size === "lg" ? "max-w-lg" : "max-w-md"}`}
       >
         {formMode ? (
           <form

@@ -400,7 +400,7 @@ it("space mutations cover create, rename, reorder, delete, and errors", async ()
 
   expect(toast.success).toHaveBeenCalledWith("Space created");
   expect(toast.success).toHaveBeenCalledWith("Space renamed");
-  expect(toast.success).toHaveBeenCalledWith("Space deleted, 2 item(s) moved to uncollected");
+  expect(toast.success).toHaveBeenCalledWith("Space deleted. 2 items moved to No space.");
   expect(toast.success).toHaveBeenCalledWith("Space deleted");
 
   await act(async () => {

@@ -239,13 +239,13 @@ it("submits the save-link dialog", async () => {
   await user.click(within(newMenu).getByRole("button", { name: "New" }));
   await user.click(within(newMenu).getByRole("button", { name: "Save link" }));
 
-  const dialog = await screen.findByRole("dialog", { name: "Save external link" });
+  const dialog = await screen.findByRole("dialog", { name: "Save link" });
   await user.type(
     within(dialog).getByPlaceholderText("https://example.com/docs"),
     "https://example.com/new",
   );
   await user.type(within(dialog).getByPlaceholderText("Team docs"), "Engineering Docs");
-  await user.type(within(dialog).getByPlaceholderText("8-128 characters"), "safepass1");
+  await user.type(within(dialog).getByPlaceholderText("8–128 characters"), "safepass1");
   await user.type(within(dialog).getByPlaceholderText("Repeat password"), "safepass1");
   await user.click(within(dialog).getByRole("button", { name: "Save link" }));
 
@@ -273,10 +273,10 @@ it("submits the save-note dialog", async () => {
   const dialog = await screen.findByRole("dialog", { name: "Save note" });
   await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Retro");
   await user.type(
-    within(dialog).getByPlaceholderText("Write a note... (supports markdown)"),
+    within(dialog).getByPlaceholderText("Write your note…"),
     "Ship links and notes this week.",
   );
-  await user.type(within(dialog).getByPlaceholderText("8-128 characters"), "notespass");
+  await user.type(within(dialog).getByPlaceholderText("8–128 characters"), "notespass");
   await user.type(within(dialog).getByPlaceholderText("Repeat password"), "notespass");
   await user.click(within(dialog).getByRole("button", { name: "Save note" }));
 
@@ -329,10 +329,7 @@ it("does not submit oversized note content", async () => {
 
   const dialog = await screen.findByRole("dialog", { name: "Save note" });
   await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Retro");
-  await user.type(
-    within(dialog).getByPlaceholderText("Write a note... (supports markdown)"),
-    "Too long by one!",
-  );
+  await user.type(within(dialog).getByPlaceholderText("Write your note…"), "Too long by one!");
   expect(within(dialog).getByText("16 / 12 characters")).toBeInTheDocument();
   expect(
     within(dialog).getByText("Note is too long. Maximum length is 12 characters."),
@@ -387,7 +384,7 @@ it("does not re-render items content when opening and typing in the note dialog"
 
   await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Weekly");
   await user.type(
-    within(dialog).getByPlaceholderText("Write a note... (supports markdown)"),
+    within(dialog).getByPlaceholderText("Write your note…"),
     "Dialog-local state only.",
   );
 
@@ -464,13 +461,13 @@ it("prefills default auto-delete in upload, link, and note dialogs", async () =>
 
   await user.click(within(newMenu).getByRole("button", { name: "New" }));
   await user.click(within(newMenu).getByRole("button", { name: "Save link" }));
-  const linkDialog = await screen.findByRole("dialog", { name: "Save external link" });
+  const linkDialog = await screen.findByRole("dialog", { name: "Save link" });
   expect(within(linkDialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent(
     "7 days",
   );
   await user.click(within(linkDialog).getByRole("button", { name: "Cancel" }));
   await waitFor(() => {
-    expect(screen.queryByRole("dialog", { name: "Save external link" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Save link" })).not.toBeInTheDocument();
   });
 
   await user.click(within(newMenu).getByRole("button", { name: "New" }));
@@ -576,11 +573,11 @@ it("queues dropped files if a dialog opens before drop extraction resolves", asy
   fireEvent.click(within(newMenu).getByRole("button", { name: "New" }));
   fireEvent.click(within(newMenu).getByRole("button", { name: "Save link" }));
 
-  const linkDialog = await screen.findByRole("dialog", { name: "Save external link" });
+  const linkDialog = await screen.findByRole("dialog", { name: "Save link" });
   await Promise.resolve();
   await Promise.resolve();
 
-  expect(vi.mocked(toast)).toHaveBeenCalledWith("Upload queued until current dialog closes");
+  expect(vi.mocked(toast)).toHaveBeenCalledWith("Upload queued until the current dialog closes");
   expect(screen.queryByRole("dialog", { name: "Upload files" })).not.toBeInTheDocument();
 
   fireEvent.click(within(linkDialog).getByRole("button", { name: "Cancel" }));
@@ -639,7 +636,7 @@ it("starts queued upload after closing a currently open upload dialog", async ()
   fireEvent.dragOver(window, dragData);
   fireEvent.drop(window, dragData);
   await waitFor(() => {
-    expect(vi.mocked(toast)).toHaveBeenCalledWith("Upload queued until current dialog closes");
+    expect(vi.mocked(toast)).toHaveBeenCalledWith("Upload queued until the current dialog closes");
   });
 
   await user.click(within(firstDialog).getByRole("button", { name: "Cancel" }));
@@ -694,7 +691,7 @@ it("keeps queued dialog files intact while previous upload request is still in f
   fireEvent.dragOver(window, dragData);
   fireEvent.drop(window, dragData);
   await waitFor(() => {
-    expect(vi.mocked(toast)).toHaveBeenCalledWith("Upload queued until current dialog closes");
+    expect(vi.mocked(toast)).toHaveBeenCalledWith("Upload queued until the current dialog closes");
   });
 
   await user.click(within(firstDialog).getByRole("button", { name: "Start upload" }));
@@ -703,11 +700,11 @@ it("keeps queued dialog files intact while previous upload request is still in f
   });
 
   const queuedDialog = await screen.findByRole("dialog", { name: "Upload files" });
-  expect(within(queuedDialog).getByText(/Selected 1 file\(s\)/)).toBeInTheDocument();
+  expect(within(queuedDialog).getByText(/“queued.txt”/)).toBeInTheDocument();
 
   resolveFirstUpload?.();
   await waitFor(() => {
-    expect(within(queuedDialog).getByText(/Selected 1 file\(s\)/)).toBeInTheDocument();
+    expect(within(queuedDialog).getByText(/“queued.txt”/)).toBeInTheDocument();
   });
 
   await user.click(within(queuedDialog).getByRole("button", { name: "Start upload" }));
@@ -763,7 +760,7 @@ it("refetches spaces after confirming a duplicate upload retry", async () => {
   await user.click(within(spaceOptions).getByRole("option", { name: "Design" }));
   await user.click(within(uploadDialog).getByRole("button", { name: "Start upload" }));
 
-  const duplicateDialog = await screen.findByRole("dialog", { name: "Duplicates detected" });
+  const duplicateDialog = await screen.findByRole("dialog", { name: "Duplicate detected" });
   await user.click(within(duplicateDialog).getByRole("button", { name: "Upload anyway" }));
 
   await waitFor(() => {
@@ -895,7 +892,7 @@ it("unlocks a protected note before loading preview", async () => {
   renderApp();
 
   await screen.findByText("Confidential note");
-  expect(screen.getByText("Protected content - unlock required")).toBeInTheDocument();
+  expect(screen.getByText("Password protected — unlock to view")).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "View note" }));
   const unlockDialog = await screen.findByRole("dialog", { name: "Unlock protected item" });
@@ -1281,7 +1278,7 @@ it("opens picker, assigns a space, and calls updateItem", async () => {
   const picker = screen.getByRole("menu");
   expect(within(picker).getByText("Design")).toBeInTheDocument();
   expect(within(picker).getByText("Engineering")).toBeInTheDocument();
-  expect(within(picker).getByText("Unassigned")).toBeInTheDocument();
+  expect(within(picker).getByText("No space")).toBeInTheDocument();
 
   await user.click(within(picker).getByText("Engineering"));
 
@@ -1306,7 +1303,7 @@ it("unassigns a space via the picker", async () => {
   await user.click(screen.getByRole("button", { name: "Change space" }));
 
   const picker = screen.getByRole("menu");
-  await user.click(within(picker).getByText("Unassigned"));
+  await user.click(within(picker).getByText("No space"));
 
   await waitFor(() => {
     expect(api.updateItem).toHaveBeenCalledWith(1, { spaceId: null });
