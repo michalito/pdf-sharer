@@ -30,6 +30,7 @@ import { useDebouncedValue } from "./lib/useDebouncedValue";
 import { useFullPageDrop } from "./lib/useFullPageDrop";
 import { useTheme } from "./lib/useTheme";
 import { getSettingsSnapshot } from "./lib/useSettings";
+import { copyShareLink } from "./lib/shareLink";
 
 type KindFilter = "all" | ItemKind;
 type StateFilter = "all" | ItemState;
@@ -123,8 +124,8 @@ export default function App() {
       setQueuedDrops((prev) => [...prev, { files, kind }]);
       toast(
         files.length === 1
-          ? "Upload queued until current dialog closes"
-          : `${files.length} files queued until current dialog closes`,
+          ? "Upload queued until the current dialog closes"
+          : `${files.length} files queued until the current dialog closes`,
       );
     },
     onDropError: () => {
@@ -292,7 +293,6 @@ export default function App() {
               ? {
                   ...upload,
                   status: isDuplicate ? "duplicate" : isAborted ? "cancelled" : "error",
-                  progress: isDuplicate ? 50 : upload.progress,
                 }
               : upload,
           ),
@@ -316,8 +316,7 @@ export default function App() {
       force?: boolean,
     ) => {
       if (files.length === 0) return;
-      const label =
-        files.length === 1 ? `Uploading ${files[0].name}` : `Uploading ${files.length} files`;
+      const label = files.length === 1 ? files[0].name : `${files.length} files`;
       const task: UploadTask = { id: uuid(), label, progress: 0, status: "uploading" };
 
       try {
@@ -336,7 +335,7 @@ export default function App() {
             cancelFn: () => {
               setUploads((prev) =>
                 prev.map((upload) =>
-                  upload.id === task.id ? { ...upload, status: "cancelled", progress: 50 } : upload,
+                  upload.id === task.id ? { ...upload, status: "cancelled" } : upload,
                 ),
               );
               toast("Upload cancelled");
@@ -366,7 +365,7 @@ export default function App() {
       const folderName = inferFolderName(files);
       const task: UploadTask = {
         id: uuid(),
-        label: `Uploading folder "${folderName}"`,
+        label: `Folder “${folderName}”`,
         progress: 0,
         status: "uploading",
       };
@@ -387,7 +386,7 @@ export default function App() {
             cancelFn: () => {
               setUploads((prev) =>
                 prev.map((upload) =>
-                  upload.id === task.id ? { ...upload, status: "cancelled", progress: 50 } : upload,
+                  upload.id === task.id ? { ...upload, status: "cancelled" } : upload,
                 ),
               );
               toast("Folder upload cancelled");
@@ -426,16 +425,6 @@ export default function App() {
     },
     [handleUploadFiles, handleUploadFolder],
   );
-
-  const copyLink = useCallback(async (id: number) => {
-    const url = `${window.location.origin}/d/${id}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success("Link copied");
-    } catch {
-      window.prompt("Copy link:", url);
-    }
-  }, []);
 
   const performItemAction = useCallback(
     (item: ItemDto, action: "download" | "link" | "note") => {
@@ -529,12 +518,9 @@ export default function App() {
     dialogs.closeSpacePicker();
   }, [dialogs]);
 
-  const copyLinkForItemsContent = useCallback(
-    (id: number) => {
-      void copyLink(id);
-    },
-    [copyLink],
-  );
+  const copyLinkForItemsContent = useCallback((id: number) => {
+    void copyShareLink(id);
+  }, []);
 
   const goToPreviousPage = useCallback(() => {
     setPage((current) => Math.max(1, current - 1));
@@ -583,6 +569,11 @@ export default function App() {
     [spaces, dialogs],
   );
 
+  const refetchItems = itemsQuery.refetch;
+  const retryItems = useCallback(() => {
+    void refetchItems();
+  }, [refetchItems]);
+
   const itemsErrorMessage =
     itemsQuery.error instanceof Error
       ? itemsQuery.error.message
@@ -629,6 +620,7 @@ export default function App() {
         isLoading={itemsQuery.isLoading}
         isFetching={itemsQuery.isFetching}
         errorMessage={itemsErrorMessage}
+        hasFilters={Boolean(debouncedSearch) || kindFilter !== "all" || spaceFilter !== "all"}
         canDragDrop={canDragDrop}
         reorderPending={mutations.reorderItems.isPending}
         activeDragId={reorder.activeDragId}
@@ -654,6 +646,7 @@ export default function App() {
         onDeleteItem={dialogs.openDeleteItem}
         onPrevPage={goToPreviousPage}
         onNextPage={goToNextPage}
+        onRetry={retryItems}
       />
 
       <AppFooter version={appInfoQuery.data?.version} dialogs={dialogs} />

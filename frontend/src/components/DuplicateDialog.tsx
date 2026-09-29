@@ -1,5 +1,6 @@
 import ConfirmDialog from "./ConfirmDialog";
 import type { DuplicateInfo, DuplicateItemInfo, FileDuplicateInfo } from "../api/items";
+import { itemStateLabel } from "../lib/constants";
 
 function isFileDuplicate(d: DuplicateInfo): d is FileDuplicateInfo {
   return "fileIndex" in d;
@@ -8,7 +9,7 @@ function isFileDuplicate(d: DuplicateInfo): d is FileDuplicateInfo {
 function DuplicateItemSummary({ item }: { item: DuplicateItemInfo }) {
   const parts: string[] = [];
   if (item.spaceName) parts.push(item.spaceName);
-  if (item.state !== "active") parts.push(item.state);
+  if (item.state !== "active") parts.push(itemStateLabel(item.state).toLowerCase());
   const suffix = parts.length > 0 ? ` (${parts.join(", ")})` : "";
 
   return (
@@ -27,21 +28,26 @@ export default function DuplicateDialog(props: {
 }) {
   const { open, duplicates, onConfirm, onCancel } = props;
 
-  const isMultiFile = duplicates.length > 0 && isFileDuplicate(duplicates[0]);
+  const isFileUpload = duplicates.length > 0 && isFileDuplicate(duplicates[0]);
+  const isPlural = duplicates.length > 1;
 
   return (
     <ConfirmDialog
       open={open}
-      title={isMultiFile ? "Duplicates detected" : "Duplicate detected"}
+      title={isPlural ? "Duplicates detected" : "Duplicate detected"}
       confirmLabel="Upload anyway"
       cancelLabel="Cancel"
       onConfirm={onConfirm}
       onCancel={onCancel}
     >
       <div className="mt-3 space-y-2 text-sm text-[var(--app-muted)]">
-        {isMultiFile ? (
+        {isFileUpload ? (
           <>
-            <p>Some files match items that already exist:</p>
+            <p>
+              {isPlural
+                ? "Some files match items that already exist:"
+                : "This file matches an item that already exists:"}
+            </p>
             <ul className="list-inside list-disc space-y-1 break-words">
               {(duplicates as FileDuplicateInfo[]).map((d) => (
                 <li key={d.fileIndex}>

@@ -1,10 +1,9 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Eye, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../ConfirmDialog";
 const MarkdownProse = lazy(() => import("../MarkdownProse"));
-import Select from "../Select";
 import {
   createNote,
   DuplicateContentError,
@@ -12,12 +11,10 @@ import {
   type SpaceDto,
   type TtlPreset,
 } from "../../api/items";
-import { TTL_PRESETS } from "../../lib/format";
+import { PasswordFields, TtlField } from "./ItemOptionsFields";
 import { validateOptionalPassword } from "./password";
 import SpaceCombobox from "./SpaceCombobox";
-
-const dialogFieldClass =
-  "mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
+import { dialogFieldClass, dialogLabelClass } from "./styles";
 
 function countCodePoints(value: string): number {
   return Array.from(value).length;
@@ -48,6 +45,7 @@ export default function NoteDialog({
 }) {
   const queryClient = useQueryClient();
   const wasOpenRef = useRef(false);
+  const noteLabelId = useId();
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [editTab, setEditTab] = useState<"write" | "preview">("write");
@@ -115,8 +113,8 @@ export default function NoteDialog({
     <ConfirmDialog
       open={open}
       title="Save note"
-      description="Write a note and share it with a stable /d/<id> link."
-      confirmLabel={createNoteMutation.isPending ? "Saving..." : "Save note"}
+      description="Write in markdown and share it with a link."
+      confirmLabel={createNoteMutation.isPending ? "Saving…" : "Save note"}
       cancelLabel="Cancel"
       confirmDisabled={
         !trimmedText || noteTextTooLong || createNoteMutation.isPending || isCreatingSpace
@@ -130,7 +128,7 @@ export default function NoteDialog({
         void handleSubmit();
       }}
     >
-      <label className="mt-4 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+      <label className={dialogLabelClass}>
         Title (optional)
         <input
           value={title}
@@ -143,7 +141,10 @@ export default function NoteDialog({
 
       <div className="mt-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
+          <span
+            id={noteLabelId}
+            className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]"
+          >
             Note
           </span>
           <div className="inline-flex overflow-hidden rounded-md border border-[var(--app-border)]">
@@ -154,6 +155,7 @@ export default function NoteDialog({
                   ? "bg-[var(--accent-soft)] text-[var(--accent)]"
                   : "bg-[var(--app-panel)] text-[var(--app-muted)] hover:bg-[var(--app-hover)]"
               }`}
+              aria-pressed={editTab === "write"}
               onClick={() => setEditTab("write")}
             >
               <Pencil className="h-3 w-3" />
@@ -166,6 +168,7 @@ export default function NoteDialog({
                   ? "bg-[var(--accent-soft)] text-[var(--accent)]"
                   : "bg-[var(--app-panel)] text-[var(--app-muted)] hover:bg-[var(--app-hover)]"
               }`}
+              aria-pressed={editTab === "preview"}
               onClick={() => setEditTab("preview")}
             >
               <Eye className="h-3 w-3" />
@@ -184,7 +187,8 @@ export default function NoteDialog({
               e.preventDefault();
               void handleSubmit();
             }}
-            placeholder="Write a note... (supports markdown)"
+            placeholder="Write your note…"
+            aria-labelledby={noteLabelId}
             rows={6}
             aria-invalid={noteTextTooLong}
             className={`${dialogFieldClass} resize-y`}
@@ -193,7 +197,7 @@ export default function NoteDialog({
           <div className="mt-1 min-h-[9.5rem] max-h-[20rem] overflow-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-2">
             {text.trim() ? (
               <Suspense
-                fallback={<p className="text-sm text-[var(--app-muted)]">Loading preview...</p>}
+                fallback={<p className="text-sm text-[var(--app-muted)]">Loading preview…</p>}
               >
                 <MarkdownProse content={text} />
               </Suspense>
@@ -205,20 +209,20 @@ export default function NoteDialog({
 
         <div className="mt-1 flex items-start justify-between gap-3 text-[11px]">
           <p className="text-[var(--app-muted)]">
-            Supports <strong>markdown</strong>: headings, bold, italic, lists, links, code, and
-            tables.
+            Markdown supported: headings, lists, links, code, and tables. Press ⌘/Ctrl + Enter to
+            save.
           </p>
           <p
             className={`shrink-0 whitespace-nowrap ${
-              noteTextTooLong ? "text-red-600 dark:text-red-300" : "text-[var(--app-muted)]"
+              noteTextTooLong ? "text-[var(--danger)]" : "text-[var(--app-muted)]"
             }`}
           >
-            {trimmedTextLength} / {maxNoteTextChars} characters
+            {trimmedTextLength.toLocaleString()} / {maxNoteTextChars.toLocaleString()} characters
           </p>
         </div>
         {noteTextTooLong ? (
-          <p className="mt-1 text-[11px] text-red-600 dark:text-red-300">
-            Note is too long. Maximum length is {maxNoteTextChars} characters.
+          <p className="mt-1 text-[11px] text-[var(--danger)]">
+            Note is too long. Maximum length is {maxNoteTextChars.toLocaleString()} characters.
           </p>
         ) : null}
       </div>
@@ -231,54 +235,14 @@ export default function NoteDialog({
         isCreatingSpace={isCreatingSpace}
       />
 
-      <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-        Auto-delete after (optional)
-        <Select
-          value={ttl}
-          onChange={(value) => setTtl(value as TtlPreset | "")}
-          options={TTL_PRESETS.map((preset) => ({ value: preset.value, label: preset.label }))}
-          placeholder="Never"
-          className={`${dialogFieldClass} mt-1`}
-          aria-label="Auto-delete after"
-        />
-      </label>
+      <TtlField value={ttl} onChange={setTtl} />
 
-      {ttl ? (
-        <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-          This item will be <strong>permanently deleted</strong> after{" "}
-          {TTL_PRESETS.find((preset) => preset.value === ttl)?.label}. This cannot be undone.
-        </div>
-      ) : null}
-
-      <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-        Password (optional)
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="8-128 characters"
-          className={dialogFieldClass}
-          autoComplete="new-password"
-        />
-      </label>
-
-      <label className="mt-3 block text-xs font-medium uppercase tracking-[0.08em] text-[var(--app-muted)]">
-        Confirm password
-        <input
-          type="password"
-          value={passwordConfirm}
-          onChange={(e) => setPasswordConfirm(e.target.value)}
-          placeholder="Repeat password"
-          className={dialogFieldClass}
-          autoComplete="new-password"
-          aria-invalid={
-            password.length > 0 && passwordConfirm.length > 0 && password !== passwordConfirm
-          }
-        />
-      </label>
-      {password.length > 0 && passwordConfirm.length > 0 && password !== passwordConfirm ? (
-        <p className="mt-1 text-xs text-[var(--danger)]">Passwords do not match.</p>
-      ) : null}
+      <PasswordFields
+        password={password}
+        confirm={passwordConfirm}
+        onPasswordChange={setPassword}
+        onConfirmChange={setPasswordConfirm}
+      />
     </ConfirmDialog>
   );
 }

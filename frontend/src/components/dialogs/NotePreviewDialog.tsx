@@ -1,9 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Eye, Pencil } from "lucide-react";
-import toast from "react-hot-toast";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Code, Eye } from "lucide-react";
 import ConfirmDialog from "../ConfirmDialog";
 const MarkdownProse = lazy(() => import("../MarkdownProse"));
 import { formatDateTime } from "../../lib/format";
+import { copyShareLink } from "../../lib/shareLink";
 import { getItem, type ItemDto } from "../../api/items";
 
 export default function NotePreviewDialog({
@@ -32,9 +32,7 @@ export default function NotePreviewDialog({
       setDetail(nextDetail);
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
-      const message = e instanceof Error ? e.message : "Failed to load note";
-      setErrorMessage(message);
-      toast.error(message);
+      setErrorMessage(e instanceof Error ? e.message : "Failed to load note");
     } finally {
       if (requestIdRef.current === requestId) {
         setIsLoading(false);
@@ -69,17 +67,10 @@ export default function NotePreviewDialog({
   }, [loadNote, open]);
 
   const activeItem = detail ?? item;
-  const confirmLabel = useMemo(() => "Copy share link", []);
 
   async function handleCopyLink() {
     if (!activeItem) return;
-    const url = `${window.location.origin}/d/${activeItem.id}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success("Link copied");
-    } catch {
-      window.prompt("Copy link:", url);
-    }
+    await copyShareLink(activeItem.id);
     onClose();
   }
 
@@ -88,7 +79,7 @@ export default function NotePreviewDialog({
       open={open}
       title={activeItem?.name || "Note"}
       description={activeItem ? `Created ${formatDateTime(activeItem.createdAt)}` : undefined}
-      confirmLabel={confirmLabel}
+      confirmLabel="Copy share link"
       cancelLabel="Close"
       size="lg"
       onCancel={onClose}
@@ -110,7 +101,7 @@ export default function NotePreviewDialog({
             </>
           ) : (
             <>
-              <Pencil className="h-3 w-3" />
+              <Code className="h-3 w-3" />
               Source
             </>
           )}
@@ -118,10 +109,10 @@ export default function NotePreviewDialog({
       </div>
       <div className="mt-1 max-h-[45vh] overflow-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-2">
         {isLoading ? (
-          <span className="text-sm text-[var(--app-muted)]">Loading note...</span>
+          <span className="text-sm text-[var(--app-muted)]">Loading note…</span>
         ) : errorMessage ? (
           <div className="flex items-center justify-between gap-3">
-            <span className="text-sm text-rose-700 dark:text-rose-200">{errorMessage}</span>
+            <span className="text-sm text-[var(--danger)]">{errorMessage}</span>
             <button
               type="button"
               onClick={() => {
@@ -133,15 +124,15 @@ export default function NotePreviewDialog({
             </button>
           </div>
         ) : showRaw ? (
-          <pre className="text-sm leading-relaxed whitespace-pre-wrap">
-            {detail?.noteText || "(empty)"}
+          <pre className="font-mono text-[13px] leading-relaxed whitespace-pre-wrap">
+            {detail?.noteText || "This note is empty."}
           </pre>
         ) : detail?.noteText ? (
-          <Suspense fallback={<span className="text-sm text-[var(--app-muted)]">Loading...</span>}>
+          <Suspense fallback={<span className="text-sm text-[var(--app-muted)]">Loading…</span>}>
             <MarkdownProse content={detail.noteText} />
           </Suspense>
         ) : (
-          <span className="text-sm text-[var(--app-muted)]">(empty)</span>
+          <span className="text-sm text-[var(--app-muted)]">This note is empty.</span>
         )}
       </div>
     </ConfirmDialog>

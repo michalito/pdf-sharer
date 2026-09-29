@@ -11,7 +11,7 @@ export function validateOptionalPassword(
 
   if (!password && !confirm) return { ok: true, password: undefined };
   if (password.length < 8 || password.length > 128) {
-    return { ok: false, message: "Password must be 8-128 characters." };
+    return { ok: false, message: "Password must be 8–128 characters." };
   }
   if (password !== confirm) {
     return { ok: false, message: "Password and confirmation must match." };

@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import toast from "react-hot-toast";
+import { pluralize } from "./format";
 import {
   createSpace,
   deleteItem,
@@ -133,7 +134,7 @@ export function useItemMutations({
       onBulkDeleteSuccess?.();
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
-      toast.success(res.deleted === 1 ? "Deleted 1 item" : `Deleted ${res.deleted} items`);
+      toast.success(`Deleted ${pluralize(res.deleted, "item")}`);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Bulk delete failed"),
   });
@@ -172,7 +173,7 @@ export function useItemMutations({
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       toast.success(
         res.unassigned > 0
-          ? `Space deleted, ${res.unassigned} item(s) moved to uncollected`
+          ? `Space deleted. ${pluralize(res.unassigned, "item")} moved to No space.`
           : "Space deleted",
       );
     },

@@ -1,4 +1,10 @@
-import { formatBytes, formatDateTime, formatTimeRemaining, TTL_PRESETS } from "../lib/format";
+import {
+  formatBytes,
+  formatDateTime,
+  formatTimeRemaining,
+  pluralize,
+  TTL_PRESETS,
+} from "../lib/format";
 
 it("formats byte counts across units and invalid values", () => {
   expect(formatBytes(-1)).toBe("-");
@@ -31,4 +37,10 @@ it("formats time remaining in useful buckets", () => {
 
 it("keeps TTL presets ordered from shortest to longest", () => {
   expect(TTL_PRESETS.map((preset) => preset.value)).toEqual(["1h", "6h", "24h", "3d", "7d", "30d"]);
+});
+
+it("pluralizes counts", () => {
+  expect(pluralize(1, "item")).toBe("1 item");
+  expect(pluralize(0, "item")).toBe("0 items");
+  expect(pluralize(3, "entry", "entries")).toBe("3 entries");
 });

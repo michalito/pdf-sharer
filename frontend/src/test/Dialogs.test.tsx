@@ -128,7 +128,7 @@ it("resets link dialog fields to defaults when reopened", async () => {
   const user = userEvent.setup();
   renderWithClient(<LinkDialogHarness />);
 
-  let dialog = await screen.findByRole("dialog", { name: "Save external link" });
+  let dialog = await screen.findByRole("dialog", { name: "Save link" });
   await user.type(
     within(dialog).getByPlaceholderText("https://example.com/docs"),
     "https://example.com/changed",
@@ -142,7 +142,7 @@ it("resets link dialog fields to defaults when reopened", async () => {
   await user.click(screen.getByRole("button", { name: "close" }));
   await user.click(screen.getByRole("button", { name: "reopen" }));
 
-  dialog = await screen.findByRole("dialog", { name: "Save external link" });
+  dialog = await screen.findByRole("dialog", { name: "Save link" });
   expect(within(dialog).getByPlaceholderText("https://example.com/docs")).toHaveValue("");
   expect(within(dialog).getByPlaceholderText("Team docs")).toHaveValue("");
   expect(within(dialog).getByRole("combobox", { name: "Space" })).toHaveValue("Design");
@@ -157,10 +157,7 @@ it("resets note dialog fields and view mode when reopened", async () => {
 
   let dialog = await screen.findByRole("dialog", { name: "Save note" });
   await user.type(within(dialog).getByPlaceholderText("Meeting summary"), "Draft");
-  await user.type(
-    within(dialog).getByPlaceholderText("Write a note... (supports markdown)"),
-    "Temporary note",
-  );
+  await user.type(within(dialog).getByPlaceholderText("Write your note…"), "Temporary note");
   await user.click(within(dialog).getByRole("button", { name: "Preview" }));
   expect(await within(dialog).findByText("Temporary note")).toBeInTheDocument();
   await user.click(within(dialog).getByRole("combobox", { name: "Space" }));
@@ -173,16 +170,12 @@ it("resets note dialog fields and view mode when reopened", async () => {
 
   dialog = await screen.findByRole("dialog", { name: "Save note" });
   expect(within(dialog).getByPlaceholderText("Meeting summary")).toHaveValue("");
-  expect(within(dialog).getByPlaceholderText("Write a note... (supports markdown)")).toHaveValue(
-    "",
-  );
+  expect(within(dialog).getByPlaceholderText("Write your note…")).toHaveValue("");
   expect(within(dialog).getByRole("combobox", { name: "Space" })).toHaveValue("Design");
   expect(within(dialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent(
     "7 days",
   );
-  expect(
-    within(dialog).getByPlaceholderText("Write a note... (supports markdown)"),
-  ).toBeInTheDocument();
+  expect(within(dialog).getByPlaceholderText("Write your note…")).toBeInTheDocument();
   expect(within(dialog).queryByText("Temporary note")).not.toBeInTheDocument();
   expect(within(dialog).getByText("0 / 12 characters")).toBeInTheDocument();
 });
@@ -193,7 +186,7 @@ it("shows note length feedback and blocks oversized note submission", async () =
 
   const dialog = await screen.findByRole("dialog", { name: "Save note" });
   const saveButton = within(dialog).getByRole("button", { name: "Save note" });
-  const textarea = within(dialog).getByPlaceholderText("Write a note... (supports markdown)");
+  const textarea = within(dialog).getByPlaceholderText("Write your note…");
 
   expect(within(dialog).getByText("0 / 12 characters")).toBeInTheDocument();
   expect(saveButton).toBeDisabled();
@@ -216,7 +209,7 @@ it("counts note length using Unicode code points", async () => {
 
   const dialog = await screen.findByRole("dialog", { name: "Save note" });
   const saveButton = within(dialog).getByRole("button", { name: "Save note" });
-  const textarea = within(dialog).getByPlaceholderText("Write a note... (supports markdown)");
+  const textarea = within(dialog).getByPlaceholderText("Write your note…");
 
   await user.type(textarea, "😀".repeat(12));
 
@@ -268,7 +261,7 @@ it("resets upload dialog fields to request defaults when reopened", async () => 
   renderWithClient(<UploadDialogHarness request={request} />);
 
   let dialog = await screen.findByRole("dialog", { name: "Upload files" });
-  await user.type(within(dialog).getByPlaceholderText("8-128 characters"), "password1");
+  await user.type(within(dialog).getByPlaceholderText("8–128 characters"), "password1");
   await user.type(within(dialog).getByPlaceholderText("Repeat password"), "password1");
   await user.click(within(dialog).getByRole("combobox", { name: "Space" }));
   await user.click(await screen.findByRole("option", { name: "Ops" }));
@@ -279,7 +272,7 @@ it("resets upload dialog fields to request defaults when reopened", async () => 
   await user.click(screen.getByRole("button", { name: "reopen" }));
 
   dialog = await screen.findByRole("dialog", { name: "Upload files" });
-  expect(within(dialog).getByPlaceholderText("8-128 characters")).toHaveValue("");
+  expect(within(dialog).getByPlaceholderText("8–128 characters")).toHaveValue("");
   expect(within(dialog).getByPlaceholderText("Repeat password")).toHaveValue("");
   expect(within(dialog).getByRole("combobox", { name: "Space" })).toHaveValue("Design");
   expect(within(dialog).getByRole("combobox", { name: "Auto-delete after" })).toHaveTextContent(
@@ -416,7 +409,7 @@ it("creates and selects a space from the link dialog before saving", async () =>
     />,
   );
 
-  const dialog = await screen.findByRole("dialog", { name: "Save external link" });
+  const dialog = await screen.findByRole("dialog", { name: "Save link" });
   await user.type(
     within(dialog).getByPlaceholderText("https://example.com/docs"),
     "https://example.com/new",
@@ -455,10 +448,7 @@ it("creates and selects a space from the note dialog before saving", async () =>
   );
 
   const dialog = await screen.findByRole("dialog", { name: "Save note" });
-  await user.type(
-    within(dialog).getByPlaceholderText("Write a note... (supports markdown)"),
-    "New note body",
-  );
+  await user.type(within(dialog).getByPlaceholderText("Write your note…"), "New note body");
   const combobox = within(dialog).getByRole("combobox", { name: "Space" });
   await user.click(combobox);
   await user.type(combobox, "Roadmap");

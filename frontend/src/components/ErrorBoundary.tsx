@@ -36,7 +36,7 @@ export default class ErrorBoundary extends Component<Props, State> {
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="pressable mt-5 inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+            className="pressable mt-5 inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent-strong)] focus-ring"
           >
             <RotateCcw className="h-4 w-4" />
             Reload

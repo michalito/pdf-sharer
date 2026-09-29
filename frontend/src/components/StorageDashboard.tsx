@@ -1,23 +1,23 @@
-import { useEffect, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { File as FileIcon, FolderArchive, Link2, MessageSquareText, X } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { HardDrive } from "lucide-react";
 import { fetchStorageOverview } from "../api/items";
 import type { ItemKind, ItemState, SpaceStatsDto, StorageOverviewDto } from "../api/items";
-import { formatBytes } from "../lib/format";
+import { itemStateLabel, itemStateOptions, kindIcons } from "../lib/constants";
+import { formatBytes, pluralize } from "../lib/format";
+import SidePanel, { PanelSectionLabel } from "./SidePanel";
 
-const kindMeta: Record<ItemKind, { label: string; icon: LucideIcon }> = {
-  file: { label: "Files", icon: FileIcon },
-  folder: { label: "Folders", icon: FolderArchive },
-  link: { label: "Links", icon: Link2 },
-  note: { label: "Notes", icon: MessageSquareText },
+const kindLabels: Record<ItemKind, string> = {
+  file: "Files",
+  folder: "Folders",
+  link: "Links",
+  note: "Notes",
 };
 
-const stateMeta: Record<ItemState, { label: string; color: string }> = {
-  active: { label: "Active", color: "var(--accent)" },
-  done: { label: "Done", color: "var(--success)" },
-  archived: { label: "Archived", color: "var(--app-muted)" },
-  ready_to_delete: { label: "Ready to delete", color: "var(--danger)" },
+const stateColors: Record<ItemState, string> = {
+  active: "var(--accent)",
+  done: "var(--success)",
+  archived: "var(--app-muted)",
+  ready_to_delete: "var(--danger)",
 };
 
 function Skeleton({ className = "" }: { className?: string }) {
@@ -26,8 +26,6 @@ function Skeleton({ className = "" }: { className?: string }) {
 
 export default function StorageDashboard(props: { open: boolean; onClose: () => void }) {
   const { open, onClose } = props;
-  const titleId = useId();
-  const descriptionId = useId();
 
   const storageQuery = useQuery({
     queryKey: ["storage"],
@@ -36,110 +34,39 @@ export default function StorageDashboard(props: { open: boolean; onClose: () => 
     enabled: open,
   });
 
-  useEffect(() => {
-    if (!open) return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   const data = storageQuery.data;
 
   return (
-    <div className="fixed inset-0 z-50">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/40"
-        aria-label="Close storage panel"
-        onClick={onClose}
-      />
-
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-        className="dialog-pop absolute right-0 top-0 h-full w-full max-w-md border-l border-[var(--app-border)]/55 bg-[var(--app-panel-strong)] shadow-2xl"
-      >
-        <div className="flex h-full flex-col">
-          {/* Header */}
-          <div className="border-b border-[var(--app-border)]/55 p-5 pb-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 id={titleId} className="font-display text-xl font-semibold">
-                  Storage
-                </h2>
-                <div
-                  id={descriptionId}
-                  className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--app-muted)]"
-                >
-                  Disk usage & item breakdown
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="pressable inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)]"
-                aria-label="Close storage panel"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Scrollable body */}
-          <div className="flex-1 space-y-5 overflow-y-auto p-5">
-            {storageQuery.isLoading ? (
-              <LoadingSkeleton />
-            ) : storageQuery.isError ? (
-              <ErrorState onRetry={() => void storageQuery.refetch()} />
-            ) : data ? (
-              <DashboardContent data={data} />
-            ) : null}
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between border-t border-[var(--app-border)]/55 px-5 py-3">
-            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
-              sa&iacute;ta &middot; storage overview
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="pressable inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)] px-3 text-sm font-medium text-[var(--app-text)] transition-colors hover:bg-[var(--app-hover)]"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </aside>
-    </div>
+    <SidePanel
+      open={open}
+      onClose={onClose}
+      title="Storage"
+      subtitle="Disk usage & item breakdown"
+      icon={<HardDrive className="h-5 w-5 text-[var(--app-muted)]" />}
+      closeLabel="Close storage panel"
+      footerLabel="saíta · storage overview"
+    >
+      {storageQuery.isLoading ? (
+        <LoadingSkeleton />
+      ) : storageQuery.isError ? (
+        <ErrorState onRetry={() => void storageQuery.refetch()} />
+      ) : data ? (
+        <DashboardContent data={data} />
+      ) : null}
+    </SidePanel>
   );
 }
 
 function DashboardContent({ data }: { data: StorageOverviewDto }) {
   const { disk, items, spaceStats, largestItems } = data;
   const totalCount = items.totalCount;
+  const namedSpaceCount = spaceStats.filter((ss) => ss.spaceId !== null).length;
 
   return (
     <>
       {/* Disk usage */}
       <section>
-        <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
-          Disk usage
-        </div>
+        <PanelSectionLabel>Disk usage</PanelSectionLabel>
         {disk ? (
           <div className="mt-3 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
             <DiskBar disk={disk} trackedBytes={items.totalSizeBytes} />
@@ -153,13 +80,14 @@ function DashboardContent({ data }: { data: StorageOverviewDto }) {
 
       {/* Item counts by kind */}
       <section>
-        <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
+        <PanelSectionLabel>
           Items by kind
           <span className="ml-2 text-[var(--app-text)]">{totalCount}</span>
-        </div>
+        </PanelSectionLabel>
         <div className="mt-3 grid grid-cols-2 gap-2.5">
-          {(Object.keys(kindMeta) as ItemKind[]).map((kind) => {
-            const { label, icon: Icon } = kindMeta[kind];
+          {(Object.keys(kindLabels) as ItemKind[]).map((kind) => {
+            const label = kindLabels[kind];
+            const Icon = kindIcons[kind];
             const count = items.countByKind[kind];
             const size = items.sizeByKind[kind];
             return (
@@ -185,9 +113,7 @@ function DashboardContent({ data }: { data: StorageOverviewDto }) {
 
       {/* State distribution */}
       <section>
-        <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
-          Items by status
-        </div>
+        <PanelSectionLabel>Items by status</PanelSectionLabel>
         <div className="mt-3 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
           <StateBar
             counts={items.countByState}
@@ -199,14 +125,14 @@ function DashboardContent({ data }: { data: StorageOverviewDto }) {
 
       {/* Space distribution */}
       <section>
-        <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
+        <PanelSectionLabel>
           Items by space
-          {spaceStats.length > 0 && (
+          {namedSpaceCount > 0 && (
             <span className="ml-2 text-[var(--app-text)]">
-              {spaceStats.length} space{spaceStats.length !== 1 ? "s" : ""}
+              {pluralize(namedSpaceCount, "space")}
             </span>
           )}
-        </div>
+        </PanelSectionLabel>
         <div className="mt-3 rounded-lg border border-[var(--app-border)]/35 bg-[var(--app-panel)]/20 p-4">
           <SpaceDistribution spaceStats={spaceStats} totalSize={items.totalSizeBytes} />
         </div>
@@ -215,14 +141,10 @@ function DashboardContent({ data }: { data: StorageOverviewDto }) {
       {/* Largest items */}
       {largestItems.length > 0 && (
         <section>
-          <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--app-muted)]">
-            Largest items
-          </div>
+          <PanelSectionLabel>Largest items</PanelSectionLabel>
           <div className="mt-3 space-y-1">
             {largestItems.map((item) => {
-              const meta = kindMeta[item.kind];
-              const Icon = meta?.icon ?? FileIcon;
-              const stateColor = stateMeta[item.state]?.color ?? "var(--app-muted)";
+              const Icon = kindIcons[item.kind];
               return (
                 <div
                   key={item.id}
@@ -237,8 +159,8 @@ function DashboardContent({ data }: { data: StorageOverviewDto }) {
                   )}
                   <span
                     className="h-2 w-2 shrink-0 rounded-[2px]"
-                    style={{ backgroundColor: stateColor }}
-                    title={stateMeta[item.state]?.label}
+                    style={{ backgroundColor: stateColors[item.state] }}
+                    title={itemStateLabel(item.state)}
                   />
                   <span className="shrink-0 font-mono text-[11px] text-[var(--app-muted)]">
                     {formatBytes(item.sizeBytes)}
@@ -308,14 +230,12 @@ function StateBar({
   sizes: Record<ItemState, number>;
   totalSize: number;
 }) {
-  const states = Object.keys(stateMeta) as ItemState[];
-
   return (
     <div>
       {/* Bar — sized by bytes */}
       {totalSize > 0 ? (
         <div className="flex h-5 w-full overflow-hidden rounded-md">
-          {states.map((state) => {
+          {itemStateOptions.map(({ value: state, label }) => {
             const size = sizes[state];
             if (size === 0) return null;
             const pct = (size / totalSize) * 100;
@@ -325,10 +245,10 @@ function StateBar({
                 className="first:rounded-l-md last:rounded-r-md"
                 style={{
                   width: `${pct}%`,
-                  backgroundColor: stateMeta[state].color,
-                  minWidth: size > 0 ? "4px" : undefined,
+                  backgroundColor: stateColors[state],
+                  minWidth: "4px",
                 }}
-                title={`${stateMeta[state].label}: ${formatBytes(size)}`}
+                title={`${label}: ${formatBytes(size)}`}
               />
             );
           })}
@@ -339,13 +259,13 @@ function StateBar({
 
       {/* Legend — size primary, count in parentheses */}
       <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-        {states.map((state) => (
+        {itemStateOptions.map(({ value: state, label }) => (
           <div key={state} className="flex items-center gap-1.5">
             <span
               className="h-2 w-2 rounded-[2px]"
-              style={{ backgroundColor: stateMeta[state].color }}
+              style={{ backgroundColor: stateColors[state] }}
             />
-            <span className="text-[var(--app-muted)]">{stateMeta[state].label}</span>
+            <span className="text-[var(--app-muted)]">{label}</span>
             <span className="font-mono font-medium">{formatBytes(sizes[state])}</span>
             <span className="font-mono text-[var(--app-muted)]">({counts[state]})</span>
           </div>
@@ -365,6 +285,10 @@ const spacePalette = [
   "#3b82f6",
   "#ec4899",
 ];
+
+function spaceLabel(ss: SpaceStatsDto): string {
+  return ss.spaceId === null ? "No space" : ss.spaceName;
+}
 
 function SpaceDistribution({
   spaceStats,
@@ -392,9 +316,9 @@ function SpaceDistribution({
                 style={{
                   width: `${pct}%`,
                   backgroundColor: spacePalette[i % spacePalette.length],
-                  minWidth: ss.sizeBytes > 0 ? "4px" : undefined,
+                  minWidth: "4px",
                 }}
-                title={`${ss.spaceName}: ${formatBytes(ss.sizeBytes)}`}
+                title={`${spaceLabel(ss)}: ${formatBytes(ss.sizeBytes)}`}
               />
             );
           })}
@@ -413,7 +337,7 @@ function SpaceDistribution({
                 backgroundColor: spacePalette[i % spacePalette.length],
               }}
             />
-            <span className="text-[var(--app-muted)]">{ss.spaceName}</span>
+            <span className="text-[var(--app-muted)]">{spaceLabel(ss)}</span>
             <span className="font-mono font-medium">{formatBytes(ss.sizeBytes)}</span>
             <span className="font-mono text-[var(--app-muted)]">({ss.itemCount})</span>
           </div>

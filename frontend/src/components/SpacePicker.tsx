@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { Check } from "lucide-react";
 import type { SpaceDto } from "../api/items";
 import { usePopover } from "../lib/usePopover";
 
@@ -24,7 +24,7 @@ export default function SpacePicker({
   });
 
   const itemClass =
-    "flex w-full items-center rounded-md px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none focus-visible:bg-[var(--app-hover)]";
+    "flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none focus-visible:bg-[var(--app-hover)]";
 
   return createPortal(
     <div
@@ -49,8 +49,8 @@ export default function SpacePicker({
           onClose();
         }}
       >
-        <X className="h-3 w-3 opacity-50" />
-        Unassigned
+        No space
+        {currentSpaceId === null ? <Check className="h-3 w-3 shrink-0" /> : null}
       </button>
 
       {spaces.length > 0 && <div className="my-0.5 h-px bg-[var(--app-border)]" />}
@@ -73,7 +73,8 @@ export default function SpacePicker({
               onClose();
             }}
           >
-            {s.name}
+            <span className="truncate">{s.name}</span>
+            {isSelected ? <Check className="h-3 w-3 shrink-0" /> : null}
           </button>
         );
       })}

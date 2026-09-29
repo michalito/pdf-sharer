@@ -4,7 +4,7 @@ import { ChevronDown, Loader2, Plus, X } from "lucide-react";
 import type { SpaceDto } from "../../api/items";
 
 const triggerClass =
-  "w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] py-2 pl-3 pr-14 text-sm text-[var(--app-text)] outline-none transition-colors placeholder:text-[var(--app-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
+  "w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-strong)] py-2 pl-3 pr-14 text-sm text-[var(--app-text)] outline-none transition-colors placeholder:text-[var(--app-muted)] focus-ring";
 
 type Option =
   | { kind: "none"; id: string }
@@ -270,7 +270,7 @@ export default function SpaceCombobox({
             }}
             aria-label="Clear space selection"
             title="Clear space"
-            className="absolute right-9 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--app-muted)] transition-colors hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+            className="absolute right-9 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--app-muted)] transition-colors hover:bg-[var(--app-hover)] hover:text-[var(--app-text)] focus-ring"
           >
             <X className="h-3.5 w-3.5" />
           </button>

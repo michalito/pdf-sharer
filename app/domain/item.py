@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 from app import db
 from app.constants import DEFAULT_NOTE_EXCERPT_LENGTH
+from app.utils.markdown import markdown_to_plain_text
 
 
 class ItemKind(str, Enum):
@@ -169,7 +170,8 @@ class Item(db.Model):
         if not isinstance(note_text, str):
             return None
 
-        compact = " ".join(note_text.split()).strip()
+        # Only the head of the note can reach the excerpt; skip rendering the rest.
+        compact = markdown_to_plain_text(note_text, max_source_chars=max(max_chars * 8, 2000))
         if not compact:
             return None
 
