@@ -67,19 +67,23 @@ npm --prefix frontend run build
 - `./deploy.sh --name <instance>` remains available as an explicit override.
 - `./deploy.sh dev` auto-selects free backend/frontend ports for derived/named instances when the worktree `.env` does not already pin them, then saves them into that worktree’s `.env`.
 - `./deploy.sh logs` can still retrieve logs for the scoped project after the `web` container has exited, as long as the Compose container still exists.
+- Helper commands inspect the container's Compose config label to preserve its production/development mode; `rebuild` keeps that mode.
+- Migrations run once in the container entrypoint. Dev/prod startup and rebuild wait for backend health and exit nonzero on failure; dev seeds only after the backend is healthy.
 - Public share links are served at `/d/<id>` and resolve by kind:
   - file/folder: direct download
   - link: HTTP redirect to target URL
   - note: rendered note page
   - protected item: password prompt first (session unlock)
-- Search behavior (`q` on `GET /api/items`) matches item names and unprotected note body text.
+- Search behavior (`q` on `GET /api/items`) matches literal substrings in item names and unprotected note body text; `%`, `_`, and backslashes are literal, including during bulk deletion.
 - Note payload shape:
   - `GET /api/items` returns note summaries (`noteExcerpt`)
   - `GET /api/items/<id>` returns full `noteText` (and `noteExcerpt`)
 - Deletion workflow is strict: `DELETE /api/items/<id>` only works when item state is `ready_to_delete`.
 - Bulk cleanup exists at `DELETE /api/items/ready-to-delete`.
 - Expired TTL cleanup is operationally scheduled via `flask expire-items` / `./deploy.sh expire-items`; requests do not perform background cleanup.
-- Folder uploads are zipped server-side with zip path sanitization (`app/utils/zip_utils.py`).
+- `prune-orphans` takes an exclusive upload-directory lock; uploads hold shared locks until their database commit, preventing cleanup from deleting in-flight uploads.
+- SQLite foreign keys are enforced on application connections. Item and space IDs use AUTOINCREMENT to prevent future ID reuse; migration `0012` repairs existing dangling references.
+- Folder uploads are zipped server-side with zip path sanitization (`app/utils/zip_utils.py`) and ZIP64 support for large entries.
 - Every request gets `X-Request-ID` (incoming value reused if provided).
 - `GET /api/health` returns `{"ok": true, "version": "<app-version>", "limits": {"noteTextMaxChars": <max-note-length>}}`.
 - Spaces are organizational only. `space` filters accept a positive space ID or `none`; multipart upload uses `space_id`, while JSON APIs use `spaceId`.

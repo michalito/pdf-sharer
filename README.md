@@ -54,6 +54,8 @@ When `deploy.sh` runs inside a non-primary git worktree, it automatically derive
 
 ## Folder uploads
 
+Folder uploads stream ZIP64 entries when necessary, so individual files near the upload limit remain supported. Requests exceeding `MAX_CONTENT_LENGTH` return HTTP 413.
+
 Folder uploads are supported via `webkitdirectory` (Chrome/Edge). The browser uploads the folder contents + relative paths; the server streams them into a zip archive and stores it as a single downloadable item.
 
 ## Environment Variables
@@ -111,13 +113,15 @@ Named helper commands target only that instance:
 ./deploy.sh cleanup volumes --name kyoto
 ```
 
+Helper commands detect the running container's production/development configuration, and `rebuild` preserves that mode. Migrations run in the container entrypoint; startup and rebuild wait for backend health and exit with an error if it fails. Development sample data is seeded after the backend becomes healthy.
+
 ## API
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/health` | Health check (`{"ok": true, "version": "<app-version>", "limits": {"noteTextMaxChars": 100000}}`) |
 | `GET` | `/api/storage` | Storage overview (`{disk, items: {totalCount, totalSizeBytes, countByKind, sizeByKind, countByState, sizeByState}, spaceStats: [{spaceId, spaceName, itemCount, sizeBytes}], largestItems}`) |
-| `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&space=<id>\|none&protected=true\|false&sort=name\|size\|created\|modified\|manual&order=asc\|desc&page=1&per_page=50`; `q` matches names and unprotected note body text; note items include `noteExcerpt`, not full `noteText`; includes `contentHash`; default sort: `created` desc) |
+| `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&space=<id>\|none&protected=true\|false&sort=name\|size\|created\|modified\|manual&order=asc\|desc&page=1&per_page=50`; `q` is a literal substring search over names and unprotected note body text (`%` and `_` are literal characters); note items include `noteExcerpt`, not full `noteText`; includes `contentHash`; default sort: `created` desc) |
 | `POST` | `/api/items/files` | Upload files (multipart/form-data, field `files` repeatable; optional `password`, `space_id`, `ttl`, `force`; on duplicate returns `409` with `{code:"DUPLICATE_CONTENT"}` and includes `duplicates:[...]` only when no protected existing item is involved) |
 | `POST` | `/api/items/folder` | Upload a folder (multipart: `files` + `paths` repeatable; optional `password`, `space_id`, `ttl`, `force`; on duplicate returns `409` with `{code:"DUPLICATE_CONTENT"}` and includes `duplicates:[...]` only when no protected existing item is involved) |
 | `POST` | `/api/items/link` | Save a URL (JSON: `{"url":"https://...","name?":"optional label","password?":"optional password","spaceId?":1,"ttl?":"1h\|6h\|24h\|3d\|7d\|30d","force?":true}`; on duplicate returns `409` with `{code:"DUPLICATE_CONTENT"}` and includes `duplicates:[...]` only when no protected existing item is involved) |
@@ -142,7 +146,7 @@ Duplicate detection is content-hash based across all item kinds (file/folder/lin
 
 ## Maintenance
 
-- `./deploy.sh prune-orphans --dry-run` previews upload files that are no longer referenced by the DB.
+- `./deploy.sh prune-orphans --dry-run` previews upload files that are no longer referenced by the DB. Orphan pruning waits for uploads to commit before inspecting files; uploads can still run concurrently with each other.
 - `./deploy.sh expire-items --dry-run` previews expired TTL items without deleting them.
 - In production, schedule `./deploy.sh expire-items` from cron/systemd/your container scheduler instead of relying on request traffic for cleanup.
 
@@ -155,6 +159,10 @@ Create and push the next semantic version tag with:
 ```
 
 The script uses the latest reachable git tag on the current branch as its base version, asks whether to bump `major`, `minor`, or `patch`, then creates and pushes an annotated `vX.Y.Z` tag to `origin`. Pushing that tag triggers the existing GitHub Actions image/release workflow.
+
+## Database integrity
+
+SQLite foreign keys are enforced on application connections. Item and space IDs are no longer reused after deletion, keeping share URLs and space selections tied to their original resources. Migration `0012` preserves existing rows and indexes, unassigns historical missing-space references, and removes orphaned unlock-attempt records. It cannot recover IDs of items deleted before this migration. Relative SQLite database paths are resolved under Flask’s instance directory.
 
 ## Upgrading from the old PDF-only app
 

@@ -221,10 +221,11 @@ is_port_available() {
 find_available_port() {
     local start_port="$1"
     local label="$2"
+    local reserved_port="${3:-}"
     local port="$start_port"
 
     while (( port <= 65535 )); do
-        if is_port_available "$port"; then
+        if [[ "$port" != "$reserved_port" ]] && is_port_available "$port"; then
             echo "$port"
             return 0
         fi
@@ -276,7 +277,7 @@ assign_named_dev_ports() {
 
     if [[ -z "${FRONTEND_PORT:-}" ]]; then
         export FRONTEND_PORT
-        FRONTEND_PORT=$(find_available_port "$DEFAULT_NAMED_FRONTEND_PORT" "frontend")
+        FRONTEND_PORT=$(find_available_port "$DEFAULT_NAMED_FRONTEND_PORT" "frontend" "$(effective_host_port)")
         AUTO_ASSIGNED_FRONTEND_PORT=1
     fi
 }
@@ -364,15 +365,38 @@ wait_for_health() {
 
 is_container_running() {
     local compose_file="${1:-docker-compose.yaml}"
+    local container_id
 
-    compose "$compose_file" ps --quiet web 2>/dev/null | grep -q .
+    container_id=$(get_service_container_id "$compose_file" web)
+    [[ -n "$container_id" ]] && container_uses_compose_file "$container_id" "$compose_file"
 }
 
 has_service_container() {
     local compose_file="${1:-docker-compose.yaml}"
     local service="${2:-web}"
+    local container_id
 
-    compose "$compose_file" ps --all --quiet "$service" 2>/dev/null | grep -q .
+    container_id=$(compose "$compose_file" ps --all --quiet "$service" 2>/dev/null | head -n 1)
+    [[ -n "$container_id" ]] && container_uses_compose_file "$container_id" "$compose_file"
+}
+
+container_uses_compose_file() {
+    local container_id="$1"
+    local compose_file="$2"
+    local config_files
+    local config_path
+    local -a config_paths
+
+    # Compose ps scopes by project/service, so it also finds a web container
+    # started with the other mode's file. Inspect its actual source config.
+    config_files=$(docker inspect --format='{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$container_id" 2>/dev/null) || return 1
+    IFS=',' read -r -a config_paths <<< "$config_files"
+    for config_path in "${config_paths[@]}"; do
+        if [[ "${config_path##*/}" == "$compose_file" ]]; then
+            return 0
+        fi
+    done
+    return 1
 }
 
 get_running_compose_file() {
@@ -466,10 +490,9 @@ cmd_dev() {
             compose docker-compose.dev.yaml build
             compose docker-compose.dev.yaml up -d
 
-            # Run migrations.
-            info "Running database migrations..."
-            sleep 2
-            compose docker-compose.dev.yaml exec web flask db upgrade
+            # The entrypoint finishes migrations before starting the server.
+            info "Waiting for application to be healthy..."
+            wait_for_health 60 docker-compose.dev.yaml || die "Application failed to become healthy. Check logs with: ./deploy.sh logs$(selected_instance_flag)"
 
             # Seed sample data (idempotent — skips if data already exists).
             compose docker-compose.dev.yaml exec web flask seed
@@ -526,7 +549,7 @@ cmd_prod() {
                 echo ""
                 cmd_status
             else
-                warn "Health check timed out. Check logs with: ./deploy.sh logs$(selected_instance_flag)"
+                die "Application failed to become healthy. Check logs with: ./deploy.sh logs$(selected_instance_flag)"
             fi
             ;;
         down|stop)
@@ -542,7 +565,7 @@ cmd_prod() {
             if wait_for_health 60 docker-compose.yaml; then
                 success "Containers restarted"
             else
-                warn "Health check timed out after restart"
+                die "Application failed to become healthy after restart"
             fi
             ;;
         *)
@@ -586,17 +609,10 @@ cmd_rebuild() {
     compose "$compose_file" build --no-cache
     compose "$compose_file" up -d
 
+    wait_for_health 60 "$compose_file" || die "Application failed to become healthy. Check logs with: ./deploy.sh logs$(selected_instance_flag)"
+    success "Rebuild complete!"
     if [[ "$compose_file" == "docker-compose.yaml" ]]; then
-        if wait_for_health 60 "$compose_file"; then
-            success "Rebuild complete!"
-            cmd_status
-        else
-            warn "Health check timed out. Check logs with: ./deploy.sh logs$(selected_instance_flag)"
-        fi
-    else
-        sleep 2
-        compose "$compose_file" exec web flask db upgrade
-        success "Rebuild complete!"
+        cmd_status
     fi
 }
 
@@ -842,7 +858,8 @@ Notes:
   - In non-primary git worktrees, the instance name defaults to the worktree directory name
   - Derived/named dev instances auto-select free backend/frontend ports when .env and flags do not provide them
   - Development mode mounts local code for hot-reloading
-  - Migrations run automatically on container startup (production)
+  - Migrations run automatically on container startup in both modes
+  - Startup and rebuild wait for backend health and fail if it is unhealthy
 EOF
 }
 
