@@ -2,7 +2,7 @@
 
 Detailed architecture and behavioral reference for this repository. Auto-loaded by Claude Code (claude.ai/code) from the project root, and useful to any human contributor who wants the deep-dive view. For quick-start commands and the contributor workflow, see [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
-Last verified against code: 2026-06-01.
+Last verified against code: 2026-10-03.
 
 ## Project Snapshot
 
@@ -109,6 +109,7 @@ app/
   utils/markdown.py               # Markdown→HTML via mistune (strikethrough, tables, task lists); markdown_to_plain_text() for excerpts
   utils/hashing.py                # SHA-256 content hashing for duplicate detection
   utils/content_hash_lock.py      # Per-content-hash file locks serializing concurrent dedup-and-create
+  utils/upload_lock.py           # Shared upload / exclusive orphan-prune directory locks
   utils/validation.py             # validate_reorder_ids() — exact-permutation check shared by reorder endpoints
   cli.py                          # flask prune-orphans, flask expire-items commands
 ```
@@ -119,6 +120,8 @@ Key patterns:
 - **Presenter layer**: `item_presenter.present_item_for_api()` wraps `Item.to_dto()` and applies access-policy masking — protected locked items hide `linkUrl`/`noteText`/`noteExcerpt` and expose `isPasswordProtected` + `isPasswordUnlocked`.
 - **meta_json column**: Links store `{"url": "..."}`, notes store `{"text": "..."}`, folders store `{"file_count": N, "top_level_dir": "..."}`.
 - **Session unlocks**: Per-item unlock state is tracked in signed Flask session cookies (`app/services/item_access.py`).
+- **Database integrity**: Runtime SQLite connections enforce foreign keys. Item and space IDs use SQLite AUTOINCREMENT; migration `0012` rebuilds those tables, preserves rows/indexes and repairs historical dangling references. Alembic temporarily disables enforcement on its own connection during table replacement to preserve child records. Relative SQLite paths resolve under Flask’s instance directory.
+- **Upload lifecycle**: Shared directory locks cover file/ZIP creation through commit; orphan pruning holds an exclusive directory lock. Failed uploads remove staged content. ZIP entry sizes are known before streaming so ZIP64 is enabled when needed.
 - **Item expiration**: Optional `expires_at` column. Expired items are filtered from all queries immediately and are removed by the `flask expire-items` / `./deploy.sh expire-items` maintenance command.
 - **Item position**: Optional `position` column for manual (drag-and-drop) ordering. New items get `max(position)+1`. `GET /api/items/order` can be scoped by space, but `PUT /api/items/reorder` requires a global exact permutation of all active non-expired item IDs.
 
@@ -177,19 +180,20 @@ Spaces are named organizational groupings for items (one-to-many, optional). The
 Note payload behavior:
 - List endpoint (`GET /api/items`) returns note summaries via `noteExcerpt` (markdown flattened to plain text)
 - Detail endpoint (`GET /api/items/<id>`) returns full note body in `noteText` (and includes `noteExcerpt`)
-- Search query `q` matches item names and unprotected note body text (protected notes match by title only)
+- Search query `q` matches literal substrings in item names and unprotected note body text (protected notes match by title only); wildcard characters are escaped for both listing and bulk deletion.
 
 ## Important Behavioral Details
 
 - Stored filenames are UUID-based (`<uuid><ext>` for files, `<uuid>.zip` for folder uploads).
 - Folder upload zips are created server-side with zip-path sanitization and de-duplication.
-- Delete behavior is intentionally two-step (`PATCH` to `ready_to_delete`, then `DELETE`).
+- Delete behavior is intentionally two-step (`PATCH` to `ready_to_delete`, then `DELETE`). Deletion rechecks eligibility in SQL, so concurrent restores are retained. Bulk deletion uses bounded batches and avoids loading note bodies.
 - `entrypoint.sh` runs migrations on every container start (zero-touch schema updates).
+- `deploy.sh` waits for backend health after dev/prod startup and rebuild, and exits nonzero if health fails. Development seeding happens only after startup migrations finish. Helper commands select the mode from the container's Compose config label, so rebuilding production keeps the production configuration.
 - Migration files use manual prefixes (`0001_`, `0002_`) instead of Alembic hex IDs.
 - Service validation limits: display name 255 chars, link URL 2048, note title 120, note text configurable via `MAX_NOTE_TEXT_LENGTH` (default 100000), space name 120.
 - **Item expiration (TTL)**: Items can optionally have an `expires_at` timestamp set at creation time from preset durations (`1h`, `6h`, `24h`, `3d`, `7d`, `30d`). Expired items are permanently deleted (DB row + disk file). Two-layer approach: (1) expired items are filtered from all queries immediately, (2) scheduled maintenance runs `flask expire-items` / `./deploy.sh expire-items` (with `--dry-run`, `--limit`). TTL is immutable after creation.
 - **Content-hash duplicate detection**: Files, folder zips, links, and notes get a SHA-256 `content_hash` (`app/utils/hashing.py`; exposed as `contentHash` in the item DTO). On create, content already stored is rejected with `DuplicateDetectedError` (HTTP 409, payload lists the existing duplicates) unless `force=true` is passed. TTL'd items (`expires_at` set) skip the dedup check. Concurrent create requests sharing a hash are serialized by per-hash file locks (`app/utils/content_hash_lock.py`).
-- **Unlock throttling**: `POST /api/items/<id>/unlock` is rate-limited per `(client_ip, item_id)` by a DB-backed throttle (`app/services/unlock_throttle.py`, `unlock_attempts` table). Defaults (`app/constants.py`): 5 attempts per 60s window, then a 60s cooldown; exceeding the limit raises `RateLimitError` (HTTP 429).
+- **Unlock throttling**: `POST /api/items/<id>/unlock` is rate-limited per `(client_ip, item_id)` by a DB-backed throttle (`app/services/unlock_throttle.py`, `unlock_attempts` table). Defaults (`app/constants.py`): 5 attempts per 60s window, then a 60s cooldown; exceeding the limit raises `RateLimitError` (HTTP 429). API and public unlocks share a lock across admission, password verification, and recording. Locks use bounded stripes on the upload volume, with periodic bounded stale-row cleanup coordinated against active attempts.
 
 ## Testing
 

@@ -481,23 +481,24 @@ def unlock_item(item_id: int) -> tuple[str, int]:
 
     throttle = _get_throttle()
     client_ip = _get_client_ip()
-    allowed, retry_after = throttle.check(client_ip, item.id)
-    if not allowed:
-        raise RateLimitError(
-            f"Too many unlock attempts. Try again in {int(retry_after)} seconds.",
-            retry_after=retry_after,
-        )
+    with throttle.serialized_attempt(client_ip, item.id):
+        allowed, retry_after = throttle.check(client_ip, item.id)
+        if not allowed:
+            raise RateLimitError(
+                f"Too many unlock attempts. Try again in {int(retry_after)} seconds.",
+                retry_after=retry_after,
+            )
 
-    data = get_json_body()
-    password_raw = data.get("password")
-    if not isinstance(password_raw, str):
-        raise ValidationError("Missing 'password' field in request body")
+        data = get_json_body()
+        password_raw = data.get("password")
+        if not isinstance(password_raw, str):
+            raise ValidationError("Missing 'password' field in request body")
 
-    if not service.verify_item_password(item, password_raw):
-        throttle.record_failure(client_ip, item.id)
-        raise AuthenticationError("Invalid password")
+        if not service.verify_item_password(item, password_raw):
+            throttle.record_failure(client_ip, item.id)
+            raise AuthenticationError("Invalid password")
 
-    throttle.record_success(client_ip, item.id)
+        throttle.record_success(client_ip, item.id)
     mark_item_unlocked(item)
     return "", 204
 

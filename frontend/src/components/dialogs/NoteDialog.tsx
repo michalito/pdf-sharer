@@ -94,6 +94,7 @@ export default function NoteDialog({
       });
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      await queryClient.invalidateQueries({ queryKey: ["storage"] });
       toast.success("Note saved");
       onSuccess();
     } catch (e) {

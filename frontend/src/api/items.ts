@@ -169,6 +169,7 @@ async function apiJson<T>(url: string, options?: RequestInit): Promise<T> {
 
 export async function listItems(
   params: {
+    // Literal substring, including %, _, and backslashes.
     q?: string;
     kind?: ItemKind;
     state?: ItemState;

@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+import fcntl
+import hashlib
 import json
+import os
+from pathlib import Path
 import time
 
+from flask import current_app
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 
@@ -27,6 +33,39 @@ class UnlockThrottle:
         self._window_seconds = window_seconds
         self._cooldown_seconds = cooldown_seconds
         self._time = time_func
+        self._next_cleanup_at = 0.0
+
+    @contextmanager
+    def _lock_state_directory(self, *, exclusive: bool):
+        lock_root = Path(current_app.config["UPLOAD_FOLDER"]) / ".unlock-throttle-locks"
+        lock_root.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(lock_root, os.O_RDONLY)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+            yield lock_root
+        finally:
+            os.close(descriptor)
+
+    @contextmanager
+    def serialized_attempt(self, client_ip: str, item_id: int):
+        """Keep admission, password verification, and recording under one lock.
+
+        Fixed stripes bound the lock-file count; the shared upload volume also
+        coordinates independent workers and containers using the same database.
+        """
+        now = self._time()
+        if now >= self._next_cleanup_at:
+            self._next_cleanup_at = now + 60.0
+            self.cleanup(limit=500)
+        key = f"{client_ip}:{item_id}".encode()
+        stripe = hashlib.sha256(key).digest()[0]
+        with self._lock_state_directory(exclusive=False) as lock_root:
+            with (lock_root / f"{stripe:02x}.lock").open("a+b") as handle:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     def check(self, client_ip: str, item_id: int) -> tuple[bool, float]:
         """Check if an unlock attempt is allowed.
@@ -67,20 +106,30 @@ class UnlockThrottle:
             return
         self._delete_record(record)
 
-    def cleanup(self) -> int:
+    def cleanup(self, *, limit: int = 500) -> int:
         """Remove stale entries. Returns number of entries removed."""
+        with self._lock_state_directory(exclusive=True):
+            return self._cleanup_stale_rows(limit=limit)
+
+    def _cleanup_stale_rows(self, *, limit: int) -> int:
         now = self._time()
         stale_cutoff = now - self._window_seconds
-        removed = (
-            db.session.query(UnlockAttempt)
-            .filter(
-                or_(
-                    and_(UnlockAttempt.locked_until > 0.0, UnlockAttempt.locked_until <= now),
-                    and_(UnlockAttempt.locked_until <= 0.0, UnlockAttempt.updated_at <= stale_cutoff),
-                )
-            )
-            .delete(synchronize_session=False)
+        stale = or_(
+            and_(UnlockAttempt.locked_until > 0.0, UnlockAttempt.locked_until <= now),
+            and_(UnlockAttempt.locked_until <= 0.0, UnlockAttempt.updated_at <= stale_cutoff),
         )
+        stale_ids = (
+            db.session.query(UnlockAttempt.id)
+            .filter(stale)
+            .limit(limit)
+            .all()
+        )
+        if not stale_ids:
+            return 0
+        removed = db.session.query(UnlockAttempt).filter(
+            UnlockAttempt.id.in_([row[0] for row in stale_ids]),
+            stale,
+        ).delete(synchronize_session=False)
         if removed:
             db.session.commit()
         return removed

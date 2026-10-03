@@ -73,7 +73,7 @@ def run_migrations_online():
     # Set the URL from environment for online mode
     config.set_main_option(
         'sqlalchemy.url',
-        str(current_app.extensions['migrate'].db.get_engine().url).replace(
+        str(current_app.extensions['migrate'].db.engine.url).replace(
             '%', '%%'))
 
     # this callback is used to prevent an auto-migration from being generated
@@ -86,9 +86,15 @@ def run_migrations_online():
                 directives[:] = []
                 logger.info('No changes in schema detected.')
 
-    connectable = current_app.extensions['migrate'].db.get_engine()
+    connectable = current_app.extensions['migrate'].db.engine
 
     with connectable.connect() as connection:
+        sqlite = connection.dialect.name == "sqlite"
+        if sqlite:
+            # Batch migrations replace referenced tables. Keeping enforcement
+            # enabled would cascade-delete child rows when the old table drops.
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
         context.configure(
             connection=connection,
             target_metadata=get_metadata(),
@@ -96,8 +102,15 @@ def run_migrations_online():
             **current_app.extensions['migrate'].configure_args
         )
 
-        with context.begin_transaction():
-            context.run_migrations()
+        try:
+            with context.begin_transaction():
+                context.run_migrations()
+            connection.commit()
+        finally:
+            if sqlite:
+                connection.rollback()
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                connection.commit()
 
 
 if context.is_offline_mode():

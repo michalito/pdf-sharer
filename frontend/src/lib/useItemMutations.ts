@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { useRef } from "react";
 import toast from "react-hot-toast";
 import { pluralize } from "./format";
 import {
@@ -92,6 +93,7 @@ export function useItemMutations({
   onBulkDeleteSuccess,
 }: UseItemMutationsArgs) {
   const queryClient = useQueryClient();
+  const pendingUpdates = useRef(new Set<symbol>());
 
   const updateItemMutation = useMutation({
     mutationFn: async (vars: {
@@ -101,19 +103,30 @@ export function useItemMutations({
       pinned?: boolean;
     }) => updateItem(vars.id, { state: vars.state, spaceId: vars.spaceId, pinned: vars.pinned }),
     onMutate: async (vars) => {
+      const token = Symbol();
+      pendingUpdates.current.add(token);
       await queryClient.cancelQueries({ queryKey: ["items"] });
       const prev = queryClient.getQueryData<ListItemsResponse>(queryKey);
-      if (!prev) return { prev };
-      queryClient.setQueryData(queryKey, applyOptimisticUpdate(prev, vars, filters, spaces));
-      return { prev };
+      const optimistic = prev
+        ? queryClient.setQueryData(queryKey, applyOptimisticUpdate(prev, vars, filters, spaces))
+        : undefined;
+      return { prev, optimistic, queryKey, token };
     },
     onError: (e, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(queryKey, ctx.prev);
+      // A filter change must not redirect the rollback, and a later mutation or
+      // refetch must not be overwritten by this mutation's older snapshot.
+      if (ctx?.prev && queryClient.getQueryData(ctx.queryKey) === ctx.optimistic) {
+        queryClient.setQueryData(ctx.queryKey, ctx.prev);
+      }
       toast.error(e instanceof Error ? e.message : "Failed to update item");
     },
-    onSettled: async () => {
+    onSettled: async (_data, _error, _vars, ctx) => {
+      if (ctx) pendingUpdates.current.delete(ctx.token);
+      // Wait for the last item update so refetching cannot erase a later optimistic change.
+      if (pendingUpdates.current.size > 0) return;
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      await queryClient.invalidateQueries({ queryKey: ["storage"] });
     },
   });
 
@@ -122,6 +135,7 @@ export function useItemMutations({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      await queryClient.invalidateQueries({ queryKey: ["storage"] });
       toast.success("Deleted");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Delete failed"),
@@ -134,6 +148,7 @@ export function useItemMutations({
       onBulkDeleteSuccess?.();
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      await queryClient.invalidateQueries({ queryKey: ["storage"] });
       toast.success(`Deleted ${pluralize(res.deleted, "item")}`);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Bulk delete failed"),
@@ -143,6 +158,7 @@ export function useItemMutations({
     mutationFn: async (name: string) => createSpace(name),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      await queryClient.invalidateQueries({ queryKey: ["storage"] });
       toast.success("Space created");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to create space"),
@@ -152,6 +168,7 @@ export function useItemMutations({
     mutationFn: async (vars: { id: number; name: string }) => renameSpace(vars.id, vars.name),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      await queryClient.invalidateQueries({ queryKey: ["storage"] });
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       toast.success("Space renamed");
     },
@@ -162,6 +179,7 @@ export function useItemMutations({
     mutationFn: async (orderedIds: number[]) => reorderSpaces(orderedIds),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      await queryClient.invalidateQueries({ queryKey: ["storage"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to reorder spaces"),
   });
@@ -170,6 +188,7 @@ export function useItemMutations({
     mutationFn: async (id: number) => deleteSpace(id),
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      await queryClient.invalidateQueries({ queryKey: ["storage"] });
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       toast.success(
         res.unassigned > 0

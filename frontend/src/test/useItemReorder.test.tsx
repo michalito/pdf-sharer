@@ -14,7 +14,9 @@ vi.mock("../api/items", async () => {
   };
 });
 
+vi.mock("react-hot-toast", () => ({ default: { error: vi.fn() } }));
 const api = await import("../api/items");
+const toast = (await import("react-hot-toast")).default;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -67,9 +69,11 @@ function useReorderHarness(args: {
   stateFilter?: "all" | ItemState;
   spaceFilter?: "all" | "none" | number;
   spaceQueryParam?: string;
+  onSettled?: () => void;
 }) {
   const reorderItemsMutation = useMutation({
     mutationFn: (orderedIds: number[]) => api.reorderItems(orderedIds),
+    onSettled: args.onSettled,
   });
   const reorder = useItemReorder({
     queryKey: [...queryKey],
@@ -398,3 +402,152 @@ it("handleMoveToPage substitutes into the global order when a space filter is ac
   // Substitute that in global [1,2,3,4,7,6,9] where {1,3,7,9} sat.
   expect(vi.mocked(api.reorderItems)).toHaveBeenCalledWith([3, 2, 7, 4, 1, 6, 9]);
 });
+
+it("locks reorder preparation through settlement, including page moves", async () => {
+  const client = makeClient();
+  const items = [baseItem({ id: 1 }), baseItem({ id: 2 }), baseItem({ id: 3 })];
+  const pagination: PaginationDto = {
+    total: 6,
+    page: 1,
+    perPage: 3,
+    pages: 2,
+    hasNext: true,
+    hasPrev: false,
+  };
+  let resolveOrder!: (value: { orderedIds: number[] }) => void;
+  vi.mocked(api.getItemOrder).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        resolveOrder = resolve;
+      }),
+  );
+  vi.mocked(api.reorderItems).mockResolvedValue();
+  const { result } = renderHook(() => useReorderHarness({ items, pagination }), {
+    wrapper: makeWrapper(client),
+  });
+  let first!: Promise<void>;
+  await act(async () => {
+    first = result.current.handleItemDragEnd({ active: { id: 1 }, over: { id: 3 } });
+  });
+  expect(result.current.isPending).toBe(true);
+  await act(async () => {
+    await result.current.handleItemDragEnd({ active: { id: 2 }, over: { id: 3 } });
+    await result.current.handleMoveToPage(2, "next");
+  });
+  expect(api.getItemOrder).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    resolveOrder({ orderedIds: [1, 2, 3] });
+    await first;
+  });
+  expect(api.reorderItems).toHaveBeenCalledTimes(1);
+  expect(result.current.isPending).toBe(false);
+});
+
+it("preserves a refreshed cache when rejected reorder settlement refetches", async () => {
+  const client = makeClient();
+  const items = [baseItem({ id: 1 }), baseItem({ id: 2 })];
+  const pagination: PaginationDto = {
+    total: 2,
+    page: 1,
+    perPage: 50,
+    pages: 1,
+    hasNext: false,
+    hasPrev: false,
+  };
+  const initial: ListItemsResponse = {
+    items,
+    pagination,
+    countByState: { active: 2, done: 0, archived: 0, ready_to_delete: 0 },
+  };
+  const fresh = { ...initial, items: [items[1]], pagination: { ...pagination, total: 1 } };
+  client.setQueryData(queryKey, initial);
+  vi.mocked(api.getItemOrder).mockResolvedValue({ orderedIds: [1, 2] });
+  vi.mocked(api.reorderItems).mockRejectedValue(new Error("IDs changed"));
+  const { result } = renderHook(
+    () =>
+      useReorderHarness({
+        items,
+        pagination,
+        onSettled: () => {
+          client.setQueryData(queryKey, fresh);
+        },
+      }),
+    { wrapper: makeWrapper(client) },
+  );
+  await act(async () => {
+    await result.current.handleItemDragEnd({ active: { id: 1 }, over: { id: 2 } });
+  });
+  expect(client.getQueryData(queryKey)).toEqual(fresh);
+});
+
+it("reports preparation failure, restores its snapshot and releases the lock", async () => {
+  const client = makeClient();
+  const items = [baseItem({ id: 1 }), baseItem({ id: 2 })];
+  const pagination: PaginationDto = {
+    total: 2,
+    page: 1,
+    perPage: 50,
+    pages: 1,
+    hasNext: false,
+    hasPrev: false,
+  };
+  const initial = {
+    items,
+    pagination,
+    countByState: { active: 2, done: 0, archived: 0, ready_to_delete: 0 },
+  };
+  client.setQueryData(queryKey, initial);
+  vi.mocked(api.getItemOrder).mockRejectedValue(new Error("Network error"));
+  const { result } = renderHook(() => useReorderHarness({ items, pagination }), {
+    wrapper: makeWrapper(client),
+  });
+  await act(async () => {
+    await result.current.handleItemDragEnd({ active: { id: 1 }, over: { id: 2 } });
+  });
+  expect(client.getQueryData(queryKey)).toEqual(initial);
+  expect(toast.error).toHaveBeenCalledWith("Network error");
+  expect(result.current.isPending).toBe(false);
+  expect(api.reorderItems).not.toHaveBeenCalled();
+});
+
+it.each([
+  { pinned: true, page: 1, direction: "next" as const, id: 1 },
+  { pinned: false, page: 2, direction: "prev" as const, id: 4 },
+])(
+  "prevents a $direction page move across the pinned boundary",
+  async ({ page, direction, id }) => {
+    const client = makeClient();
+    const allItems = [1, 2, 3, 4, 5, 6].map((id) => baseItem({ id, isPinned: id <= 3 }));
+    const items = allItems.slice((page - 1) * 3, page * 3);
+    const pagination: PaginationDto = {
+      total: 6,
+      page,
+      perPage: 3,
+      pages: 2,
+      hasNext: page === 1,
+      hasPrev: page === 2,
+    };
+    const initial = {
+      items,
+      pagination,
+      countByState: { active: 6, done: 0, archived: 0, ready_to_delete: 0 },
+    };
+    client.setQueryData(queryKey, initial);
+    vi.mocked(api.getItemOrder).mockResolvedValue({ orderedIds: [1, 2, 3, 4, 5, 6] });
+    vi.mocked(api.listItems).mockResolvedValue({
+      ...initial,
+      items: allItems,
+      pagination: { ...pagination, pages: 1 },
+    });
+    const { result } = renderHook(
+      () => useReorderHarness({ items, pagination, page, perPage: 3 }),
+      { wrapper: makeWrapper(client) },
+    );
+    await act(async () => {
+      await result.current.handleMoveToPage(id, direction);
+    });
+    expect(api.reorderItems).not.toHaveBeenCalled();
+    expect(client.getQueryData(queryKey)).toEqual(initial);
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Pinned items"));
+  },
+);

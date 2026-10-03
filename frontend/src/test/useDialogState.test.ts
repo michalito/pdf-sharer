@@ -92,3 +92,36 @@ it("opening different dialogs accumulates into isAnyModalOpen", () => {
   act(() => result.current.closeBulkDelete());
   expect(result.current.isAnyModalOpen).toBe(false);
 });
+
+it("retains concurrent duplicate decisions until each is handled", () => {
+  const { result } = renderHook(() => useDialogState());
+  const first = { duplicates: [], retryFn: vi.fn(), cancelFn: vi.fn() };
+  const second = { duplicates: [], retryFn: vi.fn(), cancelFn: vi.fn() };
+  act(() => {
+    result.current.openDuplicate(first);
+    result.current.openDuplicate(second);
+  });
+  expect(result.current.state.duplicate).toBe(first);
+  act(() => {
+    result.current.state.duplicate?.cancelFn?.();
+    result.current.closeDuplicate();
+  });
+  expect(first.cancelFn).toHaveBeenCalledOnce();
+  expect(result.current.state.duplicate).toBe(second);
+  expect(result.current.isAnyModalOpen).toBe(true);
+  act(() => {
+    void result.current.state.duplicate?.retryFn();
+    result.current.closeDuplicate();
+  });
+  expect(second.retryFn).toHaveBeenCalledOnce();
+  expect(result.current.state.duplicate).toBeNull();
+  expect(result.current.isAnyModalOpen).toBe(false);
+});
+
+it("storage counts as a modal while drops must be queued", () => {
+  const { result } = renderHook(() => useDialogState());
+  act(() => result.current.openStorage());
+  expect(result.current.isAnyModalOpen).toBe(true);
+  act(() => result.current.closeStorage());
+  expect(result.current.isAnyModalOpen).toBe(false);
+});

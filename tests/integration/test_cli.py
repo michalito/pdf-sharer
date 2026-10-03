@@ -86,8 +86,15 @@ def test_seed_cli_recovers_from_stale_unlock_attempts(app: Flask):
     runner = app.test_cli_runner()
 
     with app.app_context():
-        db.session.add(UnlockAttempt(client_ip="1.2.3.4", item_id=1))
-        db.session.commit()
+        # Simulate a historical database written before foreign-key enforcement.
+        with db.engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.exec_driver_sql(
+                "INSERT INTO unlock_attempts (client_ip, item_id, attempt_timestamps_json, locked_until, updated_at) "
+                "VALUES ('1.2.3.4', 1, '[]', 0, 0)"
+            )
+            connection.commit()
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
 
     result = runner.invoke(args=["seed"])
 

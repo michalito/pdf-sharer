@@ -7,6 +7,7 @@ from typing import Optional
 from flask import Flask, g, request
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import event
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import Config, get_config
@@ -30,10 +31,26 @@ def _ensure_directories(config: Config) -> None:
     """Ensure required directories exist."""
     config.UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
-    # Ensure instance directory exists for SQLite
-    if "sqlite" in config.DATABASE_URI:
-        db_path = config.DATABASE_URI.replace("sqlite:///", "")
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
+def _configure_database(app: Flask) -> None:
+    with app.app_context():
+        engine = db.engine
+        if engine.dialect.name != "sqlite":
+            return
+
+        # Flask-SQLAlchemy resolves relative SQLite paths under instance_path.
+        # Use its resolved URL so nested directories are created in that same place.
+        database = engine.url.database
+        if database and database != ":memory:" and not database.startswith("file:"):
+            Path(database).parent.mkdir(parents=True, exist_ok=True)
+
+        @event.listens_for(engine, "connect")
+        def enable_foreign_keys(connection, _record):
+            cursor = connection.cursor()
+            try:
+                cursor.execute("PRAGMA foreign_keys=ON")
+            finally:
+                cursor.close()
 
 
 def _setup_request_handlers(app: Flask) -> None:
@@ -129,6 +146,7 @@ def create_app(config: Optional[Config] = None) -> Flask:
 
     # Initialize extensions
     db.init_app(app)
+    _configure_database(app)
     migrate.init_app(app, db)
 
     # Set up dependency injection

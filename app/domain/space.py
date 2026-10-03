@@ -17,6 +17,7 @@ class Space(db.Model):
     """Named grouping for items."""
 
     __tablename__ = "spaces"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: int = db.Column(db.Integer, primary_key=True)
     name: str = db.Column(db.String(120), nullable=False)

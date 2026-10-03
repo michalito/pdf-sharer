@@ -5,6 +5,7 @@ from flask.cli import with_appcontext
 
 from app import db
 from app.domain.item import Item
+from app.utils.upload_lock import lock_upload_directory
 
 # ---------------------------------------------------------------------------
 # Seed data constants
@@ -171,6 +172,7 @@ def _seed_data(item_service, space_service):
 @click.command("prune-orphans")
 @click.option("--dry-run", is_flag=True, help="Show what would be deleted without deleting")
 @with_appcontext
+@lock_upload_directory(exclusive=True)
 def prune_orphans_command(dry_run: bool):
     """Remove files from the upload folder that are not referenced by the DB."""
     from pathlib import Path

@@ -141,12 +141,9 @@ export default function App() {
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      setQueuedDrops((current) => {
-        const [next, ...rest] = current;
-        if (!next) return current;
-        openUploadDialog(next.kind, next.files);
-        return rest;
-      });
+      const next = queuedDrops[0];
+      openUploadDialog(next.kind, next.files);
+      setQueuedDrops((current) => current.slice(1));
     });
     return () => {
       cancelled = true;
@@ -272,7 +269,13 @@ export default function App() {
 
       const pending = fn(setProgress);
       const abort = typeof pending.abort === "function" ? pending.abort.bind(pending) : undefined;
-      setUploads((prev) => [{ ...task, abort }, ...prev].slice(0, 8));
+      setUploads((prev) => {
+        let finished = 0;
+        return [{ ...task, abort }, ...prev].filter(
+          (upload) =>
+            upload.status === "uploading" || upload.status === "duplicate" || finished++ < 8,
+        );
+      });
 
       try {
         const result = await pending;
@@ -283,6 +286,7 @@ export default function App() {
         );
         await queryClient.invalidateQueries({ queryKey: ["items"] });
         await queryClient.invalidateQueries({ queryKey: ["spaces"] });
+        await queryClient.invalidateQueries({ queryKey: ["storage"] });
         return result;
       } catch (e) {
         const isDuplicate = e instanceof DuplicateContentError;
@@ -622,7 +626,7 @@ export default function App() {
         errorMessage={itemsErrorMessage}
         hasFilters={Boolean(debouncedSearch) || kindFilter !== "all" || spaceFilter !== "all"}
         canDragDrop={canDragDrop}
-        reorderPending={mutations.reorderItems.isPending}
+        reorderPending={reorder.isPending || mutations.reorderItems.isPending}
         activeDragId={reorder.activeDragId}
         updatingItemId={updatingItemId}
         bulkDeletePending={mutations.bulkDelete.isPending}

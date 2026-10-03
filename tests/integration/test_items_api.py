@@ -1605,7 +1605,7 @@ def test_locked_protected_item_hides_content_hash(app: Flask, client: FlaskClien
     assert detail["contentHash"] is None
 
 
-def test_deleted_item_unlock_state_does_not_apply_to_reused_item_id(app: Flask, client: FlaskClient):
+def test_deleted_item_unlock_state_does_not_apply_to_new_item(app: Flask, client: FlaskClient):
     create_first = client.post(
         "/api/items/files",
         data={"files": (io.BytesIO(b"first"), "first.txt"), "password": "password1"},
@@ -1628,7 +1628,7 @@ def test_deleted_item_unlock_state_does_not_apply_to_reused_item_id(app: Flask, 
     )
     assert create_second.status_code == 201
     second_item = create_second.get_json()[0]
-    assert second_item["id"] == first_item["id"]
+    assert second_item["id"] > first_item["id"]
 
     detail = client.get(f"/api/items/{second_item['id']}")
     assert detail.status_code == 200
