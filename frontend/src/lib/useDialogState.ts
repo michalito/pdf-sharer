@@ -28,6 +28,7 @@ type DialogState = {
   bulkDelete: boolean;
   deleteSpace: SpaceDto | null;
   duplicate: DuplicateDialogState | null;
+  duplicateQueue: DuplicateDialogState[];
   spacePicker: SpacePickerState | null;
   guide: boolean;
   storage: boolean;
@@ -45,6 +46,7 @@ const initialState: DialogState = {
   bulkDelete: false,
   deleteSpace: null,
   duplicate: null,
+  duplicateQueue: [],
   spacePicker: null,
   guide: false,
   storage: false,
@@ -83,8 +85,13 @@ export function useDialogState() {
     [setField],
   );
   const openDuplicate = useCallback(
-    (payload: DuplicateDialogState) => setField("duplicate", payload),
-    [setField],
+    (payload: DuplicateDialogState) =>
+      setState((prev) =>
+        prev.duplicate
+          ? { ...prev, duplicateQueue: [...prev.duplicateQueue, payload] }
+          : { ...prev, duplicate: payload },
+      ),
+    [],
   );
   const openSpacePicker = useCallback(
     (payload: SpacePickerState) => setField("spacePicker", payload),
@@ -107,7 +114,15 @@ export function useDialogState() {
   const closeDeleteItem = useCallback(() => setField("deleteItem", null), [setField]);
   const closeBulkDelete = useCallback(() => setField("bulkDelete", false), [setField]);
   const closeDeleteSpace = useCallback(() => setField("deleteSpace", null), [setField]);
-  const closeDuplicate = useCallback(() => setField("duplicate", null), [setField]);
+  const closeDuplicate = useCallback(
+    () =>
+      setState((prev) => ({
+        ...prev,
+        duplicate: prev.duplicateQueue[0] ?? null,
+        duplicateQueue: prev.duplicateQueue.slice(1),
+      })),
+    [],
+  );
   const closeSpacePicker = useCallback(() => setField("spacePicker", null), [setField]);
   const closeGuide = useCallback(() => setField("guide", false), [setField]);
   const closeStorage = useCallback(() => setField("storage", false), [setField]);
@@ -126,6 +141,7 @@ export function useDialogState() {
       Boolean(state.deleteSpace) ||
       Boolean(state.duplicate) ||
       state.guide ||
+      state.storage ||
       state.settings,
     [state],
   );

@@ -99,6 +99,84 @@ function filters() {
   };
 }
 
+function cachedItems(items: ItemDto[]): ListItemsResponse {
+  return {
+    items,
+    pagination: {
+      total: items.length,
+      page: 1,
+      perPage: 50,
+      pages: 1,
+      hasNext: false,
+      hasPrev: false,
+    },
+    countByState: { active: items.length, done: 0, archived: 0, ready_to_delete: 0 },
+  };
+}
+
+it("rolls back the original view after filters change during an update", async () => {
+  const client = makeClient();
+  const otherKey = ["items", { state: "done" }] as const;
+  const initial = cachedItems([baseItem()]);
+  const other = cachedItems([baseItem({ id: 2, state: "done" })]);
+  client.setQueryData(queryKey, initial);
+  client.setQueryData(otherKey, other);
+  let rejectUpdate!: (error: Error) => void;
+  vi.mocked(api.updateItem).mockImplementation(
+    () =>
+      new Promise((_resolve, reject) => {
+        rejectUpdate = reject;
+      }),
+  );
+  const { result, rerender } = renderHook(
+    ({ key }: { key: readonly unknown[] }) =>
+      useItemMutations({ queryKey: key, filters: filters(), spaces }),
+    { wrapper: makeWrapper(client), initialProps: { key: queryKey as readonly unknown[] } },
+  );
+  act(() => result.current.updateItem.mutate({ id: 1, state: "done" }));
+  await waitFor(() =>
+    expect(client.getQueryData<ListItemsResponse>(queryKey)?.items[0].state).toBe("done"),
+  );
+  rerender({ key: otherKey });
+  act(() => rejectUpdate(new Error("failed")));
+  await waitFor(() => expect(result.current.updateItem.isError).toBe(true));
+  expect(client.getQueryData(queryKey)).toEqual(initial);
+  expect(client.getQueryData(otherKey)).toEqual(other);
+});
+
+it("does not overwrite a later optimistic update when an earlier update fails", async () => {
+  const client = makeClient();
+  client.setQueryData(queryKey, cachedItems([baseItem({ id: 1 }), baseItem({ id: 2 })]));
+  let rejectFirst!: (error: Error) => void;
+  let resolveSecond!: (item: ItemDto) => void;
+  vi.mocked(api.updateItem)
+    .mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectFirst = reject;
+        }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSecond = resolve;
+        }),
+    );
+  const { result } = renderHook(() => useItemMutations({ queryKey, filters: filters(), spaces }), {
+    wrapper: makeWrapper(client),
+  });
+  act(() => result.current.updateItem.mutate({ id: 1, state: "done" }));
+  await waitFor(() => expect(api.updateItem).toHaveBeenCalledTimes(1));
+  act(() => result.current.updateItem.mutate({ id: 2, pinned: true }));
+  await waitFor(() => expect(api.updateItem).toHaveBeenCalledTimes(2));
+  await act(async () => rejectFirst(new Error("failed")));
+  expect(
+    client.getQueryData<ListItemsResponse>(queryKey)?.items.find((item) => item.id === 2)?.isPinned,
+  ).toBe(true);
+  await act(async () => resolveSecond(baseItem({ id: 2, isPinned: true })));
+  await waitFor(() => expect(result.current.updateItem.isSuccess).toBe(true));
+});
+
 it("updateItem optimistically rewrites the items cache", async () => {
   const client = makeClient();
   const initial: ListItemsResponse = {
@@ -439,4 +517,76 @@ it("reorderItems exposes pending state and reports errors", async () => {
   });
   await waitFor(() => expect(result.current.reorderPending).toBe(false));
   expect(toast.error).toHaveBeenCalledWith("order failed");
+});
+
+it("defers refetch until all overlapping updates settle", async () => {
+  const client = makeClient();
+  client.setQueryData(queryKey, cachedItems([baseItem({ id: 1 }), baseItem({ id: 2 })]));
+  const invalidate = vi.spyOn(client, "invalidateQueries");
+  let resolveFirst!: (item: ItemDto) => void;
+  let resolveSecond!: (item: ItemDto) => void;
+  vi.mocked(api.updateItem)
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSecond = resolve;
+        }),
+    );
+  const { result } = renderHook(() => useItemMutations({ queryKey, filters: filters(), spaces }), {
+    wrapper: makeWrapper(client),
+  });
+  act(() => result.current.updateItem.mutate({ id: 1, state: "done" }));
+  await waitFor(() => expect(api.updateItem).toHaveBeenCalledTimes(1));
+  act(() => result.current.updateItem.mutate({ id: 2, pinned: true }));
+  await waitFor(() => expect(api.updateItem).toHaveBeenCalledTimes(2));
+  await act(async () => resolveFirst(baseItem({ id: 1, state: "done" })));
+  expect(invalidate).not.toHaveBeenCalled();
+  expect(
+    client.getQueryData<ListItemsResponse>(queryKey)?.items.find((item) => item.id === 2)?.isPinned,
+  ).toBe(true);
+  await act(async () => resolveSecond(baseItem({ id: 2, isPinned: true })));
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["items"] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["storage"] });
+});
+
+it("invalidates storage even when overlapping updates resolve together", async () => {
+  const client = makeClient();
+  const invalidate = vi.spyOn(client, "invalidateQueries");
+  let resolveBoth!: (item: ItemDto) => void;
+  const pending = new Promise<ItemDto>((resolve) => {
+    resolveBoth = resolve;
+  });
+  vi.mocked(api.updateItem).mockReturnValue(pending);
+  const { result } = renderHook(() => useItemMutations({ queryKey, filters: filters(), spaces }), {
+    wrapper: makeWrapper(client),
+  });
+  act(() => {
+    result.current.updateItem.mutate({ id: 1, state: "done" });
+    result.current.updateItem.mutate({ id: 2, pinned: true });
+  });
+  await waitFor(() => expect(api.updateItem).toHaveBeenCalledTimes(2));
+  await act(async () => resolveBoth(baseItem()));
+  expect(
+    invalidate.mock.calls.filter(([filters]) => filters?.queryKey?.[0] === "items"),
+  ).toHaveLength(1);
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["storage"] });
+});
+
+it("invalidates a fresh storage snapshot after deleting an item", async () => {
+  const client = makeClient();
+  client.setQueryData(["storage"], { count: 1 });
+  vi.mocked(api.deleteItem).mockResolvedValue();
+  const { result } = renderHook(() => useItemMutations({ queryKey, filters: filters(), spaces }), {
+    wrapper: makeWrapper(client),
+  });
+  await act(async () => {
+    await result.current.deleteItem.mutateAsync(1);
+  });
+  expect(client.getQueryState(["storage"])?.isInvalidated).toBe(true);
 });

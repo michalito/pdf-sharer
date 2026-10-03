@@ -1378,3 +1378,31 @@ it("opens storage dashboard from footer button", async () => {
     expect(screen.getByRole("dialog", { name: /storage/i })).toBeInTheDocument();
   });
 });
+
+it("keeps an older active upload cancellable after starting nine uploads", async () => {
+  const user = userEvent.setup();
+  const resolves: Array<(items: api.ItemDto[]) => void> = [];
+  const aborts: Array<ReturnType<typeof vi.fn>> = [];
+  vi.mocked(api.uploadFiles).mockImplementation(() => {
+    const abort = vi.fn();
+    aborts.push(abort);
+    return Object.assign(new Promise<api.ItemDto[]>((resolve) => resolves.push(resolve)), {
+      abort,
+    });
+  });
+  renderApp();
+  await screen.findByText("Shared items");
+  const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+  for (let index = 0; index < 9; index += 1) {
+    fireEvent.change(fileInput, { target: { files: [new File(["body"], `upload-${index}.txt`)] } });
+    const dialog = await screen.findByRole("dialog", { name: "Upload files" });
+    await user.click(within(dialog).getByRole("button", { name: "Start upload" }));
+    await waitFor(() => expect(api.uploadFiles).toHaveBeenCalledTimes(index + 1));
+  }
+  for (let index = 1; index < resolves.length; index += 1) resolves[index]([]);
+  await waitFor(() => expect(screen.getAllByRole("progressbar")).toHaveLength(1));
+  expect(screen.getByText("upload-0.txt")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(aborts[0]).toHaveBeenCalledOnce();
+  resolves[0]([]);
+});
