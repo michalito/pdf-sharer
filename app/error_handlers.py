@@ -13,6 +13,7 @@ import logging
 
 from flask import Blueprint, Response, jsonify
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
+from werkzeug.exceptions import HTTPException
 
 from app.exceptions import AppError, DuplicateDetectedError, InvalidJSONError, RateLimitError
 
@@ -90,6 +91,14 @@ def handle_bad_request(error) -> tuple[Response, int]:
     """Handle HTTP 400 bad request errors."""
     logger.warning(f"Bad request: {error}")
     return _create_error_response("Invalid request", 400, "BAD_REQUEST")
+
+
+def handle_http_error(error: HTTPException) -> Response:
+    """Preserve protocol errors such as upload limits instead of returning 500."""
+    response = error.get_response()
+    response.data = json.dumps({"error": error.description})
+    response.content_type = "application/json"
+    return response
 
 
 # Database error handlers
@@ -288,6 +297,7 @@ def register_error_handlers(blueprint: Blueprint) -> None:
     blueprint.register_error_handler(AppError, handle_app_error)
     blueprint.register_error_handler(ValueError, handle_value_error)
     blueprint.register_error_handler(400, handle_bad_request)
+    blueprint.register_error_handler(HTTPException, handle_http_error)
 
     # Database errors (specific to general)
     blueprint.register_error_handler(OperationalError, handle_operational_error)

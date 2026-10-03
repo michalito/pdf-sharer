@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import and_, case, func, or_
+from sqlalchemy import and_, bindparam, func, or_, update
 
 from app import db
 from app.domain.item import Item
@@ -85,18 +85,19 @@ class SpaceRepository:
         """Set positions based on the order of IDs in the list."""
         if not ordered_ids:
             return
-        position_by_id = {space_id: position for position, space_id in enumerate(ordered_ids)}
-        db.session.query(Space).filter(Space.id.in_(ordered_ids)).update(
-            {
-                "position": case(
-                    *((Space.id == space_id, position) for space_id, position in position_by_id.items()),
-                    else_=Space.position,
-                )
-            },
-            synchronize_session=False,
+        db.session.execute(
+            update(Space.__table__)
+            .where(Space.id == bindparam("space_id"))
+            .values(position=bindparam("new_position")),
+            [{"space_id": space_id, "new_position": position}
+             for position, space_id in enumerate(ordered_ids)],
         )
         db.session.commit()
 
     def delete(self, space: Space) -> None:
-        db.session.delete(space)
+        # Unassign in SQL without loading every item's potentially large note body.
+        db.session.query(Item).filter(Item.space_id == space.id).update(
+            {Item.space_id: None}, synchronize_session=False,
+        )
+        db.session.query(Space).filter(Space.id == space.id).delete(synchronize_session=False)
         db.session.commit()

@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from app import db
 from app.domain.space import Space
 from app.exceptions import FileOperationError, ValidationError
 from app.repositories.space_repository import SpaceRepository
@@ -46,6 +47,9 @@ class SpaceService:
             return self.repository.create(
                 name=display, normalized_name=normalized, position=position
             )
+        except IntegrityError:
+            db.session.rollback()
+            raise
         except SQLAlchemyError as e:
             logger.error("Failed to create space: %s", e, exc_info=True)
             raise FileOperationError("Failed to create space")
@@ -62,6 +66,9 @@ class SpaceService:
             return self.repository.rename(
                 space, name=display, normalized_name=normalized
             )
+        except IntegrityError:
+            db.session.rollback()
+            raise
         except SQLAlchemyError as e:
             logger.error("Failed to rename space %s: %s", space_id, e, exc_info=True)
             raise FileOperationError("Failed to rename space")
@@ -72,6 +79,9 @@ class SpaceService:
         count = self.repository.count_active_items(space.id)
         try:
             self.repository.delete(space)
+        except IntegrityError:
+            db.session.rollback()
+            raise
         except SQLAlchemyError as e:
             logger.error("Failed to delete space %s: %s", space_id, e, exc_info=True)
             raise FileOperationError("Failed to delete space")
@@ -88,6 +98,9 @@ class SpaceService:
 
         try:
             self.repository.reorder(ordered_ids)
+        except IntegrityError:
+            db.session.rollback()
+            raise
         except SQLAlchemyError as e:
             logger.error("Failed to reorder spaces: %s", e, exc_info=True)
             raise FileOperationError("Failed to reorder spaces")

@@ -14,7 +14,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from flask import current_app
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.datastructures import FileStorage
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -27,6 +27,7 @@ from app.exceptions import DuplicateDetectedError, FileOperationError, Validatio
 from app.repositories.item_repository import ItemRepository, PaginatedResult, SortField, SortOrder, StorageStats
 from app.utils.content_hash_lock import acquire_content_hash_locks
 from app.utils.hashing import hash_file, hash_string
+from app.utils.upload_lock import lock_upload_directory
 from app.utils.validation import validate_reorder_ids
 from app.utils.zip_utils import dedupe_zip_path, sanitize_zip_path
 
@@ -140,6 +141,7 @@ class ItemService:
 
         return file_path
 
+    @lock_upload_directory()
     def upload_files(
         self,
         files: list[FileStorage],
@@ -160,6 +162,8 @@ class ItemService:
 
         # Phase 1: save all files to disk and compute hashes.
         saved: list[SavedUploadFile] = []
+        staged_paths: list[Path] = []
+        persisted = False
         try:
             for file in files:
                 if not file or not file.filename:
@@ -170,13 +174,13 @@ class ItemService:
                 ext = Path(original_name).suffix
                 stored_name = f"{uuid.uuid4().hex}{ext}"
                 file_path = upload_folder / stored_name
+                staged_paths.append(file_path)
 
                 try:
                     file.save(str(file_path))
                     size_bytes = file_path.stat().st_size
                     content_hash = hash_file(file_path)
                 except OSError as e:
-                    file_path.unlink(missing_ok=True)
                     logger.error("Failed to save file: %s", e, exc_info=True)
                     raise FileOperationError("Failed to save file")
 
@@ -190,6 +194,9 @@ class ItemService:
                 if not skip_dedup:
                     try:
                         grouped_dupes, has_protected_existing = self._collect_upload_file_duplicates(saved)
+                    except IntegrityError:
+                        self._rollback_after_db_error()
+                        raise
                     except SQLAlchemyError as e:
                         self._rollback_after_db_error()
                         logger.error("Database error checking file duplicates: %s", e, exc_info=True)
@@ -201,8 +208,8 @@ class ItemService:
 
                 password_hash = self._make_password_hash(normalized_password)
                 created: list[Item] = []
-                next_position = self.repository.get_max_position() + 1
                 try:
+                    next_position = self.repository.get_max_position() + 1
                     for idx, (file_path, stored_name, original_name, content_hash, size_bytes, mime_type) in enumerate(saved):
                         item = self.repository.create(
                             stored_name=stored_name,
@@ -219,17 +226,21 @@ class ItemService:
                         )
                         created.append(item)
                     self.repository.commit()
+                    persisted = True
+                except IntegrityError:
+                    self._rollback_after_db_error()
+                    raise
                 except SQLAlchemyError as e:
                     self.repository.rollback()
                     logger.error("Database error creating item: %s", e, exc_info=True)
                     raise FileOperationError("Failed to create item record")
                 return created
 
-        except (DuplicateDetectedError, ValidationError, FileOperationError):
-            for file_path, *_ in saved:
-                file_path.unlink(missing_ok=True)
-            raise
+        finally:
+            if not persisted:
+                self._remove_staged_files(staged_paths)
 
+    @lock_upload_directory()
     def upload_folder(
         self,
         files: list[FileStorage],
@@ -267,27 +278,33 @@ class ItemService:
         # regardless of browser-provided multipart ordering.
         zip_entries.sort(key=lambda entry: (entry[0], (entry[1].filename or "").lower()))
 
-        try:
-            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                for safe_rel, file in zip_entries:
-                    safe_rel = dedupe_zip_path(safe_rel, used_paths)
-
-                    # Stream into the zip without buffering the full file in memory.
-                    file.stream.seek(0)
-                    with zf.open(safe_rel, "w") as dest:
-                        shutil.copyfileobj(file.stream, dest, length=64 * 1024)
-        except (OSError, zipfile.BadZipFile) as e:
-            zip_path.unlink(missing_ok=True)
-            logger.error("Failed to create zip: %s", e, exc_info=True)
-            raise FileOperationError("Failed to create folder zip")
-
-        content_hash = hash_file(zip_path)
         persisted = False
         try:
+            try:
+                with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                    for safe_rel, file in zip_entries:
+                        safe_rel = dedupe_zip_path(safe_rel, used_paths)
+
+                        # Stream into the zip without buffering the full file in memory.
+                        file.stream.seek(0, 2)
+                        info = zipfile.ZipInfo(safe_rel)
+                        info.compress_type = zf.compression
+                        info.file_size = file.stream.tell()
+                        file.stream.seek(0)
+                        with zf.open(info, "w") as dest:
+                            shutil.copyfileobj(file.stream, dest, length=64 * 1024)
+                content_hash = hash_file(zip_path)
+            except (OSError, zipfile.BadZipFile) as e:
+                logger.error("Failed to create zip: %s", e, exc_info=True)
+                raise FileOperationError("Failed to create folder zip")
+
             with acquire_content_hash_locks([content_hash]):
                 if not skip_dedup:
                     try:
                         existing = self.repository.find_by_content_hash(content_hash)
+                    except IntegrityError:
+                        self._rollback_after_db_error()
+                        raise
                     except SQLAlchemyError as e:
                         self._rollback_after_db_error()
                         logger.error("Database error checking folder duplicates: %s", e, exc_info=True)
@@ -302,8 +319,8 @@ class ItemService:
                 )
                 password_hash = self._make_password_hash(normalized_password)
 
-                next_position = self.repository.get_max_position() + 1
                 try:
+                    next_position = self.repository.get_max_position() + 1
                     item = self.repository.create(
                         stored_name=stored_name,
                         display_name=folder_name,
@@ -320,13 +337,16 @@ class ItemService:
                     )
                     persisted = True
                     return item
+                except IntegrityError:
+                    self._rollback_after_db_error()
+                    raise
                 except SQLAlchemyError as e:
                     self._rollback_after_db_error()
                     logger.error("Database error creating folder item: %s", e, exc_info=True)
                     raise FileOperationError("Failed to create item record")
         finally:
             if not persisted:
-                zip_path.unlink(missing_ok=True)
+                self._remove_staged_files([zip_path])
 
     def create_link(
         self,
@@ -353,6 +373,9 @@ class ItemService:
             if not skip_dedup:
                 try:
                     existing = self.repository.find_by_content_hash(content_hash)
+                except IntegrityError:
+                    self._rollback_after_db_error()
+                    raise
                 except SQLAlchemyError as e:
                     self._rollback_after_db_error()
                     logger.error("Database error checking link duplicates: %s", e, exc_info=True)
@@ -374,6 +397,9 @@ class ItemService:
                     content_hash=content_hash,
                     position=next_position,
                 )
+            except IntegrityError:
+                self._rollback_after_db_error()
+                raise
             except SQLAlchemyError as e:
                 self._rollback_after_db_error()
                 logger.error("Database error creating link item: %s", e, exc_info=True)
@@ -404,6 +430,9 @@ class ItemService:
             if not skip_dedup:
                 try:
                     existing = self.repository.find_by_content_hash(content_hash)
+                except IntegrityError:
+                    self._rollback_after_db_error()
+                    raise
                 except SQLAlchemyError as e:
                     self._rollback_after_db_error()
                     logger.error("Database error checking note duplicates: %s", e, exc_info=True)
@@ -425,6 +454,9 @@ class ItemService:
                     content_hash=content_hash,
                     position=next_position,
                 )
+            except IntegrityError:
+                self._rollback_after_db_error()
+                raise
             except SQLAlchemyError as e:
                 self._rollback_after_db_error()
                 logger.error("Database error creating note item: %s", e, exc_info=True)
@@ -453,6 +485,9 @@ class ItemService:
 
         try:
             self.repository.delete(item)
+        except IntegrityError:
+            self._rollback_after_db_error()
+            raise
         except SQLAlchemyError as e:
             logger.error("Failed to delete item record %s: %s", item_id, e, exc_info=True)
             raise FileOperationError("Failed to delete item record")
@@ -507,6 +542,9 @@ class ItemService:
                 item, new_state=new_state, new_space_id=new_space_id,
                 update_space=update_space, pinned=pinned,
             )
+        except IntegrityError:
+            self._rollback_after_db_error()
+            raise
         except SQLAlchemyError as e:
             logger.error("Failed to update item %s: %s", item_id, e, exc_info=True)
             raise FileOperationError("Failed to update item")
@@ -532,6 +570,9 @@ class ItemService:
 
         try:
             self.repository.reorder(ordered_ids)
+        except IntegrityError:
+            self._rollback_after_db_error()
+            raise
         except SQLAlchemyError as e:
             logger.error("Failed to reorder items: %s", e, exc_info=True)
             raise FileOperationError("Failed to reorder items")
@@ -692,16 +733,21 @@ class ItemService:
             return 0
 
         upload_folder = Path(current_app.config["UPLOAD_FOLDER"])
-        stored_names = [item.stored_name for item in items if self._item_has_stored_file(item)]
+        stored_names = {item.id: item.stored_name for item in items if self._item_has_stored_file(item)}
 
         try:
-            self.repository.delete_many(items)
+            deleted_ids = self.repository.delete_many(items)
+        except IntegrityError:
+            self._rollback_after_db_error()
+            raise
         except SQLAlchemyError as e:
             logger.error("Failed to %s item records: %s", label, e, exc_info=True)
             raise FileOperationError(f"Failed to {label} item records")
 
         failures = 0
-        for stored_name in stored_names:
+        for item_id, stored_name in stored_names.items():
+            if item_id not in deleted_ids:
+                continue
             try:
                 (upload_folder / stored_name).unlink(missing_ok=True)
             except OSError as e:
@@ -714,12 +760,19 @@ class ItemService:
         if failures:
             logger.warning("%s completed with %s file deletion failure(s)", label.capitalize(), failures)
 
-        return len(items)
+        return len(deleted_ids)
 
     def _rollback_after_db_error(self) -> None:
         rollback = getattr(self.repository, "rollback", None)
         if rollback is not None:
             rollback()
+
+    def _remove_staged_files(self, paths: list[Path]) -> None:
+        for path in paths:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.error("Failed to remove staged upload %s", path, exc_info=True)
 
     def _item_has_stored_file(self, item: Item) -> bool:
         return item.kind in {ItemKind.FILE.value, ItemKind.FOLDER.value}
@@ -761,13 +814,19 @@ class ItemService:
             raise ValidationError(
                 f"URL is too long (max {self.MAX_LINK_URL_LENGTH} characters)"
             )
-        if any(ch.isspace() for ch in url):
-            raise ValidationError("URL must not contain spaces")
+        if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in url):
+            raise ValidationError("URL must not contain spaces or control characters")
 
-        parsed = urlparse(url)
+        try:
+            parsed = urlparse(url)
+            host = parsed.hostname
+            # Accessing port also validates its syntax and range.
+            parsed.port
+        except ValueError as exc:
+            raise ValidationError("URL must include a valid host and port") from exc
         if parsed.scheme.lower() not in {"http", "https"}:
             raise ValidationError("URL must start with http:// or https://")
-        if not parsed.netloc:
+        if not host:
             raise ValidationError("URL must include a host")
 
         return url

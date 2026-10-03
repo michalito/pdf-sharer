@@ -6,6 +6,7 @@ from flask import Flask
 
 from app import create_app, db
 from app.config import Config
+from app.domain.item import Item
 from app.services.unlock_throttle import UnlockThrottle
 
 
@@ -32,6 +33,14 @@ def _make_app(tmp_path: Path, db_name: str) -> Flask:
     app.config["TESTING"] = True
     with app.app_context():
         db.create_all()
+        for item_id in (1, 2, 7, 999):
+            if db.session.get(Item, item_id) is not None:
+                continue
+            db.session.add(Item(
+                id=item_id, stored_name=f"{item_id}.note", display_name="Note",
+                kind="note", size_bytes=1,
+            ))
+        db.session.commit()
     return app
 
 

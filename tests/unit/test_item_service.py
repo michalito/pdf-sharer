@@ -189,3 +189,28 @@ def test_create_note_wraps_duplicate_lookup_failure(tmp_path: Path):
             service.create_note(text="failure note")
 
     assert repo.rollback_calls == 1
+
+
+@pytest.mark.parametrize("kind", ["files", "folder"])
+def test_upload_cleans_staged_content_when_hashing_fails(app, temp_upload_dir, monkeypatch, kind):
+    def fail_hash(_path):
+        raise OSError("simulated disk read failure")
+
+    monkeypatch.setattr("app.services.item_service.hash_file", fail_hash)
+    files = [FileStorage(stream=BytesIO(b"data"), filename="file.txt")]
+    with pytest.raises(FileOperationError):
+        if kind == "files":
+            ItemService().upload_files(files)
+        else:
+            ItemService().upload_folder(files, ["folder/file.txt"])
+    assert list(temp_upload_dir.iterdir()) == []
+
+
+def test_upload_cleans_staged_content_when_position_query_fails(app, temp_upload_dir):
+    repo = _FailOnCommitRepository()
+    def fail_position():
+        raise SQLAlchemyError("simulated position lookup failure")
+    repo.get_max_position = fail_position
+    with pytest.raises(FileOperationError):
+        ItemService(repo).upload_files([FileStorage(stream=BytesIO(b"data"), filename="file.txt")])
+    assert list(temp_upload_dir.iterdir()) == []

@@ -98,6 +98,22 @@ def test_from_env_parses_trust_proxy_hops(monkeypatch):
     assert config.TRUST_PROXY_HOPS == 1
 
 
+def test_relative_sqlite_directories_use_flask_instance_path(test_config, tmp_path, monkeypatch):
+    from dataclasses import replace
+    from flask import Flask
+    import app as app_module
+
+    instance = tmp_path / "instance-root"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(app_module, "Flask", lambda name: Flask(name, instance_path=str(instance)))
+    application = app_module.create_app(replace(test_config, DATABASE_URI="sqlite:///nested/saita.db"))
+    with application.app_context():
+        app_module.db.create_all()
+        assert app_module.db.session.execute(app_module.db.text("PRAGMA foreign_keys")).scalar() == 1
+    assert (instance / "nested" / "saita.db").is_file()
+    assert not (tmp_path / "nested").exists()
+
+
 @pytest.mark.parametrize("raw", ["-1", "abc"])
 def test_from_env_rejects_invalid_trust_proxy_hops(monkeypatch, raw: str):
     monkeypatch.setenv("SECRET_KEY", "test-secret")

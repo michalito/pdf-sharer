@@ -58,6 +58,8 @@ class Item(db.Model):
     """Shareable item model."""
 
     __tablename__ = "items"
+    # Public /d/<id> links must never resolve to a later, unrelated item.
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: int = db.Column(db.Integer, primary_key=True)
     stored_name: str = db.Column(db.String(255), nullable=False, unique=True, index=True)

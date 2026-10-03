@@ -6,15 +6,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Generic, Literal, Optional, TypeVar
 
-from sqlalchemy import and_, case, func, or_
-from sqlalchemy.orm import joinedload
+from sqlalchemy import and_, bindparam, delete, func, or_, update
+from sqlalchemy.orm import defer, joinedload
 
 from app import db
 from app.constants import DEFAULT_PAGE, DEFAULT_PER_PAGE, MAX_PER_PAGE
 from app.domain.item import Item, ItemKind, ItemState
 from app.domain.space import Space
-from app.domain.unlock_attempt import UnlockAttempt
-from app.exceptions import NotFoundError
+from app.exceptions import NotFoundError, ValidationError
 
 
 T = TypeVar("T")
@@ -104,7 +103,7 @@ class ItemRepository:
         sort: SortField = "created",
         order: SortOrder = "desc",
     ) -> list[Item]:
-        query = Item.query.options(joinedload(Item.space)).order_by(
+        query = Item.query.options(defer(Item.meta_json), joinedload(Item.space)).order_by(
             *self._build_order_by(sort, order),
         )
         query = self._exclude_expired(query)
@@ -140,7 +139,7 @@ class ItemRepository:
             space_id=space_id, unspaced=unspaced,
         )
 
-        total = query.count()
+        total = query.order_by(None).with_entities(func.count(Item.id)).scalar()
         pages = (total + per_page - 1) // per_page if total > 0 else 1
         page = min(page, pages)
         offset = (page - 1) * per_page
@@ -274,21 +273,36 @@ class ItemRepository:
         return item
 
     def delete(self, item: Item) -> None:
-        db.session.query(UnlockAttempt).filter(UnlockAttempt.item_id == item.id).delete(
-            synchronize_session=False,
-        )
-        db.session.delete(item)
+        deleted = db.session.execute(
+            delete(Item)
+            .where(Item.id == item.id, Item.state == ItemState.READY_TO_DELETE.value)
+            .returning(Item.id)
+            .execution_options(synchronize_session="fetch"),
+        ).scalar_one_or_none()
+        if deleted is None:
+            db.session.rollback()
+            raise ValidationError("Item must be marked 'ready_to_delete' before deletion")
         db.session.commit()
 
-    def delete_many(self, items: list[Item]) -> None:
+    def delete_many(self, items: list[Item]) -> set[int]:
         ids = [item.id for item in items]
-        if not ids:
-            return
-        db.session.query(UnlockAttempt).filter(UnlockAttempt.item_id.in_(ids)).delete(
-            synchronize_session=False,
-        )
-        db.session.query(Item).filter(Item.id.in_(ids)).delete(synchronize_session=False)
-        db.session.commit()
+        deleted_ids: set[int] = set()
+        now = datetime.now(timezone.utc)
+        for start in range(0, len(ids), 500):
+            # Recheck eligibility in the DELETE itself so a concurrent restore
+            # cannot be lost between candidate selection and this write.
+            deleted_ids.update(db.session.execute(
+                delete(Item)
+                .where(
+                    Item.id.in_(ids[start:start + 500]),
+                    or_(Item.state == ItemState.READY_TO_DELETE.value, Item.expires_at <= now),
+                )
+                .returning(Item.id)
+                .execution_options(synchronize_session="fetch"),
+            ).scalars())
+        if ids:
+            db.session.commit()
+        return deleted_ids
 
     def get_all_active_ids(
         self,
@@ -309,15 +323,12 @@ class ItemRepository:
         """Set positions based on the order of IDs in the list."""
         if not ordered_ids:
             return
-        position_by_id = {item_id: position for position, item_id in enumerate(ordered_ids)}
-        db.session.query(Item).filter(Item.id.in_(ordered_ids)).update(
-            {
-                "position": case(
-                    *((Item.id == item_id, position) for item_id, position in position_by_id.items()),
-                    else_=Item.position,
-                )
-            },
-            synchronize_session=False,
+        db.session.execute(
+            update(Item.__table__)
+            .where(Item.id == bindparam("item_id"))
+            .values(position=bindparam("new_position")),
+            [{"item_id": item_id, "new_position": position}
+             for position, item_id in enumerate(ordered_ids)],
         )
         db.session.commit()
 
@@ -414,7 +425,7 @@ class ItemRepository:
     def find_expired(self, *, limit: int = 100) -> list[Item]:
         now = datetime.now(timezone.utc)
         return (
-            Item.query.filter(
+            Item.query.options(defer(Item.meta_json)).filter(
                 Item.expires_at.is_not(None),
                 Item.expires_at <= now,
             )
@@ -458,14 +469,15 @@ class ItemRepository:
 
         search = q.strip().lower() if q else ""
         if search:
-            needle = f"%{search}%"
-            display_name_match = func.lower(Item.display_name).like(needle)
+            escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            needle = f"%{escaped}%"
+            display_name_match = func.lower(Item.display_name).like(needle, escape="\\")
             note_text_match = and_(
                 Item.kind == ItemKind.NOTE.value,
                 Item.password_hash.is_(None),
                 func.lower(
                     func.coalesce(func.json_extract(Item.meta_json, "$.text"), "")
-                ).like(needle),
+                ).like(needle, escape="\\"),
             )
             query = query.filter(or_(display_name_match, note_text_match))
 

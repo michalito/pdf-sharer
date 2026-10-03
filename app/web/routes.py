@@ -69,29 +69,30 @@ def unlock_public_item(item_id: int) -> Response:
 
     throttle = _get_throttle()
     client_ip = _get_client_ip()
-    allowed, retry_after = throttle.check(client_ip, item.id)
-    if not allowed:
-        return _render_password_prompt(
-            item,
-            error_message=f"Too many attempts. Please wait {int(retry_after)} seconds before trying again.",
-            status_code=429,
-        )
+    with throttle.serialized_attempt(client_ip, item.id):
+        allowed, retry_after = throttle.check(client_ip, item.id)
+        if not allowed:
+            return _render_password_prompt(
+                item,
+                error_message=f"Too many attempts. Please wait {int(retry_after)} seconds before trying again.",
+                status_code=429,
+            )
 
-    password = request.form.get("password")
-    try:
-        is_valid = service.verify_item_password(item, password)
-    except ValidationError:
-        is_valid = False
+        password = request.form.get("password")
+        try:
+            is_valid = service.verify_item_password(item, password)
+        except ValidationError:
+            is_valid = False
 
-    if not is_valid:
-        throttle.record_failure(client_ip, item.id)
-        return _render_password_prompt(
-            item,
-            error_message="Invalid password. Please try again.",
-            status_code=401,
-        )
+        if not is_valid:
+            throttle.record_failure(client_ip, item.id)
+            return _render_password_prompt(
+                item,
+                error_message="Invalid password. Please try again.",
+                status_code=401,
+            )
 
-    throttle.record_success(client_ip, item.id)
+        throttle.record_success(client_ip, item.id)
     mark_item_unlocked(item)
     return redirect(url_for("web.public_download", item_id=item_id), code=302)
 
