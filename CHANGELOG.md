@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-08
+
 ### Added
 - Production Authentik forward authentication with pinned HS256 verification, required-group checks, mutation origin protection, JSON API authentication errors, and logout.
 - Project governance docs: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1).
