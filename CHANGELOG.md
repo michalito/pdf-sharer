@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - PWA precaching includes public assets only; HTML/offline navigation fallback is removed so every navigation checks authentication.
 - Production configuration must explicitly select forward auth and mount its dedicated proxy client secret; shared data and anonymous password-protected share links are preserved.
 - API password unlocks are bound to the verified member; anonymous share-password grants remain browser-scoped. Protected public prompts hide titles and kinds.
+- Accessible workspace links open their validated HTTP(S) target directly, including after password unlock. Combined unlock grants are trimmed to keep the signed browser cookie within 3800 bytes.
 - Logout clears private UI immediately and reaches the fixed outpost sign-out path even after identity expiry or a local network failure.
 - Direct Flask runs require explicit `FLASK_ENV`; development ports bind loopback and insecure cookie-signing keys fail production startup.
 

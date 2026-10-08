@@ -303,6 +303,23 @@ def test_anonymous_password_grants_stay_browser_scoped_across_subject_changes(fo
         assert b"browser-granted secret" in forward_client.get(share).data
 
 
+def test_protected_link_target_is_available_after_api_unlock_without_public_grant(forward_client, token):
+    creator = {"X-authentik-jwt": token(sub="creator"), "Origin": ORIGIN, "X-Saita-CSRF": "1"}
+    recipient = {"X-authentik-jwt": token(sub="recipient"), "Origin": ORIGIN, "X-Saita-CSRF": "1"}
+    target = "https://example.test/protected-target"
+    item = forward_client.post("/api/items/link", json={
+        "url": target, "name": "Protected link", "password": "link-password",
+    }, headers=creator).get_json()
+    detail = f"/api/items/{item['id']}"
+    assert forward_client.get(detail, headers=recipient).get_json()["linkUrl"] is None
+    assert forward_client.post(detail + "/unlock", json={"password": "link-password"}, headers=recipient).status_code == 204
+    unlocked = forward_client.get(detail, headers=recipient).get_json()
+    assert unlocked["linkUrl"] == target and unlocked["isPasswordUnlocked"] is True
+    public_share = forward_client.get(f"/d/{item['id']}")
+    assert public_share.status_code == 200 and "Location" not in public_share.headers
+    assert target.encode() not in public_share.data
+
+
 def test_security_headers_and_misrouted_outpost_are_explicit(forward_client, authenticated_headers):
     response = forward_client.get("/api/health")
     assert response.headers["Content-Security-Policy"] == "frame-ancestors 'none'"

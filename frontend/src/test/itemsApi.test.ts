@@ -357,6 +357,34 @@ it("still signs out when local-cookie clearing has a network failure", async () 
   expect(replace).toHaveBeenCalledWith("/outpost.goauthentik.io/sign_out");
 });
 
+it("aborts a hung cookie-clear request after two seconds and reaches outpost sign-out", async () => {
+  vi.useFakeTimers();
+  const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
+  let signal: AbortSignal | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((_url: string, init: RequestInit) => {
+      signal = init.signal as AbortSignal;
+      return new Promise<Response>((_resolve, reject) => {
+        signal!.addEventListener("abort", () => reject(signal!.reason), { once: true });
+      });
+    }),
+  );
+  try {
+    const pending = logout();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(signal?.aborted).toBe(false);
+    expect(replace).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(signal?.aborted).toBe(true);
+    await pending;
+    expect(replace).toHaveBeenCalledOnce();
+    expect(replace).toHaveBeenCalledWith("/outpost.goauthentik.io/sign_out");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it("uploads files with optional metadata, progress, success, and duplicate errors", async () => {
   installMockXHR();
   const onProgress = vi.fn();

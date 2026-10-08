@@ -213,13 +213,16 @@ export async function logout(): Promise<void> {
   } catch {
     // The local view is still cleared when storage is disabled.
   }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2000);
   try {
     // The local cookie clear is best-effort; expired/network-failed identity must
     // never prevent this browser from reaching the fixed outpost sign-out URL.
-    await apiFetch("/api/auth/logout", { method: "POST", signal: AbortSignal.timeout(2000) });
+    await apiFetch("/api/auth/logout", { method: "POST", signal: controller.signal });
   } catch {
     // Private UI is already cleared; the outpost owns authentication sign-out.
   } finally {
+    clearTimeout(timeout);
     window.location.replace("/outpost.goauthentik.io/sign_out");
   }
 }

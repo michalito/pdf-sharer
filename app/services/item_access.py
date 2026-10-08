@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from flask import g, session
+from flask import Flask, g, session
+from werkzeug.http import dump_cookie
 
 from app.domain.item import Item
 
@@ -12,6 +13,7 @@ from app.domain.item import Item
 UNLOCKED_ITEMS_SESSION_KEY = "unlocked_item_ids"
 AUTHENTICATED_UNLOCKS_SESSION_KEY = "authenticated_item_unlocks"
 UNLOCKED_ITEMS_MAX = 100
+UNLOCK_COOKIE_MAX_BYTES = 3800
 _UNLOCK_TOKEN_VERSION = "v2"
 
 
@@ -127,3 +129,40 @@ def mark_item_unlocked(item: Item) -> None:
     else:
         session[UNLOCKED_ITEMS_SESSION_KEY] = unlocked[-UNLOCKED_ITEMS_MAX:]
     session.modified = True
+
+
+def enforce_unlock_cookie_budget(app: Flask) -> None:
+    """Trim old grants against the actual signed cookie, shared by both scopes."""
+    interface = app.session_interface
+    if not session or not interface.should_set_cookie(app, session):
+        return
+    serializer = interface.get_signing_serializer(app)
+
+    def cookie_size() -> int:
+        header = dump_cookie(
+            interface.get_cookie_name(app), serializer.dumps(dict(session)),
+            expires=interface.get_expiration_time(app, session),
+            path=interface.get_cookie_path(app), domain=interface.get_cookie_domain(app),
+            secure=interface.get_cookie_secure(app), httponly=interface.get_cookie_httponly(app),
+            samesite=interface.get_cookie_samesite(app), partitioned=interface.get_cookie_partitioned(app),
+            max_size=0,
+        )
+        return len(header.encode("latin-1"))
+
+    while cookie_size() > UNLOCK_COOKIE_MAX_BYTES:
+        anonymous = session.get(UNLOCKED_ITEMS_SESSION_KEY, [])
+        authenticated = session.get(AUTHENTICATED_UNLOCKS_SESSION_KEY, {})
+        member_tokens = authenticated.get("tokens", []) if isinstance(authenticated, dict) else []
+        anonymous = anonymous if isinstance(anonymous, list) else []
+        member_tokens = member_tokens if isinstance(member_tokens, list) else []
+        if anonymous and len(anonymous) >= len(member_tokens):
+            session[UNLOCKED_ITEMS_SESSION_KEY] = anonymous[1:]
+        elif member_tokens:
+            session[AUTHENTICATED_UNLOCKS_SESSION_KEY] = {**authenticated, "tokens": member_tokens[1:]}
+        elif AUTHENTICATED_UNLOCKS_SESSION_KEY in session:
+            session.pop(AUTHENTICATED_UNLOCKS_SESSION_KEY)
+        else:
+            # Oversized legacy/malformed state must not make the browser discard
+            # the entire unlock cookie. Empty state fails closed.
+            session.clear()
+        session.modified = True

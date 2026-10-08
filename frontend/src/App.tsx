@@ -440,7 +440,13 @@ export default function App() {
         return;
       }
       if (action === "link") {
-        window.location.assign(`/d/${item.id}`);
+        try {
+          const target = new URL(item.linkUrl ?? "");
+          if (!["http:", "https:"].includes(target.protocol)) throw new Error("Invalid link");
+          window.location.assign(target.href);
+        } catch {
+          toast.error("This link could not be opened.");
+        }
         return;
       }
       dialogs.openNotePreview(item);

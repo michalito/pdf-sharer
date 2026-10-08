@@ -66,6 +66,11 @@ when another subject arrives. Explicit anonymous share-password grants remain
 browser-scoped in a separate session record. API-created/unlocked protected items
 do not grant anonymous share access: even the creator must enter the public share
 password separately. Anonymous password prompts expose neither title nor kind.
+Workspace link actions open the validated HTTP(S) target from the unlocked API
+response directly; copying a share URL still uses `/d/<id>`. Both grant scopes share
+a 3800-byte budget for the complete signed `Set-Cookie` header. Old grants are
+trimmed from the larger list before persistence so the browser retains the cookie;
+the newest grants in both scopes survive ordinary trimming.
 
 ## Ingress contract
 

@@ -905,6 +905,98 @@ it("unlocks a protected note before loading preview", async () => {
   expect(await screen.findByText("Decryption key rotates every Monday.")).toBeInTheDocument();
 });
 
+function mockWorkspaceLink(linkUrl: string | null, protectedItem: boolean, unlocked: boolean) {
+  const link: api.ItemDto = {
+    id: 27,
+    name: "Workspace runbook",
+    kind: "link",
+    state: "active",
+    mimeType: "text/uri-list",
+    sizeBytes: 44,
+    createdAt: "2026-02-27T00:00:00+00:00",
+    linkUrl,
+    noteText: null,
+    noteExcerpt: null,
+    isPasswordProtected: protectedItem,
+    isPasswordUnlocked: unlocked,
+  };
+  vi.mocked(api.fetchAppInfo).mockResolvedValue({
+    ok: true,
+    version: "1.7.0",
+    authMode: "forward",
+    limits: { noteTextMaxChars: 100000 },
+  });
+  vi.mocked(api.listItems).mockResolvedValue({
+    items: [link],
+    pagination: makePagination(1),
+    countByState: makeCountByState({ active: 1 }),
+  });
+  return link;
+}
+
+it.each([
+  { url: "http://example.com/runbook", protectedItem: false },
+  { url: "https://example.com/runbook", protectedItem: true },
+])(
+  "opens an accessible workspace link directly in forward mode ($url)",
+  async ({ url, protectedItem }) => {
+    mockWorkspaceLink(url, protectedItem, true);
+    const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
+    try {
+      const user = userEvent.setup();
+      renderApp();
+      await screen.findByText("Workspace runbook");
+      await user.click(screen.getByRole("button", { name: "Open link" }));
+      expect(assign).toHaveBeenCalledOnce();
+      expect(assign).toHaveBeenCalledWith(url);
+      expect(api.unlockItem).not.toHaveBeenCalled();
+    } finally {
+      assign.mockRestore();
+    }
+  },
+);
+
+it("opens the verified link target after API password unlock in forward mode", async () => {
+  const link = mockWorkspaceLink(null, true, false);
+  const target = "https://example.com/protected-runbook";
+  vi.mocked(api.getItem).mockResolvedValue({ ...link, linkUrl: target, isPasswordUnlocked: true });
+  const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
+  try {
+    const user = userEvent.setup();
+    renderApp();
+    await screen.findByText("Workspace runbook");
+    await user.click(screen.getByRole("button", { name: "Open link" }));
+    const dialog = await screen.findByRole("dialog", { name: "Unlock protected item" });
+    expect(assign).not.toHaveBeenCalled();
+    await user.type(within(dialog).getByPlaceholderText("Enter password"), "link-password");
+    await user.click(within(dialog).getByRole("button", { name: "Unlock" }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(target));
+    expect(api.unlockItem).toHaveBeenCalledWith(27, "link-password");
+    expect(api.getItem).toHaveBeenCalledWith(27);
+    expect(assign).toHaveBeenCalledOnce();
+  } finally {
+    assign.mockRestore();
+  }
+});
+
+it.each([null, "javascript:alert(1)", "data:text/html,private", "/d/27"])(
+  "rejects an invalid workspace link target (%s)",
+  async (target) => {
+    mockWorkspaceLink(target, false, true);
+    const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {});
+    try {
+      const user = userEvent.setup();
+      renderApp();
+      await screen.findByText("Workspace runbook");
+      await user.click(screen.getByRole("button", { name: "Open link" }));
+      expect(assign).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith("This link could not be opened.");
+    } finally {
+      assign.mockRestore();
+    }
+  },
+);
+
 it("updates the space label optimistically after selecting from the picker", async () => {
   vi.mocked(api.listSpaces).mockResolvedValue([
     { id: 1, name: "Design", createdAt: "2026-02-27T00:00:00+00:00", itemCount: 0 },

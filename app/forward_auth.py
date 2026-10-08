@@ -173,6 +173,8 @@ def configure_forward_auth(app: Flask) -> None:
 
     @app.after_request
     def prevent_private_caching(response):
+        from app.services.item_access import enforce_unlock_cookie_budget
+        enforce_unlock_cookie_budget(app)
         # Public assets contain no identity/data; all other responses may be private.
         if not (_ASSET_PATH.fullmatch(request.path) and is_public_request(app)):
             response.headers["Cache-Control"] = "no-store, private"
