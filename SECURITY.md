@@ -12,7 +12,7 @@ Only the latest released minor version receives security fixes. When a fix lands
 | Older `1.x` minors | No |
 | `0.x` | No |
 
-Check `/api/health` on your deployment to see which version you're running.
+Check protected `/api/app-info` or the UI footer to see which version you're running.
 
 ## Reporting a vulnerability
 
@@ -35,17 +35,23 @@ In your report, please include:
 
 ## Scope
 
-saíta is **designed for deployment on a trusted internal network and intentionally has no authentication**. This is stated up front in the README and trust-model documentation.
+Production saíta verifies the dedicated Authentik provider's signed identity, requires
+the configured access group, and checks the origin of authenticated mutations.
+All approved members share the same workspace. Keep the backend private behind
+the authenticated ingress. Local development deliberately has no IdP requirement.
+See [Production authentication](docs/forward-auth.md) for the complete trust boundary.
 
 The following are *not* vulnerabilities — they are the documented trust model:
 
-- Running saíta on the public internet and anyone being able to see or upload items.
-- Anyone with network access being able to delete items via the API.
+- Anyone with a canonical public share link being able to open an unprotected item.
+- Approved workspace members being able to manage all items in the shared dataset.
 - No rate limiting on item creation or list endpoints.
 
 The following **are** in scope and we want to hear about them:
 
 - Authentication or authorization bypass of **password-protected items** (including session unlock cookies).
+- Bypass of workspace JWT verification, required-group authorization, or authenticated mutation origin checks.
+- Private workspace responses exposed by browser/service-worker caching after logout.
 - Path traversal, arbitrary file read/write, or zip-slip via uploads or folder zip handling.
 - Remote code execution through uploaded files, links, or note rendering.
 - Cross-site scripting (XSS) in item names, link URLs, or markdown notes (both React render and server-side render at `/d/<id>`).

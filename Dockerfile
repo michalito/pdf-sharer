@@ -62,10 +62,12 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 
 # Development image (backend only; frontend runs separately)
 FROM runtime-base AS dev
+ENV FLASK_ENV=development
 CMD ["flask", "run", "--host=0.0.0.0", "--port=5000", "--reload"]
 
 # Production image (includes built frontend)
 FROM runtime-base AS prod
+ENV FLASK_ENV=production
 COPY --chown=app:app --from=frontend-builder /frontend/dist/index.html /app/app/templates/index.html
 COPY --chown=app:app --from=frontend-builder /frontend/dist/index.html /app/app/static/index.html
 COPY --chown=app:app --from=frontend-builder /frontend/dist/assets /app/app/static/assets

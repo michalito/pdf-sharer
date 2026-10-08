@@ -101,6 +101,12 @@ class Config:
     SESSION_COOKIE_HTTPONLY: bool = True
     SESSION_COOKIE_SAMESITE: str = "Lax"
     PERMANENT_SESSION_LIFETIME: int = 3600  # 1 hour
+    AUTH_MODE: str = "development"
+    APP_ORIGIN: str = ""
+    AUTHENTIK_PROXY_ISSUER: str = ""
+    AUTHENTIK_PROXY_CLIENT_ID: str = ""
+    AUTHENTIK_REQUIRED_GROUP: str = ""
+    AUTHENTIK_PROXY_CLIENT_SECRET_FILE: str = ""
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -112,6 +118,8 @@ class Config:
         secret_key = (os.environ.get("SECRET_KEY") or "").strip()
         if not secret_key:
             raise ValueError("SECRET_KEY environment variable is required in production")
+        if len(secret_key.encode()) < 32:
+            raise ValueError("SECRET_KEY must contain at least 32 bytes in production")
 
         database_uri = os.environ.get("DATABASE_URL") or \
             f"sqlite:///{base_dir / 'instance' / 'saita.db'}"
@@ -127,8 +135,11 @@ class Config:
         trust_proxy_hops = _parse_trust_proxy_hops(os.environ.get("TRUST_PROXY_HOPS"))
         session_cookie_secure = _parse_bool_env(
             os.environ.get("SESSION_COOKIE_SECURE"),
-            default=False,
+            default=True,
         )
+
+        if os.environ.get("AUTH_MODE") != "forward":
+            raise ValueError("Production requires explicit AUTH_MODE=forward")
 
         return cls(
             SECRET_KEY=secret_key,
@@ -140,6 +151,7 @@ class Config:
             APP_VERSION=os.environ.get("APP_VERSION", "dev"),
             TRUST_PROXY_HOPS=trust_proxy_hops,
             SESSION_COOKIE_SECURE=session_cookie_secure,
+            **cls._auth_from_env(default_mode="forward"),
         )
 
     @classmethod
@@ -166,7 +178,19 @@ class Config:
                 os.environ.get("SESSION_COOKIE_SECURE"),
                 default=False,
             ),
+            **cls._auth_from_env(default_mode="development"),
         )
+
+    @staticmethod
+    def _auth_from_env(*, default_mode: str) -> dict:
+        return {
+            "AUTH_MODE": os.environ.get("AUTH_MODE", default_mode),
+            "APP_ORIGIN": os.environ.get("APP_ORIGIN", ""),
+            "AUTHENTIK_PROXY_ISSUER": os.environ.get("AUTHENTIK_PROXY_ISSUER", ""),
+            "AUTHENTIK_PROXY_CLIENT_ID": os.environ.get("AUTHENTIK_PROXY_CLIENT_ID", ""),
+            "AUTHENTIK_REQUIRED_GROUP": os.environ.get("AUTHENTIK_REQUIRED_GROUP", ""),
+            "AUTHENTIK_PROXY_CLIENT_SECRET_FILE": os.environ.get("AUTHENTIK_PROXY_CLIENT_SECRET_FILE", ""),
+        }
 
     def to_flask_config(self) -> dict:
         """Convert to Flask configuration dictionary."""
@@ -184,13 +208,24 @@ class Config:
             "SESSION_COOKIE_SAMESITE": self.SESSION_COOKIE_SAMESITE,
             "PERMANENT_SESSION_LIFETIME": self.PERMANENT_SESSION_LIFETIME,
             "APP_VERSION": self.APP_VERSION,
+            "AUTH_MODE": self.AUTH_MODE,
+            "APP_ORIGIN": self.APP_ORIGIN,
+            "AUTHENTIK_PROXY_ISSUER": self.AUTHENTIK_PROXY_ISSUER,
+            "AUTHENTIK_PROXY_CLIENT_ID": self.AUTHENTIK_PROXY_CLIENT_ID,
+            "AUTHENTIK_REQUIRED_GROUP": self.AUTHENTIK_REQUIRED_GROUP,
+            "AUTHENTIK_PROXY_CLIENT_SECRET_FILE": self.AUTHENTIK_PROXY_CLIENT_SECRET_FILE,
         }
 
 
 def get_config() -> Config:
     """Get the appropriate configuration based on environment."""
-    env = os.environ.get("FLASK_ENV", "development")
+    env = os.environ.get("FLASK_ENV")
+
+    if env is None:
+        raise ValueError("FLASK_ENV is required; explicitly choose production, development, or testing")
 
     if env == "production":
         return Config.from_env()
-    return Config.for_development()
+    if env in {"development", "testing"}:
+        return Config.for_development()
+    raise ValueError("FLASK_ENV must be production, development, or testing")

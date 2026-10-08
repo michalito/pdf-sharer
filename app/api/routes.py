@@ -207,10 +207,22 @@ def _present_item(
 
 @api.route("/health", methods=["GET"])
 def health() -> Response:
+    return jsonify({"ok": True})
+
+
+@api.route("/auth-required", methods=["GET"])
+def auth_required() -> tuple[Response, int]:
+    """Fixed response for the ingress API authentication-error adapter."""
+    return jsonify(error="Sign in to continue.", code="AUTH_REQUIRED", loginUrl="/"), 401
+
+
+@api.route("/app-info", methods=["GET"])
+def app_info() -> Response:
     return jsonify(
         {
             "ok": True,
             "version": current_app.config["APP_VERSION"],
+            "authMode": current_app.config["AUTH_MODE"],
             "limits": {
                 "noteTextMaxChars": current_app.config["MAX_NOTE_TEXT_LENGTH"],
             },

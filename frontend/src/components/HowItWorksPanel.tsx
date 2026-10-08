@@ -112,8 +112,8 @@ const steps = [
 ];
 
 const privacyNotes = [
-  "No user accounts or ACLs. Anyone with a share link can open unprotected items.",
-  "Designed for a trusted internal network. Share links are convenience URLs, not secret tokens.",
+  "Signed-in members share one workspace. Anyone with a share link can open unprotected items.",
+  "Share links are public convenience URLs, not secret tokens. Use a password for sensitive items.",
   "Password-protected items ask for the password once per browser session.",
   "Operators with server access can read stored files and metadata. Items stay until deleted or expired.",
 ];
@@ -134,8 +134,8 @@ export default function HowItWorksPanel(props: { open: boolean; onClose: () => v
       open={open}
       onClose={onClose}
       title="saíta"
-      subtitle="Internal exchange, zero login"
-      description="Share files, folders, links, and notes with your team. No accounts needed — upload, copy the link, hand it off."
+      subtitle="Shared workspace"
+      description="Share files, folders, links, and notes. Upload, copy the link, and hand it off. Recipients can open share links without signing in."
       icon={<img src="/logo.png" alt="" className="h-full w-full object-contain p-0.5" />}
       closeLabel="Close help panel"
       footerLabel="saíta · internal use"

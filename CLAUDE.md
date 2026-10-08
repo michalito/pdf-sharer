@@ -2,7 +2,7 @@
 
 Detailed architecture and behavioral reference for this repository. Auto-loaded by Claude Code (claude.ai/code) from the project root, and useful to any human contributor who wants the deep-dive view. For quick-start commands and the contributor workflow, see [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
-Last verified against code: 2026-10-03.
+Last verified against code: 2026-10-08.
 
 ## Project Snapshot
 
@@ -10,7 +10,7 @@ Last verified against code: 2026-10-03.
 - Backend: Flask, SQLAlchemy, Alembic
 - Frontend: React + TypeScript + Vite (TanStack Query for server state)
 - Deployment: Docker Compose via `./deploy.sh`; CI builds via GitHub Actions + `Dockerfile.ci`
-- Trust model: internal network, no authentication by design
+- Trust model: production Authentik forward auth, locally verified signed provider identity, public share links, and a shared dataset
 
 ## Agent Operating Rules
 
@@ -101,6 +101,7 @@ app/
   domain/space.py                 # Space model (name, normalized_name, item relationship)
   domain/unlock_attempt.py        # UnlockAttempt model — persists unlock-throttle state (unlock_attempts table)
   config.py                       # Config dataclass (from_env / for_development)
+  forward_auth.py                 # Dedicated HS256 provider JWT verification, exact bypasses, origin checks, logout/cache policy
   constants.py                    # Upload size, note excerpt bounds, TTL presets, unlock-throttle limits
   exceptions.py                   # AppError hierarchy (NotFoundError, ValidationError, etc.)
   error_handlers.py               # register_error_handlers() — called on both blueprints
@@ -119,7 +120,8 @@ Key patterns:
 - **Request IDs**: middleware sets `g.request_id` (from `X-Request-ID` header or new UUID), returned on every response.
 - **Presenter layer**: `item_presenter.present_item_for_api()` wraps `Item.to_dto()` and applies access-policy masking — protected locked items hide `linkUrl`/`noteText`/`noteExcerpt` and expose `isPasswordProtected` + `isPasswordUnlocked`.
 - **meta_json column**: Links store `{"url": "..."}`, notes store `{"text": "..."}`, folders store `{"file_count": N, "top_level_dir": "..."}`.
-- **Session unlocks**: Per-item unlock state is tracked in signed Flask session cookies (`app/services/item_access.py`).
+- **Session unlocks**: API grants are bound to the verified subject and dropped on subject changes. Explicit anonymous share-password grants remain browser-scoped and are stored separately in signed Flask cookies (`app/services/item_access.py`). Both scopes share a measured 3800-byte signed-cookie header budget; older grants are trimmed before persistence. API grants alone do not unlock public shares. Workspace link actions open their validated HTTP(S) API target directly. Anonymous prompts reveal neither protected titles nor item kinds.
+- **Workspace authentication**: Production requires `AUTH_MODE=forward` and a dedicated proxy client-secret file, exact issuer/audience, and required group. Each worker loads its secret once and independently verifies HS256 `X-authentik-jwt`; plain identity/JWKS headers are ignored. All protected mutations require exact canonical `Origin` and `X-Saita-CSRF: 1`. Share unlock cookies do not grant workspace access. See [docs/forward-auth.md](docs/forward-auth.md).
 - **Database integrity**: Runtime SQLite connections enforce foreign keys. Item and space IDs use SQLite AUTOINCREMENT; migration `0012` rebuilds those tables, preserves rows/indexes and repairs historical dangling references. Alembic temporarily disables enforcement on its own connection during table replacement to preserve child records. Relative SQLite paths resolve under Flask’s instance directory.
 - **Upload lifecycle**: Shared directory locks cover file/ZIP creation through commit; orphan pruning holds an exclusive directory lock. Failed uploads remove staged content. ZIP entry sizes are known before streaming so ZIP64 is enabled when needed.
 - **Item expiration**: Optional `expires_at` column. Expired items are filtered from all queries immediately and are removed by the `flask expire-items` / `./deploy.sh expire-items` maintenance command.
@@ -134,7 +136,8 @@ Single-page app — **no client-side router**. `App.tsx` is the sole root compon
 - **Styling**: Tailwind CSS, dark/light theme via `useTheme` hook (localStorage-persisted).
 - **Markdown notes**: Notes render as markdown via `MarkdownProse` component (`react-markdown` + `remark-gfm`). Server-side rendering also available via `app/utils/markdown.py` (mistune) for the `/d/<id>` share page.
 - **No global state store** — UI state lives in `App.tsx` (search, filters, sort, pagination, reorder mode, upload queue) with three cohesive custom hooks that keep the root tractable: `useItemMutations` (`frontend/src/lib/useItemMutations.ts`) wraps all item/space TanStack mutations including the optimistic `updateItem`; `useDialogState` (`frontend/src/lib/useDialogState.ts`) is a single reducer-backed record for all 14 dialog/picker states with typed open/close callbacks and an `isAnyModalOpen` selector; `useItemReorder` (`frontend/src/lib/useItemReorder.ts`) owns drag-end and move-to-page logic plus the global↔scoped order substitution. Layout JSX is split into `components/AppHeader.tsx`, `components/AppFooter.tsx`, and `components/AppDialogs.tsx`. Shared UI building blocks: `ConfirmDialog` (modal) and `SidePanel` (Settings/Storage/About slide-over) both use `lib/useFocusTrap.ts`; create dialogs share `dialogs/ItemOptionsFields.tsx` (TTL + password fields); item state/kind labels and icons live in `lib/constants.ts`; list rows render via `components/ItemRow.tsx`. The keyboard focus ring is a shared `focus-ring` Tailwind utility defined in `index.css`.
-- **PWA**: Installable as a standalone app. `manifest.webmanifest` in `frontend/public/` defines app metadata. Service worker generated by `vite-plugin-pwa` (Workbox `generateSW`) precaches built frontend assets and Google Fonts. Navigations fall back to `/static/index.html` for offline app-shell startup, with `/api` and `/d/*` excluded from fallback. SW registered manually in `main.tsx` at `/sw.js` (root scope via `serve_public`). No API caching. Theme-color meta tag updated dynamically by `useTheme` hook.
+- **PWA**: Installable as a standalone app. `manifest.webmanifest` in `frontend/public/` defines app metadata. Service worker generated by `vite-plugin-pwa` (Workbox `generateSW`) precaches public frontend assets and caches Google Fonts. HTML is excluded and there is no navigation fallback: every navigation reaches the server. Obsolete precache entries are removed on update. SW registered manually in `main.tsx` at `/sw.js` (root scope via `serve_public`). No API/share/auth caching. Theme-color meta tag updated dynamically by `useTheme` hook.
+- **Logout**: `AuthGate` unmounts the private app and clears React Query data on `AUTH_REQUIRED`, same-origin cross-tab logout, and restored history pages. Exact anonymous `POST /api/auth/logout` clears Flask unlocks only with canonical Origin/custom-header checks; expired identity cannot prevent clearing. The client clears UI first and makes a two-second best-effort cookie-clear request before always navigating to the fixed outpost sign-out path. The gate and server navigation-error page offer Sign out. App-info is rechecked on focus and every minute. All non-asset responses are `no-store`.
 
 ### Spaces
 
@@ -172,7 +175,10 @@ Spaces are named organizational groupings for items (one-to-many, optional). The
 - `DELETE /api/spaces/<id>` — unassigns active visible items in that space and returns `{"unassigned": N}`
 
 ### Other
-- `GET /api/health` (returns `{"ok": true, "version": "<app-version>", "limits": {"noteTextMaxChars": <max-note-length>}}`)
+- `GET /api/health` (public, returns only `{"ok": true}`)
+- `GET /api/app-info` (protected `ok`, `version`, runtime `limits`, `authMode`)
+- `GET /api/auth-required` (public, fixed JSON 401 for the ingress API authentication-error adapter)
+- `POST /api/auth/logout` (anonymous, canonical Origin/custom-header checks; clears Flask unlocks and returns fixed outpost sign-out path)
 - `GET /api/storage` (returns `{disk, items: {totalCount, totalSizeBytes, countByKind, sizeByKind, countByState, sizeByState}, spaceStats: [{spaceId, spaceName, itemCount, sizeBytes}], largestItems}`)
 - `GET /d/<id>` (public share link: download file/folder, redirect link, render note, or show password prompt)
 - `POST /d/<id>` (submit password for protected share links)
@@ -200,16 +206,17 @@ Note payload behavior:
 Backend fixtures (`tests/conftest.py`): `app` creates a full Flask app with in-memory SQLite and temp upload dir; `client` is the Flask test client. Each test gets a fresh DB via `create_all`/`drop_all`. Coverage threshold: 80% (`pyproject.toml`).
 
 Test files:
-- `tests/integration/`: `test_items_api.py`, `test_spaces_api.py`, `test_storage_api.py`, `test_cli.py`
+- `tests/integration/`: `test_forward_auth.py`, `test_items_api.py`, `test_spaces_api.py`, `test_storage_api.py`, `test_cli.py`, `test_resource_identity_and_throttle.py`, `test_review_regressions.py`
 - `tests/unit/`: `test_zip_utils.py`, `test_item_presenter.py`, `test_markdown.py`, `test_config.py`, `test_item_access.py`, `test_item_service.py`, `test_hashing.py`, `test_content_hash_lock.py`, `test_unlock_throttle.py`, `test_proxy_fix.py`, `test_deploy_script.py`
-- `frontend/src/test/`: `App.test.tsx`, `ConfirmDialogFocus.test.tsx`, `Dialogs.test.tsx`, `ErrorBoundary.test.tsx`, `ItemsContent.test.tsx`, `MarkdownProse.test.tsx`, `SidePanel.test.tsx`, `SpaceBar.test.tsx`, `SpaceCombobox.test.tsx`, `StorageDashboard.test.tsx`, `UploadQueue.test.tsx`, `format.test.ts`, `itemOrder.test.ts`, `itemsApi.test.ts`, `useDialogState.test.ts`, `useFullPageDrop.test.ts`, `useItemMutations.test.tsx`, `useItemReorder.test.tsx`, `useLongPress.test.tsx`, `useSettings.test.ts`, `useTheme.test.ts` (Vitest + happy-dom + Testing Library, API mocked via `vi.mock()`; `src/test/setup.ts` stubs `matchMedia`, `IntersectionObserver`, and `ResizeObserver`)
+- `frontend/src/test/`: `AuthGate.test.tsx`, `App.test.tsx`, `ConfirmDialogFocus.test.tsx`, `Dialogs.test.tsx`, `ErrorBoundary.test.tsx`, `ItemsContent.test.tsx`, `MarkdownProse.test.tsx`, `SidePanel.test.tsx`, `SpaceBar.test.tsx`, `SpaceCombobox.test.tsx`, `StorageDashboard.test.tsx`, `UploadQueue.test.tsx`, `format.test.ts`, `itemOrder.test.ts`, `itemsApi.test.ts`, `useDialogState.test.ts`, `useFullPageDrop.test.ts`, `useItemMutations.test.tsx`, `useItemReorder.test.tsx`, `useLongPress.test.tsx`, `useSettings.test.ts`, `useTheme.test.ts` (Vitest + happy-dom + Testing Library, API mocked via `vi.mock()`; `src/test/setup.ts` stubs `matchMedia`, `IntersectionObserver`, and `ResizeObserver`)
 
 ## Configuration
 
 - `FLASK_ENV=production` → `Config.from_env()` (reads `DATABASE_URL`, `UPLOAD_FOLDER`, etc.) and **requires** `SECRET_KEY`.
-- Any other `FLASK_ENV` → `Config.for_development()` (local SQLite defaults)
+- `FLASK_ENV=development`/`testing` → `Config.for_development()` (local SQLite defaults); unset/unknown values fail startup. Dev mode warns at startup; Dev Compose ports bind loopback. Production images default to `production`.
 - Keep `SECRET_KEY` stable across production restarts/deploys to preserve protected-item unlock sessions.
-- Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `MAX_NOTE_TEXT_LENGTH` (default 100000), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `TRUST_PROXY_HOPS` (default `0`; set `1` behind one reverse proxy), `SESSION_COOKIE_SECURE` (default `false`; set `true` explicitly for HTTPS-only unlock-session cookies), `APP_VERSION` (health/UI version string and part of `/api/health`; auto-detected from latest git tag by `deploy.sh`, fallback `dev`), `HOST_PORT` (default 5001), `FRONTEND_PORT` (default 5173 for `./deploy.sh dev`)
+- Production additionally requires explicit `AUTH_MODE=forward`, canonical HTTPS `APP_ORIGIN`, `AUTHENTIK_PROXY_ISSUER`, `AUTHENTIK_PROXY_CLIENT_ID`, `AUTHENTIK_REQUIRED_GROUP`, and `AUTHENTIK_PROXY_CLIENT_SECRET_FILE`, plus a cookie signing key of at least 32 bytes. Startup rejects insecure/incomplete forward-mode configuration. Explicit local development uses `AUTH_MODE=development` without an IdP. Public bypasses are canonical share GET/HEAD/POST, exact health/auth-error GET/HEAD, exact logout POST with Origin checks, and existing explicit read-only assets. Ingress must return JSON 401 on protected API auth failure and route outpost paths to the outpost; misrouted outpost paths return 404.
+- Key env vars: `SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `MAX_CONTENT_LENGTH` (default 2GB), `MAX_NOTE_TEXT_LENGTH` (default 100000), `NOTE_EXCERPT_LENGTH` (default 180, bounded 40..1000), `TRUST_PROXY_HOPS` (default `0`; set `1` behind one reverse proxy), `SESSION_COOKIE_SECURE` (production default `true`, development default `false`; forward mode requires `true`), `APP_VERSION` (protected `/api/app-info` and UI version; auto-detected from latest git tag by `deploy.sh`, fallback `dev`), `HOST_PORT` (default 5001), `HOST_BIND_ADDRESS` (production Compose default loopback), `FRONTEND_PORT` (default 5173 for `./deploy.sh dev`)
 - `.env.example` documents all production config options.
 
 ## CI/CD

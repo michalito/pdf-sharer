@@ -117,7 +117,7 @@ export default function AppHeader({
               <div className="min-w-0">
                 <div className="font-display text-[1.15rem] font-semibold">saíta</div>
                 <div className="hidden truncate font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--app-muted)] sm:block">
-                  Internal exchange, zero login
+                  Shared workspace
                 </div>
               </div>
             </div>

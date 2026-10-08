@@ -1,0 +1,26 @@
+{% extends "public_base.html" %}
+
+{% block title %}Sign in - saíta{% endblock %}
+{% block content_shell_class %}content-shell--centered{% endblock %}
+
+{% block content %}
+    <section class="surface-panel error-panel">
+        <div class="panel-head">
+            <h1 class="panel-title">Sign in to saíta</h1>
+            <p class="panel-lead">Your session could not be verified. Sign in again, or sign out of this browser.</p>
+        </div>
+        <div class="panel-body panel-body-center">
+            <a href="/" class="btn-secondary">Sign in</a>
+            <button id="auth-sign-out" type="button" class="btn-secondary">Sign out</button>
+        </div>
+    </section>
+    <script>
+        document.getElementById("auth-sign-out").addEventListener("click", async function () {
+            try {
+                await fetch("/api/auth/logout", {method: "POST", headers: {"X-Saita-CSRF": "1"}, signal: AbortSignal.timeout(2000)});
+            } finally {
+                window.location.replace("/outpost.goauthentik.io/sign_out");
+            }
+        });
+    </script>
+{% endblock %}

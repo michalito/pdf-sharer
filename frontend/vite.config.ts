@@ -13,15 +13,16 @@ export default defineConfig(({ command }) => {
         injectRegister: false,
         manifest: false,
         workbox: {
-          globPatterns: ["**/*.{js,css,woff2,png,webmanifest,html}"],
+          globPatterns: ["**/*.{js,css,woff2,png,webmanifest}"],
           globIgnores: ["logo.png"],
           // Vite builds with base "/static/" and Flask serves built frontend files from /static.
           // Prepend /static/ so precache keys match browser request URLs.
           modifyURLPrefix: { "": "/static/" },
-          navigateFallback: "/static/index.html",
+          // Every navigation must reach the server so authentication is checked.
+          navigateFallback: null,
+          cleanupOutdatedCaches: true,
           skipWaiting: true,
           clientsClaim: true,
-          navigateFallbackDenylist: [/^\/api/, /^\/d\//],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -49,8 +50,18 @@ export default defineConfig(({ command }) => {
     server: {
       proxy: {
         // Upload endpoints stream multi-GB bodies; keep those unbounded.
-        "/api/items/files": { target: proxyTarget, changeOrigin: true, timeout: 0, proxyTimeout: 0 },
-        "/api/items/folder": { target: proxyTarget, changeOrigin: true, timeout: 0, proxyTimeout: 0 },
+        "/api/items/files": {
+          target: proxyTarget,
+          changeOrigin: true,
+          timeout: 0,
+          proxyTimeout: 0,
+        },
+        "/api/items/folder": {
+          target: proxyTarget,
+          changeOrigin: true,
+          timeout: 0,
+          proxyTimeout: 0,
+        },
         "/api": {
           target: proxyTarget,
           changeOrigin: true,

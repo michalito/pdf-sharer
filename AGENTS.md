@@ -8,7 +8,7 @@ Quick-reference guide for contributors and AI coding assistants working in this 
 - Backend: Flask + SQLAlchemy + Alembic
 - Frontend: React + TypeScript + Vite
 - Runtime: Docker Compose (`docker-compose.yaml` for prod, `docker-compose.dev.yaml` for dev)
-- Security model: trusted internal network, intentionally no authentication
+- Security model: production Authentik forward auth with independently verified HS256 provider identity; public share links; local development without an IdP
 
 ## Source Of Truth
 
@@ -85,13 +85,18 @@ npm --prefix frontend run build
 - SQLite foreign keys are enforced on application connections. Item and space IDs use AUTOINCREMENT to prevent future ID reuse; migration `0012` repairs existing dangling references.
 - Folder uploads are zipped server-side with zip path sanitization (`app/utils/zip_utils.py`) and ZIP64 support for large entries.
 - Every request gets `X-Request-ID` (incoming value reused if provided).
-- `GET /api/health` returns `{"ok": true, "version": "<app-version>", "limits": {"noteTextMaxChars": <max-note-length>}}`.
+- `GET /api/health` is public and returns only `{"ok": true}`. Protected `/api/app-info` returns the version, runtime limits, and auth mode.
+- Production requires explicit `AUTH_MODE=forward`, HTTPS `APP_ORIGIN`, issuer/client ID/group, and the dedicated proxy client-secret file. See [docs/forward-auth.md](docs/forward-auth.md). Never trust plain identity headers or broaden share/static bypasses.
+- Authenticated mutations require the canonical `Origin` and `X-Saita-CSRF: 1`. Public password submissions keep their existing behavior.
 - Spaces are organizational only. `space` filters accept a positive space ID or `none`; multipart upload uses `space_id`, while JSON APIs use `spaceId`.
 - Manual item reordering uses `GET /api/items/order` for scoped/global reads, but `PUT /api/items/reorder` remains a global exact permutation of all active non-expired item IDs.
 
 ## API Surface (Current)
 
-- `GET /api/health` (returns `ok` + `version` + runtime `limits`)
+- `GET /api/health` (public `ok` only)
+- `GET /api/app-info` (protected `ok`, `version`, `limits`, `authMode`)
+- `GET /api/auth-required` (public fixed JSON 401 for ingress auth errors)
+- `POST /api/auth/logout` (exact anonymous endpoint with canonical Origin/custom-header checks; clears Flask unlocks, returns the fixed outpost sign-out URL)
 - `GET /api/storage`
 - `GET /api/items` with optional `q`, `kind`, `state`, `space` (`<id>|none`), `protected`, `sort` (`name|size|created|modified|manual`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
 - `POST /api/items/files` (multipart `files`; optional `password`, `space_id`, `ttl`, `force`)
@@ -117,14 +122,14 @@ npm --prefix frontend run build
 ## Config Gotchas
 
 - `FLASK_ENV=production` uses `Config.from_env()` and honors `DATABASE_URL`, `UPLOAD_FOLDER`, etc.
-- `SECRET_KEY` is required in production (`Config.from_env()` raises if missing). Keep it stable across restarts, otherwise protected-item unlock sessions are invalidated.
-- `SESSION_COOKIE_SECURE` defaults to `false`; set it explicitly to `true` when serving the app over HTTPS and you want unlock-session cookies to be transport-secure.
-- Any non-production `FLASK_ENV` uses `Config.for_development()`, which currently fixes DB path and upload folder to local defaults.
+- `SECRET_KEY` is required in production and must have at least 32 bytes. Keep it stable across restarts, otherwise protected-item unlock sessions are invalidated.
+- `SESSION_COOKIE_SECURE` defaults to `true` in production and `false` in development; forward mode requires `true`.
+- `FLASK_ENV` must be explicit. `development`/`testing` uses `Config.for_development()`, which fixes DB/upload paths to local defaults; absent/unknown names fail startup. Dev Compose ports bind loopback and dev auth logs a warning. Production images default to `production`.
 - `MAX_CONTENT_LENGTH` default is `2147483648` (2GB).
 - `MAX_NOTE_TEXT_LENGTH` controls maximum saved note body length and defaults to `100000`.
 - `NOTE_EXCERPT_LENGTH` controls note preview length in `GET /api/items` and is bounded to `40..1000` (default `180`).
 - `TRUST_PROXY_HOPS` controls how many reverse-proxy hops are trusted for `X-Forwarded-For` when deriving client IP (`0` by default; set `1` for one proxy).
-- `APP_VERSION` is exposed by `GET /api/health` and the UI footer; `/api/health` also exposes runtime limits including `noteTextMaxChars`; when unset, `deploy.sh` auto-detects from latest git tag (fallback `dev`).
+- `APP_VERSION` and runtime limits are exposed by protected `GET /api/app-info` and the UI footer; when unset, `deploy.sh` auto-detects from latest git tag (fallback `dev`).
 - `FRONTEND_PORT` only affects `./deploy.sh dev`; use it with `--name`/`HOST_PORT` to run multiple worktrees side by side.
 
 ## Change Checklist For Agents

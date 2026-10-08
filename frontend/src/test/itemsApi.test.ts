@@ -2,6 +2,7 @@ import {
   createLink,
   createNote,
   createSpace,
+  AuthenticationRequiredError,
   deleteItem,
   deleteReadyToDelete,
   deleteSpace,
@@ -12,6 +13,7 @@ import {
   getItemOrder,
   listItems,
   listSpaces,
+  logout,
   RateLimitError,
   renameSpace,
   reorderItems,
@@ -74,6 +76,7 @@ class MockXHR {
   onerror: (() => void) | null = null;
   opened: { method: string; url: string } | null = null;
   responseType = "";
+  headers = new Headers();
 
   constructor() {
     MockXHR.instances.push(this);
@@ -85,6 +88,10 @@ class MockXHR {
 
   send(body: FormData) {
     this.sentBody = body;
+  }
+
+  setRequestHeader(name: string, value: string) {
+    this.headers.set(name, value);
   }
 
   abort = vi.fn();
@@ -132,7 +139,7 @@ it("listItems builds the expected query and validates the response shape", async
 
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/items?q=roadmap&kind=note&state=active&protected=false&space=none&page=2&per_page=25&sort=name&order=asc",
-    { signal: undefined },
+    { signal: undefined, redirect: "manual" },
   );
 
   mockFetch(jsonResponse({ items: [] }));
@@ -249,12 +256,133 @@ it("covers the small JSON helpers and no-content endpoints", async () => {
 
   expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/items/order?space=none", {
     signal: undefined,
+    redirect: "manual",
   });
   expect(fetchMock).toHaveBeenNthCalledWith(
     8,
     "/api/items/ready-to-delete?q=old&kind=file&protected=true&space=none",
-    { method: "DELETE" },
+    { method: "DELETE", headers: expect.any(Headers), redirect: "manual" },
   );
+});
+
+it("adds the CSRF header to JSON mutations and no-content mutations", async () => {
+  const fetchMock = mockFetch(jsonResponse(item));
+  await createNote({ text: "same-origin note" });
+  expect((fetchMock.mock.calls[0][1].headers as Headers).get("X-Saita-CSRF")).toBe("1");
+  mockFetch(new Response(null, { status: 204 }));
+  await deleteItem(1);
+  const call = vi.mocked(fetch).mock.calls[0];
+  expect(new Headers(call[1]?.headers).get("X-Saita-CSRF")).toBe("1");
+});
+
+it("clears the authenticated view on auth rejection without treating share-password failures as logout", async () => {
+  const listener = vi.fn();
+  window.addEventListener("saita:auth-required", listener);
+  try {
+    mockFetch(jsonResponse({ error: "Sign in", code: "AUTH_REQUIRED" }, { status: 401 }));
+    await expect(listItems({})).rejects.toBeInstanceOf(AuthenticationRequiredError);
+    expect(listener).toHaveBeenCalledOnce();
+    mockFetch(
+      jsonResponse({ error: "Invalid password", code: "AUTHENTICATION_FAILED" }, { status: 401 }),
+    );
+    await expect(unlockItem(1, "wrong")).rejects.toThrow("Invalid password");
+    expect(listener).toHaveBeenCalledOnce();
+  } finally {
+    window.removeEventListener("saita:auth-required", listener);
+  }
+});
+
+it("rejects auth redirects and HTML without consuming them as API data", async () => {
+  mockFetch(new Response(null, { status: 302, headers: { Location: "https://auth.test" } }));
+  await expect(deleteItem(1)).rejects.toBeInstanceOf(AuthenticationRequiredError);
+  mockFetch(new Response("<html>Sign in</html>", { headers: { "Content-Type": "text/html" } }));
+  await expect(listItems({})).rejects.toBeInstanceOf(AuthenticationRequiredError);
+  mockFetch(new Response("<html>Sign in</html>", { headers: { "Content-Type": "text/html" } }));
+  await expect(unlockItem(1, "password")).rejects.toBeInstanceOf(AuthenticationRequiredError);
+  installMockXHR();
+  const upload = uploadFiles([new File(["x"], "x.txt")]);
+  MockXHR.instances[0].response = null;
+  MockXHR.instances[0].onload?.();
+  await expect(upload).rejects.toBeInstanceOf(AuthenticationRequiredError);
+});
+
+it("logs out through the authenticated mutation and clears the view before navigating to the outpost", async () => {
+  const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
+  const listener = vi.fn();
+  window.addEventListener("saita:auth-required", listener);
+  try {
+    const fetchMock = mockFetch(jsonResponse({ logoutUrl: "/outpost.goauthentik.io/sign_out" }));
+    await logout();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/logout",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).get("X-Saita-CSRF")).toBe("1");
+    expect(listener).toHaveBeenCalledOnce();
+    expect(replace).toHaveBeenCalledWith("/outpost.goauthentik.io/sign_out");
+    expect(localStorage.getItem("saita-logout")).not.toBeNull();
+  } finally {
+    window.removeEventListener("saita:auth-required", listener);
+  }
+});
+
+it("ignores arbitrary sign-out destinations and uses the fixed outpost path", async () => {
+  const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
+  mockFetch(jsonResponse({ logoutUrl: "https://attacker.test" }));
+  await logout();
+  expect(replace).toHaveBeenCalledWith("/outpost.goauthentik.io/sign_out");
+});
+
+it.each([401, 403])(
+  "still clears the view and signs out when the app returns %s",
+  async (status) => {
+    const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
+    const listener = vi.fn();
+    window.addEventListener("saita:auth-required", listener);
+    try {
+      mockFetch(jsonResponse({ error: "Unavailable" }, { status }));
+      await logout();
+      expect(listener).toHaveBeenCalledOnce();
+      expect(replace).toHaveBeenCalledWith("/outpost.goauthentik.io/sign_out");
+    } finally {
+      window.removeEventListener("saita:auth-required", listener);
+    }
+  },
+);
+
+it("still signs out when local-cookie clearing has a network failure", async () => {
+  const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Network failure")));
+  await logout();
+  expect(replace).toHaveBeenCalledWith("/outpost.goauthentik.io/sign_out");
+});
+
+it("aborts a hung cookie-clear request after two seconds and reaches outpost sign-out", async () => {
+  vi.useFakeTimers();
+  const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
+  let signal: AbortSignal | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((_url: string, init: RequestInit) => {
+      signal = init.signal as AbortSignal;
+      return new Promise<Response>((_resolve, reject) => {
+        signal!.addEventListener("abort", () => reject(signal!.reason), { once: true });
+      });
+    }),
+  );
+  try {
+    const pending = logout();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(signal?.aborted).toBe(false);
+    expect(replace).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(signal?.aborted).toBe(true);
+    await pending;
+    expect(replace).toHaveBeenCalledOnce();
+    expect(replace).toHaveBeenCalledWith("/outpost.goauthentik.io/sign_out");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("uploads files with optional metadata, progress, success, and duplicate errors", async () => {
@@ -270,6 +398,7 @@ it("uploads files with optional metadata, progress, success, and duplicate error
   });
   const xhr = MockXHR.instances[0];
   expect(xhr.opened).toEqual({ method: "POST", url: "/api/items/files" });
+  expect(xhr.headers.get("X-Saita-CSRF")).toBe("1");
   expect(formEntries(xhr.sentBody!)).toEqual([
     ["files", "doc.txt"],
     ["password", "pw"],

@@ -55,6 +55,7 @@ export type ListItemsResponse = {
 export type AppInfo = {
   ok: boolean;
   version: string;
+  authMode?: "forward" | "development";
   limits: {
     noteTextMaxChars: number;
   };
@@ -116,6 +117,17 @@ export class UploadAbortedError extends Error {
   }
 }
 
+export class AuthenticationRequiredError extends Error {
+  constructor() {
+    super("Sign in to continue.");
+    this.name = "AuthenticationRequiredError";
+  }
+}
+
+export function clearAuthenticatedView(): void {
+  window.dispatchEvent(new Event("saita:auth-required"));
+}
+
 function buildQuery(params: Record<string, string | number | undefined | null>): string {
   const usp = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -127,6 +139,10 @@ function buildQuery(params: Record<string, string | number | undefined | null>):
 }
 
 function errorFromBody(status: number, body: ApiErrorBody | null): Error {
+  if (body?.code === "AUTH_REQUIRED" || (status === 401 && !body)) {
+    clearAuthenticatedView();
+    return new AuthenticationRequiredError();
+  }
   if (status === 409 && body?.code === "DUPLICATE_CONTENT" && body.duplicates) {
     return new DuplicateContentError(body.error || "Duplicate content detected", body.duplicates);
   }
@@ -162,9 +178,53 @@ function isListItemsResponse(value: unknown): value is ListItemsResponse {
 }
 
 async function apiJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options);
+  const res = await apiFetch(url, options);
   if (!res.ok) throw await parseApiError(res);
   return (await res.json()) as T;
+}
+
+async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
+  const method = options?.method?.toUpperCase() ?? "GET";
+  const init: RequestInit = { ...options, redirect: "manual" };
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+    const headers = new Headers(options?.headers);
+    headers.set("X-Saita-CSRF", "1");
+    init.headers = headers;
+  }
+  const response = await fetch(url, init);
+  if (
+    response.type === "opaqueredirect" ||
+    response.redirected ||
+    (response.status >= 300 && response.status < 400) ||
+    (response.ok &&
+      response.status !== 204 &&
+      !response.headers.get("Content-Type")?.includes("application/json"))
+  ) {
+    clearAuthenticatedView();
+    throw new AuthenticationRequiredError();
+  }
+  return response;
+}
+
+export async function logout(): Promise<void> {
+  clearAuthenticatedView();
+  try {
+    localStorage.setItem("saita-logout", String(Date.now()));
+  } catch {
+    // The local view is still cleared when storage is disabled.
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2000);
+  try {
+    // The local cookie clear is best-effort; expired/network-failed identity must
+    // never prevent this browser from reaching the fixed outpost sign-out URL.
+    await apiFetch("/api/auth/logout", { method: "POST", signal: controller.signal });
+  } catch {
+    // Private UI is already cleared; the outpost owns authentication sign-out.
+  } finally {
+    clearTimeout(timeout);
+    window.location.replace("/outpost.goauthentik.io/sign_out");
+  }
 }
 
 export async function listItems(
@@ -215,6 +275,7 @@ function xhrForm<T>(
   const promise = new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
+    xhr.setRequestHeader("X-Saita-CSRF", "1");
     xhr.responseType = "json";
 
     let aborted = false;
@@ -255,6 +316,16 @@ function xhrForm<T>(
       if (!ok) {
         const errBody = (body ?? null) as ApiErrorBody | null;
         reject(errorFromBody(xhr.status, errBody));
+        return;
+      }
+      if (
+        !body ||
+        (xhr.responseURL &&
+          (new URL(xhr.responseURL).pathname !== url ||
+            new URL(xhr.responseURL).origin !== window.location.origin))
+      ) {
+        clearAuthenticatedView();
+        reject(new AuthenticationRequiredError());
         return;
       }
       resolve(body as T);
@@ -337,7 +408,7 @@ export async function createNote(params: {
 }
 
 export async function unlockItem(id: number, password: string): Promise<void> {
-  const res = await fetch(`/api/items/${id}/unlock`, {
+  const res = await apiFetch(`/api/items/${id}/unlock`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
@@ -347,7 +418,7 @@ export async function unlockItem(id: number, password: string): Promise<void> {
 }
 
 export async function deleteItem(id: number): Promise<void> {
-  const res = await fetch(`/api/items/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`/api/items/${id}`, { method: "DELETE" });
   if (res.status === 204) return;
   if (!res.ok) throw await parseApiError(res);
 }
@@ -368,7 +439,7 @@ export async function deleteReadyToDelete(params?: {
 }
 
 export async function fetchAppInfo(opts: { signal?: AbortSignal } = {}): Promise<AppInfo> {
-  return apiJson<AppInfo>("/api/health", { signal: opts.signal });
+  return apiJson<AppInfo>("/api/app-info", { signal: opts.signal });
 }
 
 // Storage dashboard
