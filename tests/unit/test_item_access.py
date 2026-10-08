@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from flask import session
+from flask import g, session
 
 from app.services.item_access import (
+    AUTHENTICATED_UNLOCKS_SESSION_KEY,
     UNLOCKED_ITEMS_MAX,
     UNLOCKED_ITEMS_SESSION_KEY,
+    bind_authenticated_unlocks,
     clear_stale_unlocks_if_needed,
     is_item_unlocked,
     mark_item_unlocked,
@@ -70,3 +72,35 @@ def test_unlock_entries_deduplicate_preserve_order_and_enforce_bound(app):
         assert len(session[UNLOCKED_ITEMS_SESSION_KEY]) == UNLOCKED_ITEMS_MAX
         assert is_item_unlocked(items[0]) is False
         assert is_item_unlocked(items[-1]) is True
+
+
+def test_authenticated_grants_have_separate_bounds_and_drop_on_subject_change(app):
+    with app.test_request_context("/"):
+        anonymous_item = _make_item(999)
+        mark_item_unlocked(anonymous_item)
+        anonymous_grants = list(session[UNLOCKED_ITEMS_SESSION_KEY])
+
+        g.forward_identity = {"sub": "member-a"}
+        for item_id in range(1, UNLOCKED_ITEMS_MAX + 6):
+            mark_item_unlocked(_make_item(item_id))
+        mark_item_unlocked(_make_item(UNLOCKED_ITEMS_MAX + 5))
+        assert len(session[AUTHENTICATED_UNLOCKS_SESSION_KEY]["tokens"]) == UNLOCKED_ITEMS_MAX
+        assert is_item_unlocked(_make_item(1)) is False
+        assert is_item_unlocked(_make_item(UNLOCKED_ITEMS_MAX + 5)) is True
+        assert session[UNLOCKED_ITEMS_SESSION_KEY] == anonymous_grants
+
+        g.forward_identity = {"sub": "member-b"}
+        bind_authenticated_unlocks("member-b")
+        assert is_item_unlocked(_make_item(UNLOCKED_ITEMS_MAX + 5)) is False
+        assert is_item_unlocked(anonymous_item) is True
+
+
+def test_malformed_authenticated_grants_cannot_preserve_access(app):
+    with app.test_request_context("/"):
+        g.forward_identity = {"sub": "member-a"}
+        item = _make_item(1)
+        for malformed in ["invalid", {"sub": "member-a", "tokens": "invalid"},
+                          {"sub": "member-b", "tokens": [_token_for_item(item)]}]:
+            session[AUTHENTICATED_UNLOCKS_SESSION_KEY] = malformed
+            assert is_item_unlocked(item) is False
+            assert session[AUTHENTICATED_UNLOCKS_SESSION_KEY] == {"sub": "member-a", "tokens": []}

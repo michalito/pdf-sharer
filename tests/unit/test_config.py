@@ -15,7 +15,7 @@ def production_auth_mode(monkeypatch):
 
 
 def test_max_note_text_length_defaults_when_env_missing(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.delenv("MAX_NOTE_TEXT_LENGTH", raising=False)
     config = Config.from_env()
     assert config.MAX_NOTE_TEXT_LENGTH == DEFAULT_MAX_NOTE_TEXT_LENGTH
@@ -23,28 +23,28 @@ def test_max_note_text_length_defaults_when_env_missing(monkeypatch):
 
 @pytest.mark.parametrize("raw", ["", "banana", "0", "-1"])
 def test_max_note_text_length_defaults_for_invalid_values(monkeypatch, raw: str):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.setenv("MAX_NOTE_TEXT_LENGTH", raw)
     config = Config.from_env()
     assert config.MAX_NOTE_TEXT_LENGTH == DEFAULT_MAX_NOTE_TEXT_LENGTH
 
 
 def test_max_note_text_length_accepts_positive_integer(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.setenv("MAX_NOTE_TEXT_LENGTH", "123456")
     config = Config.from_env()
     assert config.MAX_NOTE_TEXT_LENGTH == 123456
 
 
 def test_note_excerpt_length_defaults_when_env_missing(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.delenv("NOTE_EXCERPT_LENGTH", raising=False)
     config = Config.from_env()
     assert config.NOTE_EXCERPT_LENGTH == DEFAULT_NOTE_EXCERPT_LENGTH
 
 
 def test_note_excerpt_length_is_bounded(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.setenv("NOTE_EXCERPT_LENGTH", "99999")
     config_high = Config.from_env()
     assert config_high.NOTE_EXCERPT_LENGTH == MAX_NOTE_EXCERPT_LENGTH
@@ -61,14 +61,14 @@ def test_from_env_requires_secret_key(monkeypatch):
 
 
 def test_from_env_rejects_non_sqlite_database_url(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/saita")
     with pytest.raises(ValueError, match="Only SQLite is supported"):
         Config.from_env()
 
 
 def test_from_env_defaults_session_cookie_secure_to_true(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.delenv("SESSION_COOKIE_SECURE", raising=False)
     config = Config.from_env()
     assert config.SESSION_COOKIE_SECURE is True
@@ -76,7 +76,7 @@ def test_from_env_defaults_session_cookie_secure_to_true(monkeypatch):
 
 @pytest.mark.parametrize("mode", [None, "development", "disabled", ""])
 def test_production_requires_explicit_forward_mode(monkeypatch, mode):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     if mode is None:
         monkeypatch.delenv("AUTH_MODE", raising=False)
     else:
@@ -97,6 +97,20 @@ def test_unknown_environment_cannot_silently_enable_development(monkeypatch):
         get_config()
 
 
+def test_environment_must_be_explicit(monkeypatch):
+    from app.config import get_config
+    monkeypatch.delenv("FLASK_ENV", raising=False)
+    with pytest.raises(ValueError, match="FLASK_ENV is required"):
+        get_config()
+
+
+@pytest.mark.parametrize("secret", ["short", " " * 40])
+def test_production_rejects_short_cookie_signing_keys(monkeypatch, secret):
+    monkeypatch.setenv("SECRET_KEY", secret)
+    with pytest.raises(ValueError, match="SECRET_KEY"):
+        Config.from_env()
+
+
 def test_auth_environment_is_passed_to_flask(monkeypatch):
     values = {
         "APP_ORIGIN": "https://saita.test",
@@ -105,7 +119,7 @@ def test_auth_environment_is_passed_to_flask(monkeypatch):
         "AUTHENTIK_REQUIRED_GROUP": "app-saita",
         "AUTHENTIK_PROXY_CLIENT_SECRET_FILE": "/config/client-secret",
     }
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     for name, value in values.items():
         monkeypatch.setenv(name, value)
     config = Config.from_env()
@@ -114,7 +128,7 @@ def test_auth_environment_is_passed_to_flask(monkeypatch):
 
 
 def test_from_env_honors_explicit_session_cookie_secure_override(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
     config = Config.from_env()
     assert config.SESSION_COOKIE_SECURE is False
@@ -122,21 +136,21 @@ def test_from_env_honors_explicit_session_cookie_secure_override(monkeypatch):
 
 @pytest.mark.parametrize("raw", ["banana", "truthy", "2"])
 def test_from_env_rejects_invalid_session_cookie_secure(monkeypatch, raw: str):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.setenv("SESSION_COOKIE_SECURE", raw)
     with pytest.raises(ValueError, match="Boolean environment values"):
         Config.from_env()
 
 
 def test_from_env_defaults_trust_proxy_hops_to_zero(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.delenv("TRUST_PROXY_HOPS", raising=False)
     config = Config.from_env()
     assert config.TRUST_PROXY_HOPS == 0
 
 
 def test_from_env_parses_trust_proxy_hops(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.setenv("TRUST_PROXY_HOPS", "1")
     config = Config.from_env()
     assert config.TRUST_PROXY_HOPS == 1
@@ -160,7 +174,7 @@ def test_relative_sqlite_directories_use_flask_instance_path(test_config, tmp_pa
 
 @pytest.mark.parametrize("raw", ["-1", "abc"])
 def test_from_env_rejects_invalid_trust_proxy_hops(monkeypatch, raw: str):
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-test-secret-key-at-least-32-bytes")
     monkeypatch.setenv("TRUST_PROXY_HOPS", raw)
     with pytest.raises(ValueError, match="TRUST_PROXY_HOPS"):
         Config.from_env()

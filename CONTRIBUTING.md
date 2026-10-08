@@ -18,6 +18,7 @@ The fastest path is Docker via `./deploy.sh` (see the [README](README.md) for th
 - Dev API: http://localhost:5001/api/health
 
 If you prefer to run components directly on your host, install Python 3.11+ and Node 20+ and use the local checks below.
+Set `FLASK_ENV=development` explicitly when running Flask directly; an unset environment fails startup. Dev Compose binds its ports to loopback.
 
 ## Running tests locally
 

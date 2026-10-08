@@ -326,11 +326,35 @@ it("logs out through the authenticated mutation and clears the view before navig
   }
 });
 
-it("never navigates to an arbitrary sign-out URL", async () => {
+it("ignores arbitrary sign-out destinations and uses the fixed outpost path", async () => {
   const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
   mockFetch(jsonResponse({ logoutUrl: "https://attacker.test" }));
-  await expect(logout()).rejects.toThrow("Invalid sign-out response");
-  expect(replace).not.toHaveBeenCalled();
+  await logout();
+  expect(replace).toHaveBeenCalledWith("/outpost.goauthentik.io/sign_out");
+});
+
+it.each([401, 403])(
+  "still clears the view and signs out when the app returns %s",
+  async (status) => {
+    const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
+    const listener = vi.fn();
+    window.addEventListener("saita:auth-required", listener);
+    try {
+      mockFetch(jsonResponse({ error: "Unavailable" }, { status }));
+      await logout();
+      expect(listener).toHaveBeenCalledOnce();
+      expect(replace).toHaveBeenCalledWith("/outpost.goauthentik.io/sign_out");
+    } finally {
+      window.removeEventListener("saita:auth-required", listener);
+    }
+  },
+);
+
+it("still signs out when local-cookie clearing has a network failure", async () => {
+  const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Network failure")));
+  await logout();
+  expect(replace).toHaveBeenCalledWith("/outpost.goauthentik.io/sign_out");
 });
 
 it("uploads files with optional metadata, progress, success, and duplicate errors", async () => {

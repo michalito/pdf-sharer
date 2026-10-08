@@ -36,7 +36,8 @@ def index() -> str:
 @web.route("/<path:filename>")
 def serve_public(filename: str):
     """Serve public files (logo, etc.) at root path, falling back to SPA."""
-    if filename == "api" or filename.startswith("api/"):
+    if (filename == "api" or filename.startswith("api/")
+            or filename == "outpost.goauthentik.io" or filename.startswith("outpost.goauthentik.io/")):
         return jsonify({"error": "Not found"}), 404
 
     static_folder = current_app.static_folder
@@ -107,8 +108,6 @@ def _render_password_prompt(
         render_template(
             "password_prompt.html",
             item_id=item.id,
-            item_name=item.display_name,
-            item_kind=item.kind,
             error_message=error_message,
         ),
         status_code,

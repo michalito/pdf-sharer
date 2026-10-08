@@ -36,7 +36,11 @@ app's secret is separate from other providers and from Flask's cookie signing ke
 
 The pinned outpost forwards the raw OAuth access token as `X-authentik-jwt`.
 Saita verifies its HS256 signature, exact issuer, single audience, subject,
-expiry, optional issued-at/not-before times, and required group. Plain username,
+expiry, optional not-before time, and required group. Optional `iat` is validated as
+a finite numeric informational timestamp; it does not reject a newly issued token
+because of small issuer/app clock differences. Expiry and not-before checks have
+zero leeway. Synchronize runtime clocks; an outage does not extend token validity.
+Plain username,
 email, groups, UID, metadata/JWKS headers, Basic credentials, and Flask unlock
 sessions cannot grant workspace access. Algorithms are pinned to HS256; RS256,
 unsigned tokens, and tokens signed with another provider's secret are rejected.
@@ -47,11 +51,21 @@ usable during an IdP outage. Wrong secrets and expired identities fail closed;
 there is no expiry grace or outage bypass. A missing/invalid secret or incomplete
 forward-auth configuration prevents startup. Production requires explicit
 `AUTH_MODE=forward`; `development` is only available outside production.
+`APP_ORIGIN` must be canonical (lowercase hostname, no default `:443`, no path).
+The stable cookie signing key must contain at least 32 bytes. The dedicated proxy
+secret must contain 32–4096 bytes with no internal whitespace. Neither secret is
+printed; request rejection logs include only safe diagnostic exception classes.
 
-Every authenticated mutation, including multipart uploads and logout, requires
+Every authenticated mutation, including multipart uploads, requires
 `Origin` to equal `APP_ORIGIN` and `X-Saita-CSRF: 1`. The frontend sends this custom
 header. Cross-site/same-site fetch metadata is rejected even if an Origin is
 forged. There is no Referer fallback or CORS authorization.
+
+Authenticated API unlock grants are bound to the verified subject and discarded
+when another subject arrives. Explicit anonymous share-password grants remain
+browser-scoped in a separate session record. API-created/unlocked protected items
+do not grant anonymous share access: even the creator must enter the public share
+password separately. Anonymous password prompts expose neither title nor kind.
 
 ## Ingress contract
 
@@ -67,6 +81,9 @@ Saita itself allows anonymous access only for:
 - `GET`/`HEAD` on exact `/api/health`, which returns only `{"ok":true}`.
 - `GET`/`HEAD` on exact `/api/auth-required`, a fixed JSON 401 response with
   `code: AUTH_REQUIRED` and `loginUrl: /`, for the ingress error adapter.
+- Exact `POST /api/auth/logout`, with the same canonical Origin/custom-header/fetch
+  metadata checks but no identity requirement. It only clears this browser's cookie
+  so sign-out remains possible after identity expiry. All other methods stay protected.
 - `GET`/`HEAD` on existing, explicitly named public assets: `logo.png`,
   `apple-touch-icon.png`, `manifest.webmanifest`, `public-pages.css`, the three
   `icons/icon-*.png` files, `sw.js`, `workbox-<name>.js`, and single-level
@@ -88,16 +105,27 @@ for unauthorized API requests too.
 
 `GET /api/app-info` is protected and returns the version, note limits, and auth mode
 for the UI. Keep health checks pointed at `/api/health`.
+Pin and verify `TRUST_PROXY_HOPS` against the actual ingress chain: zero shares the
+password throttle across proxy-connected clients; too many trusted hops can allow
+spoofed client IPs. Test real callers and spoofed `X-Forwarded-For` at deployment.
+Misrouted `/outpost.goauthentik.io` paths return explicit 404 responses from Saita.
 
 ## Logout and browser caching
 
-The Sign out button posts to protected `/api/auth/logout`, clears all Flask item
-unlocks, discards React Query data, notifies other open same-origin tabs, and
-navigates to `/outpost.goauthentik.io/sign_out`. The outpost removes its local
+The Sign out button immediately discards React Query data and notifies other
+same-origin tabs, then makes a two-second best-effort POST to `/api/auth/logout`
+to clear all Flask item unlocks. It always navigates to the fixed
+`/outpost.goauthentik.io/sign_out`, including on 401/403 or network failure.
+The expired-session gate and server navigation-error page also offer Sign out.
+The exact logout POST must bypass ingress forward-auth while preserving app-side
+Origin/custom-header checks; do not bypass a prefix or another method.
+The outpost removes its local
 sessions before initiating central sign-out. No client-supplied return URL is used.
 An authentication failure also unmounts private UI and clears query/mutation caches.
 Restored browser history pages reload against the server, and app-info is checked
 periodically and on focus. All non-asset responses use `Cache-Control: no-store`.
+Responses prohibit framing (`frame-ancestors 'none'`, `X-Frame-Options: DENY`),
+MIME sniffing, and referrer disclosure.
 
 The service worker precaches only public code, styling, fonts, icons, and manifest
 files. It does not precache HTML or provide an offline navigation fallback; every
@@ -105,6 +133,7 @@ navigation reaches the server. API/share/auth responses are never cached by the
 worker. The updated worker removes obsolete precache entries, including the old
 offline HTML shell. During cutover, verify an existing installed PWA updates its
 worker, then test logout, Back, a second tab, expiry, and an offline navigation.
+The build verifies both immediate worker activation and claiming existing clients.
 
 JWTs remain bearer credentials: a captured signed token remains valid until
 expiry. Removing a group affects new tokens; coordinate central/outpost session
@@ -137,4 +166,6 @@ ingress. Keep a backup of the data and stable session key before any cutover.
 
 Local development (`./deploy.sh dev`, or `FLASK_ENV=development`/`testing`) defaults to
 `AUTH_MODE=development`, without an IdP. Keep it local; do not use that mode for a
-hosted production deployment.
+hosted production deployment. `FLASK_ENV` must be explicit outside Docker/Compose;
+an unset environment fails startup. Development ports bind loopback and startup
+logs a warning that workspace authentication is disabled.

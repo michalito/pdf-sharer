@@ -26,7 +26,7 @@ def forward_config(test_config, tmp_path, signing_key):
     key_file = tmp_path / "provider-client-secret.txt"
     key_file.write_text(signing_key)
     return replace(
-        test_config, AUTH_MODE="forward", SESSION_COOKIE_SECURE=True,
+        test_config, SECRET_KEY="forward-test-cookie-secret-with-32-bytes", AUTH_MODE="forward", SESSION_COOKIE_SECURE=True,
         APP_ORIGIN=ORIGIN, AUTHENTIK_PROXY_ISSUER=ISSUER,
         AUTHENTIK_PROXY_CLIENT_ID="saita-provider-client", AUTHENTIK_REQUIRED_GROUP="app-saita",
         AUTHENTIK_PROXY_CLIENT_SECRET_FILE=str(key_file),
@@ -70,7 +70,6 @@ def authenticated_headers(token):
     "/api/items/order", "/api/spaces", "/api/storage", "/api/health/",
     "/static/index.html", "/index.html", "/d", "/d/0", "/d/01", "/d/1/",
     "/d/1/download", "/d/1/../api/items", "/static/assets/missing.js",
-    "/outpost.goauthentik.io/sign_out",
 ])
 def test_protected_paths_fail_closed_with_spoofed_headers(forward_client, path):
     response = forward_client.get(path, headers={
@@ -79,7 +78,10 @@ def test_protected_paths_fail_closed_with_spoofed_headers(forward_client, path):
         "X-authentik-meta-jwks": "https://attacker.test/keys", "Authorization": "Bearer fake",
     })
     assert response.status_code == 401
-    assert response.get_json()["code"] == "AUTH_REQUIRED"
+    if path == "/api" or path.startswith("/api/"):
+        assert response.get_json()["code"] == "AUTH_REQUIRED"
+    else:
+        assert b"Sign in to sa" in response.data and b"Sign out" in response.data
     assert "Location" not in response.headers
 
 
@@ -89,7 +91,7 @@ def test_protected_paths_fail_closed_with_spoofed_headers(forward_client, path):
     {"groups": ["family"]}, {"groups": "app-saita"}, {"groups": ["app-saita", 7]},
     {"groups": None}, {"sub": ""}, {"sub": 123}, {"exp": 0}, {"exp": True},
     {"exp": "9999999999"}, {"exp": float("inf")}, {"exp": float("nan")},
-    {"nbf": 9999999999}, {"iat": 9999999999},
+    {"nbf": 9999999999}, {"iat": True}, {"iat": "9999999999"}, {"iat": None},
 ])
 def test_wrong_provider_claims_are_rejected(forward_client, token, claims):
     response = forward_client.get("/api/items", headers={"X-authentik-jwt": token(**claims)})
@@ -107,6 +109,17 @@ def test_required_claims_must_exist(forward_client, token, signing_key, claim):
 def test_expiry_is_enforced_without_outage_grace(forward_client, token):
     assert forward_client.get("/api/items", headers={
         "X-authentik-jwt": token(exp=int(time.time()) - 1),
+    }).status_code == 401
+
+
+def test_issued_at_clock_skew_does_not_extend_expiry_or_bypass_not_before(forward_client, token):
+    future = int(time.time()) + 60
+    assert forward_client.get("/api/items", headers={"X-authentik-jwt": token(iat=future)}).status_code == 200
+    assert forward_client.get("/api/items", headers={
+        "X-authentik-jwt": token(iat=future, exp=int(time.time()) - 1),
+    }).status_code == 401
+    assert forward_client.get("/api/items", headers={
+        "X-authentik-jwt": token(iat=future, nbf=future),
     }).status_code == 401
 
 
@@ -160,7 +173,7 @@ def test_authenticated_creation_keeps_shared_dataset(forward_client, authenticat
 
 
 @pytest.mark.parametrize("path", ["/api/items/files", "/api/items/folder", "/api/items/note",
-                                      "/api/spaces", "/api/auth/logout"])
+                                      "/api/spaces"])
 def test_post_endpoints_never_bypass_auth(forward_client, path):
     assert forward_client.post(path, json={}).status_code == 401
 
@@ -235,20 +248,105 @@ def test_logout_clears_share_unlocks_and_never_accepts_external_redirect(
     forward_client.post(path, data={"password": "share-password"})
     assert b"secret" in forward_client.get(path).data
     assert forward_client.get("/api/auth/logout").status_code == 401
-    assert forward_client.post("/api/auth/logout").status_code == 401
+    assert forward_client.post("/api/auth/logout").status_code == 403
     response = forward_client.post("/api/auth/logout?next=https://attacker.test", headers=authenticated_headers)
     assert response.get_json() == {"logoutUrl": "/outpost.goauthentik.io/sign_out"}
     assert "no-store" in response.headers["Cache-Control"]
     assert b"secret" not in forward_client.get(path).data
 
 
+def test_logout_remains_available_after_identity_expiry_with_valid_csrf(forward_client, authenticated_headers, token):
+    item = forward_client.post("/api/items/note", json={
+        "text": "secret", "title": "Protected note", "password": "share-password",
+    }, headers=authenticated_headers).get_json()
+    path = f"/d/{item['id']}"
+    forward_client.post(path, data={"password": "share-password"})
+    response = forward_client.post("/api/auth/logout", headers={
+        "Origin": ORIGIN, "X-Saita-CSRF": "1",
+        "X-authentik-jwt": token(exp=int(time.time()) - 1),
+    })
+    assert response.status_code == 200
+    assert b"secret" not in forward_client.get(path).data
+    assert forward_client.post("/api/auth/logout", headers={"Origin": ORIGIN, "X-Saita-CSRF": "1"}).status_code == 200
+    for headers in [{"Origin": ORIGIN}, {"X-Saita-CSRF": "1"}, {"Origin": "https://attacker.test", "X-Saita-CSRF": "1"}]:
+        assert forward_client.post("/api/auth/logout", headers=headers).status_code == 403
+
+
+def test_api_unlock_grants_follow_subject_and_do_not_grant_anonymous_share_access(forward_client, token):
+    headers_a = {"X-authentik-jwt": token(sub="user-a"), "Origin": ORIGIN, "X-Saita-CSRF": "1"}
+    headers_b = {"X-authentik-jwt": token(sub="user-b"), "Origin": ORIGIN, "X-Saita-CSRF": "1"}
+    item = forward_client.post("/api/items/note", json={
+        "text": "subject-bound secret", "title": "Protected title", "password": "share-password",
+    }, headers=headers_a).get_json()
+    detail = f"/api/items/{item['id']}"
+    share = f"/d/{item['id']}"
+    assert forward_client.get(detail, headers=headers_a).get_json()["isPasswordUnlocked"] is True
+    prompt = forward_client.get(share)
+    assert b"subject-bound secret" not in prompt.data
+    assert b"Protected title" not in prompt.data
+    assert forward_client.get(detail, headers=headers_b).get_json()["isPasswordUnlocked"] is False
+    assert forward_client.get(detail, headers=headers_a).get_json()["isPasswordUnlocked"] is False
+    assert forward_client.post(detail + "/unlock", json={"password": "share-password"}, headers=headers_a).status_code == 204
+    assert forward_client.get(detail, headers=headers_a).get_json()["isPasswordUnlocked"] is True
+    assert b"subject-bound secret" not in forward_client.get(share).data
+
+
+def test_anonymous_password_grants_stay_browser_scoped_across_subject_changes(forward_client, authenticated_headers, token):
+    item = forward_client.post("/api/items/note", json={
+        "text": "browser-granted secret", "password": "share-password",
+    }, headers=authenticated_headers).get_json()
+    share = f"/d/{item['id']}"
+    assert forward_client.post(share, data={"password": "share-password"}).status_code == 302
+    for subject in ["user-a", "user-b"]:
+        detail = forward_client.get(f"/api/items/{item['id']}", headers={"X-authentik-jwt": token(sub=subject)})
+        assert detail.get_json()["isPasswordUnlocked"] is True
+        assert b"browser-granted secret" in forward_client.get(share).data
+
+
+def test_security_headers_and_misrouted_outpost_are_explicit(forward_client, authenticated_headers):
+    response = forward_client.get("/api/health")
+    assert response.headers["Content-Security-Policy"] == "frame-ancestors 'none'"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    for path in ["/outpost.goauthentik.io", "/outpost.goauthentik.io/sign_out", "/outpost.goauthentik.io/callback"]:
+        assert forward_client.get(path).status_code == 404
+        assert forward_client.get(path, headers=authenticated_headers).status_code == 404
+
+
+def test_deeply_nested_jwt_is_rejected_without_internal_error(forward_client):
+    header = base64.urlsafe_b64encode(('[' * 2000 + '0' + ']' * 2000).encode()).decode().rstrip("=")
+    assert forward_client.get("/api/items", headers={"X-authentik-jwt": header + ".e30.signature"}).status_code == 401
+
+
+def test_auth_rejection_logs_only_safe_diagnostic_class(forward_client, token, caplog):
+    import logging
+    with caplog.at_level(logging.INFO):
+        forward_client.get("/api/items", headers={"X-authentik-jwt": token(iss="https://untrusted.test")})
+    assert "InvalidIssuerError" in caplog.text
+    assert "https://untrusted.test" not in caplog.text
+    assert "eyJ" not in caplog.text
+
+
+def test_development_startup_warns_that_workspace_authentication_is_disabled(test_config, capsys):
+    create_app(test_config)
+    # The app replaces logging handlers during startup; verify the emitted log.
+    startup_logs = capsys.readouterr().err
+    assert "AUTH_MODE=development" in startup_logs
+    assert "authentication is disabled" in startup_logs
+
+
 @pytest.mark.parametrize("field,value", [
     ("AUTH_MODE", "disabled"), ("APP_ORIGIN", ""), ("APP_ORIGIN", "http://saita.test"),
     ("APP_ORIGIN", ORIGIN + "/"), ("APP_ORIGIN", "https://user:password@saita.test"),
+    ("APP_ORIGIN", "https://SAITA.home.theforceiswith.me"), ("APP_ORIGIN", ORIGIN + ":443"),
+    ("APP_ORIGIN", "https://bad host.test"), ("APP_ORIGIN", "https://-bad.test"),
+    ("APP_ORIGIN", "https://bad.test."), ("APP_ORIGIN", "https://bad\\host.test"),
     ("APP_ORIGIN", "https://saita.test:bad"), ("AUTHENTIK_PROXY_ISSUER", "http://auth.test"),
     ("AUTHENTIK_PROXY_CLIENT_ID", ""), ("AUTHENTIK_REQUIRED_GROUP", ""),
     ("AUTHENTIK_PROXY_CLIENT_SECRET_FILE", ""), ("AUTHENTIK_PROXY_CLIENT_SECRET_FILE", "/nonexistent"),
     ("SESSION_COOKIE_SECURE", False),
+    ("SECRET_KEY", "short"),
 ])
 def test_invalid_secure_configuration_fails_at_startup(forward_config, field, value):
     with pytest.raises(ValueError):
@@ -256,7 +354,8 @@ def test_invalid_secure_configuration_fails_at_startup(forward_config, field, va
 
 
 def test_empty_short_or_pem_secrets_are_rejected(forward_config, tmp_path):
-    for key_bytes in [b"", b"short-secret", b"-----BEGIN PUBLIC KEY-----\nnot a client secret"]:
+    for key_bytes in [b"", b"short-secret", b"-----BEGIN PUBLIC KEY-----\nnot a client secret",
+                      b"invalid secret with internal whitespace" * 2, b"x" * 4097]:
         path = tmp_path / "invalid-secret.txt"
         path.write_bytes(key_bytes)
         with pytest.raises(ValueError, match="proxy secret"):

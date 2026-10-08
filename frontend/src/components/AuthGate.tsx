@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { logout } from "../api/items";
 
 export default function AuthGate({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -41,6 +42,13 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         >
           Sign in
         </a>
+        <button
+          type="button"
+          onClick={() => void logout()}
+          className="ml-3 mt-5 rounded-lg border border-[var(--app-border)] px-4 py-2 font-semibold focus-ring"
+        >
+          Sign out
+        </button>
       </div>
     </main>
   );

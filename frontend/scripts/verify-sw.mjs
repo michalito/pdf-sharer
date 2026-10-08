@@ -7,11 +7,15 @@ const source = readFileSync(new URL("../dist/sw.js", import.meta.url), "utf8");
 const entries = [];
 const routes = [];
 let cleaned = false;
+let claimed = false;
+let activated = false;
 const disallowNavigation = () => {
   throw new Error("Service-worker navigations must reach the authenticated server");
 };
 const workbox = {
-  clientsClaim() {},
+  clientsClaim() {
+    claimed = true;
+  },
   precacheAndRoute(values) {
     entries.push(...values);
   },
@@ -36,7 +40,19 @@ const workbox = {
   CacheableResponsePlugin: class {},
 };
 const define = (_dependencies, factory) => factory(workbox);
-runInNewContext(source, { self: { define, skipWaiting() {} }, define }, { timeout: 1000 });
+runInNewContext(
+  source,
+  {
+    self: {
+      define,
+      skipWaiting() {
+        activated = true;
+      },
+    },
+    define,
+  },
+  { timeout: 1000 },
+);
 
 const publicAsset =
   /^\/static\/(?:manifest\.webmanifest|apple-touch-icon\.png|icons\/icon-(?:192|512|512-maskable)\.png|assets\/[A-Za-z0-9_.-]+\.(?:js|css|woff2|png))$/;
@@ -45,6 +61,8 @@ for (const { url } of entries) {
   assert(publicAsset.test(url), `Private or unsupported precache URL: ${url}`);
 }
 assert(cleaned, "Obsolete precache entries, including legacy HTML, must be removed");
+assert(activated, "Updated worker must skip waiting so the legacy navigation fallback is replaced");
+assert(claimed, "Updated worker must claim existing clients during the auth cutover");
 assert.equal(routes.length, 2, "Only the two external Google Fonts runtime caches are expected");
 for (const { match, method } of routes) {
   assert.equal(method, "GET");

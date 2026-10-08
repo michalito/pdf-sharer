@@ -118,6 +118,8 @@ class Config:
         secret_key = (os.environ.get("SECRET_KEY") or "").strip()
         if not secret_key:
             raise ValueError("SECRET_KEY environment variable is required in production")
+        if len(secret_key.encode()) < 32:
+            raise ValueError("SECRET_KEY must contain at least 32 bytes in production")
 
         database_uri = os.environ.get("DATABASE_URL") or \
             f"sqlite:///{base_dir / 'instance' / 'saita.db'}"
@@ -217,7 +219,10 @@ class Config:
 
 def get_config() -> Config:
     """Get the appropriate configuration based on environment."""
-    env = os.environ.get("FLASK_ENV", "development")
+    env = os.environ.get("FLASK_ENV")
+
+    if env is None:
+        raise ValueError("FLASK_ENV is required; explicitly choose production, development, or testing")
 
     if env == "production":
         return Config.from_env()

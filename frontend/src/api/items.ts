@@ -207,17 +207,21 @@ async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
 }
 
 export async function logout(): Promise<void> {
-  const result = await apiJson<{ logoutUrl: string }>("/api/auth/logout", { method: "POST" });
-  if (!["/", "/outpost.goauthentik.io/sign_out"].includes(result.logoutUrl)) {
-    throw new Error("Invalid sign-out response.");
-  }
   clearAuthenticatedView();
   try {
     localStorage.setItem("saita-logout", String(Date.now()));
   } catch {
     // The local view is still cleared when storage is disabled.
   }
-  window.location.replace(result.logoutUrl);
+  try {
+    // The local cookie clear is best-effort; expired/network-failed identity must
+    // never prevent this browser from reaching the fixed outpost sign-out URL.
+    await apiFetch("/api/auth/logout", { method: "POST", signal: AbortSignal.timeout(2000) });
+  } catch {
+    // Private UI is already cleared; the outpost owns authentication sign-out.
+  } finally {
+    window.location.replace("/outpost.goauthentik.io/sign_out");
+  }
 }
 
 export async function listItems(

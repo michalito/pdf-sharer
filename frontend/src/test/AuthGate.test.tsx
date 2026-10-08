@@ -1,6 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import AuthGate from "../components/AuthGate";
+import { logout } from "../api/items";
+
+vi.mock("../api/items", () => ({ logout: vi.fn().mockResolvedValue(undefined) }));
 
 function renderGate() {
   const client = new QueryClient();
@@ -22,6 +25,8 @@ it("unmounts private UI and clears query data when authentication expires", () =
   expect(screen.queryByText("Private workspace")).not.toBeInTheDocument();
   expect(client.getQueryCache().getAll()).toHaveLength(0);
   expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/");
+  fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+  expect(logout).toHaveBeenCalledOnce();
 });
 
 it("clears other tabs when the same-origin logout notification arrives", () => {

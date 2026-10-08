@@ -1641,7 +1641,7 @@ def test_deleted_item_unlock_state_does_not_apply_to_new_item(app: Flask, client
     public = client.get(f"/d/{second_item['id']}")
     assert public.status_code == 200
     assert b"Password required" in public.data
-    assert b"second.txt" in public.data
+    assert b"second.txt" not in public.data
 
 
 # --- Unlock throttle / brute-force protection ---

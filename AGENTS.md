@@ -96,7 +96,7 @@ npm --prefix frontend run build
 - `GET /api/health` (public `ok` only)
 - `GET /api/app-info` (protected `ok`, `version`, `limits`, `authMode`)
 - `GET /api/auth-required` (public fixed JSON 401 for ingress auth errors)
-- `POST /api/auth/logout` (protected; clears Flask unlocks, returns the fixed outpost sign-out URL)
+- `POST /api/auth/logout` (exact anonymous endpoint with canonical Origin/custom-header checks; clears Flask unlocks, returns the fixed outpost sign-out URL)
 - `GET /api/storage`
 - `GET /api/items` with optional `q`, `kind`, `state`, `space` (`<id>|none`), `protected`, `sort` (`name|size|created|modified|manual`, default `created`), `order` (`asc|desc`, default `desc`), `page`, `per_page`
 - `POST /api/items/files` (multipart `files`; optional `password`, `space_id`, `ttl`, `force`)
@@ -122,9 +122,9 @@ npm --prefix frontend run build
 ## Config Gotchas
 
 - `FLASK_ENV=production` uses `Config.from_env()` and honors `DATABASE_URL`, `UPLOAD_FOLDER`, etc.
-- `SECRET_KEY` is required in production (`Config.from_env()` raises if missing). Keep it stable across restarts, otherwise protected-item unlock sessions are invalidated.
+- `SECRET_KEY` is required in production and must have at least 32 bytes. Keep it stable across restarts, otherwise protected-item unlock sessions are invalidated.
 - `SESSION_COOKIE_SECURE` defaults to `true` in production and `false` in development; forward mode requires `true`.
-- `development`/`testing` `FLASK_ENV` uses `Config.for_development()`, which fixes DB path and upload folder to local defaults. Unknown environment names fail startup. Production images default to `production`.
+- `FLASK_ENV` must be explicit. `development`/`testing` uses `Config.for_development()`, which fixes DB/upload paths to local defaults; absent/unknown names fail startup. Dev Compose ports bind loopback and dev auth logs a warning. Production images default to `production`.
 - `MAX_CONTENT_LENGTH` default is `2147483648` (2GB).
 - `MAX_NOTE_TEXT_LENGTH` controls maximum saved note body length and defaults to `100000`.
 - `NOTE_EXCERPT_LENGTH` controls note preview length in `GET /api/items` and is bounded to `40..1000` (default `180`).

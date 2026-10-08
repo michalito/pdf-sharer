@@ -65,9 +65,10 @@ Configure in `.env` (auto-created from `.env.example` when using `./deploy.sh pr
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SECRET_KEY` | Cookie signing key (**required in production**; keep stable across restarts for protected-item unlock sessions) | Required in production |
+| `SECRET_KEY` | Cookie signing key (**required in production**, at least 32 bytes; keep stable across restarts) | Required in production |
+| `FLASK_ENV` | Explicit `production`, `development`, or `testing`; unset/unknown values fail startup | Set by Docker images/Compose |
 | `AUTH_MODE` | Production requires explicit `forward`; local development uses `development` | Required in production |
-| `APP_ORIGIN` | Exact HTTPS origin for authenticated mutation checks | Required in forward mode |
+| `APP_ORIGIN` | Canonical HTTPS origin (lowercase host, no `:443`, no path) for mutation checks | Required in forward mode |
 | `AUTHENTIK_PROXY_ISSUER` | Dedicated provider's exact issuer URL | Required in forward mode |
 | `AUTHENTIK_PROXY_CLIENT_ID` | Dedicated provider's client ID; exact JWT audience | Required in forward mode |
 | `AUTHENTIK_REQUIRED_GROUP` | Required signed token group (`app-saita` for the homelab) | Required in forward mode |
@@ -130,7 +131,7 @@ Helper commands detect the running container's production/development configurat
 | `GET` | `/api/health` | Public minimal health check (`{"ok": true}`) |
 | `GET` | `/api/app-info` | Protected version, runtime limits, and `authMode` |
 | `GET` | `/api/auth-required` | Public fixed JSON 401 response for the ingress API auth-error adapter |
-| `POST` | `/api/auth/logout` | Protected logout; clear item unlocks and return the fixed outpost sign-out path |
+| `POST` | `/api/auth/logout` | Origin/CSRF-protected cookie clear; accepts expired/missing identity, returns fixed outpost sign-out path |
 | `GET` | `/api/storage` | Storage overview (`{disk, items: {totalCount, totalSizeBytes, countByKind, sizeByKind, countByState, sizeByState}, spaceStats: [{spaceId, spaceName, itemCount, sizeBytes}], largestItems}`) |
 | `GET` | `/api/items` | List items (optional `?q=...&kind=file\|folder\|link\|note&state=active\|done\|archived\|ready_to_delete&space=<id>\|none&protected=true\|false&sort=name\|size\|created\|modified\|manual&order=asc\|desc&page=1&per_page=50`; `q` is a literal substring search over names and unprotected note body text (`%` and `_` are literal characters); note items include `noteExcerpt`, not full `noteText`; includes `contentHash`; default sort: `created` desc) |
 | `POST` | `/api/items/files` | Upload files (multipart/form-data, field `files` repeatable; optional `password`, `space_id`, `ttl`, `force`; on duplicate returns `409` with `{code:"DUPLICATE_CONTENT"}` and includes `duplicates:[...]` only when no protected existing item is involved) |
