@@ -152,6 +152,9 @@ def create_app(config: Optional[Config] = None) -> Flask:
     # Set up dependency injection
     _setup_request_handlers(app)
 
+    from app.forward_auth import configure_forward_auth
+    configure_forward_auth(app)
+
     # Import models for migrations
     from app.domain import item  # noqa: F401
     from app.domain import space  # noqa: F401

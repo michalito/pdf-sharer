@@ -9,6 +9,11 @@ from app.config import (
 )
 
 
+@pytest.fixture(autouse=True)
+def production_auth_mode(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "forward")
+
+
 def test_max_note_text_length_defaults_when_env_missing(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "test-secret")
     monkeypatch.delenv("MAX_NOTE_TEXT_LENGTH", raising=False)
@@ -62,11 +67,50 @@ def test_from_env_rejects_non_sqlite_database_url(monkeypatch):
         Config.from_env()
 
 
-def test_from_env_defaults_session_cookie_secure_to_false(monkeypatch):
+def test_from_env_defaults_session_cookie_secure_to_true(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "test-secret")
     monkeypatch.delenv("SESSION_COOKIE_SECURE", raising=False)
     config = Config.from_env()
-    assert config.SESSION_COOKIE_SECURE is False
+    assert config.SESSION_COOKIE_SECURE is True
+
+
+@pytest.mark.parametrize("mode", [None, "development", "disabled", ""])
+def test_production_requires_explicit_forward_mode(monkeypatch, mode):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    if mode is None:
+        monkeypatch.delenv("AUTH_MODE", raising=False)
+    else:
+        monkeypatch.setenv("AUTH_MODE", mode)
+    with pytest.raises(ValueError, match="AUTH_MODE=forward"):
+        Config.from_env()
+
+
+def test_development_is_consciously_usable_without_idp(monkeypatch):
+    monkeypatch.delenv("AUTH_MODE", raising=False)
+    assert Config.for_development().AUTH_MODE == "development"
+
+
+def test_unknown_environment_cannot_silently_enable_development(monkeypatch):
+    from app.config import get_config
+    monkeypatch.setenv("FLASK_ENV", "prod")
+    with pytest.raises(ValueError, match="FLASK_ENV"):
+        get_config()
+
+
+def test_auth_environment_is_passed_to_flask(monkeypatch):
+    values = {
+        "APP_ORIGIN": "https://saita.test",
+        "AUTHENTIK_PROXY_ISSUER": "https://auth.test/application/o/saita/",
+        "AUTHENTIK_PROXY_CLIENT_ID": "provider-client",
+        "AUTHENTIK_REQUIRED_GROUP": "app-saita",
+        "AUTHENTIK_PROXY_CLIENT_SECRET_FILE": "/config/client-secret",
+    }
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    config = Config.from_env()
+    for name, value in values.items():
+        assert config.to_flask_config()[name] == value
 
 
 def test_from_env_honors_explicit_session_cookie_secure_override(monkeypatch):

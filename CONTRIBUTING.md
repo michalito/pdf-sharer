@@ -1,6 +1,6 @@
 # Contributing to saíta
 
-Thanks for your interest in contributing. saíta is a small, focused project — a web app for sharing files, folders, links, and notes on a trusted internal network. This guide explains how to get set up, make a change, and submit it for review.
+Thanks for your interest in contributing. saíta is a small, focused project — a shared workspace for files, folders, links, and notes. Production uses Authentik; local development needs no identity provider. This guide explains how to get set up, make a change, and submit it for review.
 
 Before contributing, please read the [Code of Conduct](CODE_OF_CONDUCT.md). To report a security vulnerability, do not open a public issue — follow the [Security Policy](SECURITY.md) instead.
 

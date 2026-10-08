@@ -21,13 +21,14 @@ def test_health(client: FlaskClient):
     res = client.get("/api/health")
     assert res.status_code == 200
     data = res.get_json()
-    assert data["ok"] is True
+    assert data == {"ok": True}
+    data = client.get("/api/app-info").get_json()
     assert data["version"] == "dev"
     assert data["limits"]["noteTextMaxChars"] == 100000
 
 
-def test_health_returns_configured_version(temp_upload_dir):
-    """Version and runtime limits from config propagate to /api/health response."""
+def test_app_info_returns_configured_version(temp_upload_dir):
+    """Version and runtime limits from config propagate to /api/app-info response."""
     from app.config import Config
 
     cfg = Config(
@@ -44,7 +45,7 @@ def test_health_returns_configured_version(temp_upload_dir):
     with flask_app.app_context():
         db.create_all()
         client = flask_app.test_client()
-        res = client.get("/api/health")
+        res = client.get("/api/app-info")
         assert res.get_json()["version"] == "1.2.3"
         assert res.get_json()["limits"]["noteTextMaxChars"] == 1234
         db.drop_all()
@@ -357,7 +358,7 @@ def test_create_note_rejects_text_over_default_limit(client: FlaskClient):
 def test_create_note_uses_configured_runtime_limit(app: Flask, client: FlaskClient):
     app.config["MAX_NOTE_TEXT_LENGTH"] = 5
 
-    health = client.get("/api/health")
+    health = client.get("/api/app-info")
     assert health.status_code == 200
     assert health.get_json()["limits"]["noteTextMaxChars"] == 5
 

@@ -68,6 +68,7 @@ vi.mock("../api/items", async () => {
     listSpaces: vi.fn(),
     fetchAppInfo: vi.fn(),
     fetchStorageOverview: vi.fn(),
+    logout: vi.fn(),
   };
 });
 
@@ -1405,4 +1406,19 @@ it("keeps an older active upload cancellable after starting nine uploads", async
   await user.click(screen.getByRole("button", { name: "Cancel" }));
   expect(aborts[0]).toHaveBeenCalledOnce();
   resolves[0]([]);
+});
+
+it("offers sign out when the authenticated app-info contract enables forward mode", async () => {
+  vi.mocked(api.fetchAppInfo).mockResolvedValue({
+    ok: true,
+    version: "dev",
+    authMode: "forward",
+    limits: { noteTextMaxChars: 100000 },
+  });
+  vi.mocked(api.logout).mockResolvedValue();
+  const user = userEvent.setup();
+  renderApp();
+  const button = await screen.findByRole("button", { name: "Sign out" });
+  await user.click(button);
+  expect(api.logout).toHaveBeenCalledOnce();
 });

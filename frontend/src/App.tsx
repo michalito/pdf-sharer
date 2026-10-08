@@ -15,6 +15,7 @@ import {
   type ItemKind,
   listItems,
   listSpaces,
+  logout,
   type ItemState,
   type SortField,
   type SortOrder,
@@ -192,7 +193,9 @@ export default function App() {
   const appInfoQuery = useQuery({
     queryKey: ["app-info"],
     queryFn: ({ signal }) => fetchAppInfo({ signal }),
-    staleTime: Infinity,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const spacesQuery = useQuery({
@@ -585,6 +588,11 @@ export default function App() {
         ? "Failed to load items"
         : undefined;
   const updatingItemId = mutations.updatingItemId;
+  const handleLogout = useCallback(() => {
+    void logout().catch((error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "Could not sign out. Try again.");
+    });
+  }, []);
 
   return (
     <div className="relative flex min-h-screen flex-col text-[var(--app-text)]">
@@ -653,7 +661,11 @@ export default function App() {
         onRetry={retryItems}
       />
 
-      <AppFooter version={appInfoQuery.data?.version} dialogs={dialogs} />
+      <AppFooter
+        version={appInfoQuery.data?.version}
+        dialogs={dialogs}
+        onLogout={appInfoQuery.data?.authMode === "forward" ? handleLogout : undefined}
+      />
 
       <input
         ref={filesInputRef}

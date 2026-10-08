@@ -8,10 +8,16 @@ services:
       args:
         APP_VERSION: ${APP_VERSION:-dev}
     ports:
-      - "${HOST_PORT:-5001}:5000"
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-5001}:5000"
     volumes:
       - saita_data:/app/instance
       - saita_uploads:/app/uploads
+      - type: bind
+        source: ${AUTHENTIK_PROXY_CLIENT_SECRET_FILE:?Set the dedicated proxy client-secret file path}
+        target: /run/authentik/saita-client-secret
+        read_only: true
+        bind:
+          create_host_path: false
     environment:
       - FLASK_ENV=production
       - SECRET_KEY=${SECRET_KEY:-}
@@ -21,7 +27,13 @@ services:
       - MAX_NOTE_TEXT_LENGTH=${MAX_NOTE_TEXT_LENGTH:-100000}
       - NOTE_EXCERPT_LENGTH=${NOTE_EXCERPT_LENGTH:-180}
       - TRUST_PROXY_HOPS=${TRUST_PROXY_HOPS:-0}
-      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
+      - AUTH_MODE=${AUTH_MODE:-}
+      - APP_ORIGIN=${APP_ORIGIN:-}
+      - AUTHENTIK_PROXY_ISSUER=${AUTHENTIK_PROXY_ISSUER:-}
+      - AUTHENTIK_PROXY_CLIENT_ID=${AUTHENTIK_PROXY_CLIENT_ID:-}
+      - AUTHENTIK_REQUIRED_GROUP=${AUTHENTIK_REQUIRED_GROUP:-}
+      - AUTHENTIK_PROXY_CLIENT_SECRET_FILE=/run/authentik/saita-client-secret
       - APP_VERSION=${APP_VERSION:-dev}
     restart: unless-stopped
     healthcheck:
